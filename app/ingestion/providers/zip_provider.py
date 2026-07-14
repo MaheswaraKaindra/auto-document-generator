@@ -1,0 +1,54 @@
+import io
+import zipfile
+
+from app.domain.exceptions import SourceNotFoundError, SourceProviderError
+from app.domain.models import Workspace, WorkspaceFile, ZipIngestRequest
+from app.domain.ports import SourceProvider
+from app.ingestion.filters import MAX_FILE_SIZE_BYTES, is_relevant_path
+
+MAX_TOTAL_FILES = 5_000
+MAX_TOTAL_UNCOMPRESSED_BYTES = 200_000_000
+
+
+class ZipUploadProvider(SourceProvider):
+    """Mengekstrak file esensial dari satu ZIP yang di-upload user, langsung di memori
+    (tidak ditulis ke disk). Menerapkan filter yang sama dengan GithubSourceProvider
+    supaya hasilnya (Workspace) tidak bisa dibedakan oleh Parser dari sumber lain."""
+
+    def fetch(self, request: ZipIngestRequest) -> Workspace:
+        try:
+            archive = zipfile.ZipFile(io.BytesIO(request.zip_bytes))
+        except zipfile.BadZipFile as e:
+            raise SourceNotFoundError(f"File ZIP tidak valid/rusak: {request.filename}") from e
+
+        infos = [info for info in archive.infolist() if not info.is_dir()]
+        if len(infos) > MAX_TOTAL_FILES:
+            raise SourceProviderError(
+                f"{request.filename}: terlalu banyak file ({len(infos)} > {MAX_TOTAL_FILES})"
+            )
+        total_size = sum(info.file_size for info in infos)
+        if total_size > MAX_TOTAL_UNCOMPRESSED_BYTES:
+            raise SourceProviderError(
+                f"{request.filename}: ukuran total setelah extract terlalu besar ({total_size} bytes)"
+            )
+
+        workspace = Workspace(repo_tag=request.repo_tag, source_ref=request.filename)
+        with archive:
+            for info in infos:
+                path = info.filename
+                if info.file_size > MAX_FILE_SIZE_BYTES or not is_relevant_path(path):
+                    continue
+                try:
+                    content = archive.read(info).decode("utf-8")
+                except UnicodeDecodeError:
+                    continue
+
+                workspace.files.append(
+                    WorkspaceFile(
+                        file_name=path.split("/")[-1],
+                        file_path=path,
+                        content=content,
+                    )
+                )
+
+        return workspace
