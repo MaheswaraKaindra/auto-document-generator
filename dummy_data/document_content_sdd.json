@@ -1,0 +1,32 @@
+{
+  "document_type": "SDD",
+  "app_description": "Aplikasi ini adalah sistem manajemen inventaris SPBU yang memungkinkan admin mengelola stok barang, mencatat transaksi masuk/keluar, dan memantau ketersediaan barang secara real-time melalui dashboard web.",
+  "system_requirements": [
+    "Python 3.11+",
+    "FastAPI",
+    "PostgreSQL 14",
+    "React 18 (Frontend)"
+  ],
+  "diagrams": {
+    "system_architecture": "graph LR\nUser((\"User\"))\nFrontend[\"Frontend Web\"]\nBackend[\"Backend API\"]\nDatabase[(\"Database\")]\nUser --> Frontend\nFrontend --> Backend\nBackend --> Database",
+    "component_integration": "graph TD\nInventoryPage[\"InventoryListPage\"] --> GetItems[\"GET /api/inventory\"]\nAddItemForm[\"AddItemForm\"] --> PostItem[\"POST /api/inventory/add\"]",
+    "use_case_diagram": "flowchart LR\nAdmin((\"Admin\"))\nUC1([\"Melihat Daftar Inventaris\"])\nUC2([\"Menambah Item Baru\"])\nAdmin --> UC1\nAdmin --> UC2",
+    "activity_diagrams": [
+      {
+        "activity_name": "Proses Tambah Item Inventaris",
+        "description": "Admin menambahkan item baru ke dalam sistem inventaris melalui form input.",
+        "mermaid_script": "flowchart TD\nStartNode((\"Start\")) --> Isi[\"Isi form item\"]\nIsi --> Submit[\"Submit form\"]\nSubmit --> Cek{\"Valid?\"}\nCek -->|Ya| Simpan[\"Simpan ke database\"]\nCek -->|Tidak| Error[\"Tampilkan error\"]\nSimpan --> EndNode((\"End\"))\nError --> Isi"
+      }
+    ]
+  },
+  "business_flow_description": "Admin login ke sistem, membuka halaman inventaris, lalu menambah/mengubah data item. Setiap perubahan langsung tersinkron ke database dan tercermin di dashboard secara real-time.",
+  "uat_test_cases": [
+    {
+      "test_id": "UAT-01",
+      "role": "Admin",
+      "activity": "Menambah Item Inventaris",
+      "steps": "1. Buka halaman Inventaris\n2. Klik tombol Tambah Item\n3. Isi nama, jumlah, dan satuan\n4. Klik Simpan",
+      "expected_result": "Item baru muncul di daftar inventaris dan tersimpan di database"
+    }
+  ]
+}
