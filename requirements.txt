@@ -1,32 +1,24 @@
+# --- Backend Framework ---
 fastapi
 uvicorn[standard]
+python-multipart
 
+# --- Environment Variables ---
 python-dotenv
 
+# --- GitHub Integration ---
 PyGithub
+requests
 
-langchain
-langchain-openai
-fastapi
-uvicorn[standard]
-
-python-dotenv
-
-PyGithub
-
+# --- LLM & AI Orchestration (Gemini) ---
 langchain
 langchain-google-genai
 
+# --- Templating & Document Generation ---
 Jinja2
 python-docx
 pypandoc
 
-langchain-anthropic
-openai
-anthropic
-
-Jinja2
-python-docx
-pypandoc
-
+# --- Code Parsing (generic, multi-language) ---
 tree-sitter
+tree-sitter-language-pack
