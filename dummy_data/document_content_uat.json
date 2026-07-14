@@ -1,0 +1,33 @@
+{
+  "document_type": "UAT",
+  "app_description": "Aplikasi ini adalah sistem manajemen inventaris SPBU yang memungkinkan admin mengelola stok barang, mencatat transaksi masuk/keluar, dan memantau ketersediaan barang secara real-time melalui dashboard web.",
+  "system_requirements": [
+    "Python 3.11+",
+    "FastAPI",
+    "PostgreSQL 14",
+    "React 18 (Frontend)"
+  ],
+  "diagrams": {
+    "system_architecture": "graph LR\nUser((\"User\")) --> Frontend[\"Frontend Web\"]",
+    "component_integration": "graph TD\nA[\"A\"] --> B[\"B\"]",
+    "use_case_diagram": "flowchart LR\nAdmin((\"Admin\")) --> UC1([\"Login\"])",
+    "activity_diagrams": []
+  },
+  "business_flow_description": "Admin login ke sistem, membuka halaman inventaris, lalu menambah/mengubah data item.",
+  "uat_test_cases": [
+    {
+      "test_id": "UAT-01",
+      "role": "Admin",
+      "activity": "Akses Halaman Login",
+      "steps": "1. Buka URL aplikasi\n2. Masukkan email & password\n3. Klik tombol Login",
+      "expected_result": "Sistem menampilkan pesan Login berhasil dan mengarahkan ke Dashboard"
+    },
+    {
+      "test_id": "UAT-02",
+      "role": "Admin",
+      "activity": "Menambah Item Inventaris",
+      "steps": "1. Buka halaman Inventaris\n2. Klik tombol Tambah Item\n3. Isi nama, jumlah, dan satuan\n4. Klik Simpan",
+      "expected_result": "Item baru muncul di daftar inventaris"
+    }
+  ]
+}

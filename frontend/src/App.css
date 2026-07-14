@@ -1,0 +1,79 @@
+main {
+  text-align: left;
+}
+
+.subtitle {
+  opacity: 0.7;
+  margin-bottom: 24px;
+}
+
+form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-weight: 600;
+  text-align: left;
+}
+
+input,
+select {
+  font: inherit;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text-h);
+}
+
+fieldset {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.repo-row {
+  display: flex;
+  gap: 8px;
+}
+
+.repo-row input {
+  flex: 1;
+}
+
+button {
+  font: inherit;
+  padding: 10px 16px;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--code-bg);
+  color: var(--text-h);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+button[type='submit'] {
+  background: var(--accent);
+  border-color: var(--accent-border);
+  color: #fff;
+}
+
+.remove-repo-btn {
+  padding: 8px 12px;
+}
+
+p[role='status'] {
+  min-height: 1.5em;
+  margin-top: 16px;
+}
