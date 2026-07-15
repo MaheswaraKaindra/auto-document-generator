@@ -76,6 +76,75 @@ def _python_product_paths(content: str, all_paths: set[str]) -> set[str]:
     return _existing_dirs(candidates, all_paths)
 
 
+def _workspace_patterns(data: dict) -> list[str]:
+    """Pola workspace dari package.json root.
+
+    DUA bentuk, keduanya diambil dari repo sungguhan:
+        list  ["apps/*", "packages/*"]              -> cal.com
+        dict  {"packages": ["packages/medusa", ...]} -> medusa, twenty (bentuk yarn)
+    """
+    workspaces = data.get("workspaces")
+    if isinstance(workspaces, list):
+        return [p for p in workspaces if isinstance(p, str)]
+    if isinstance(workspaces, dict):
+        packages = workspaces.get("packages")
+        if isinstance(packages, list):
+            return [p for p in packages if isinstance(p, str)]
+    return []
+
+
+def _workspace_product_paths(data: dict, all_paths: set[str]) -> set[str]:
+    """Monorepo: cari produknya lewat field `workspaces`.
+
+    Root package.json monorepo memang tidak menunjuk kode mana pun — `name`-nya
+    saja sering bukan paket (medusa: "root", cal.com: "calcom-monorepo"). Tapi
+    `workspaces` ITU SENDIRI jawabannya: dia mendeklarasikan di mana paket-paketnya
+    berada. Filosofinya sama dengan seluruh modul ini — tanya repo-nya, jangan
+    menebak. Versi sebelumnya mendeteksi monorepo lalu MENYERAH ("terlalu berisiko
+    ditebak"), padahal petunjuknya ada di field yang sama.
+
+    Diukur pada medusa: dari 9.459 file relevan, nol tersaring. `www/` (situs
+    dokumentasi) menyumbang 2.098 file = 22% — bentuk yang sama persis dengan
+    `docs_src/` fastapi yang dulu bikin SDD menyebut "Manajemen Hero" sebagai
+    fitur produk.
+
+    Yang diambil: FOLDER INDUK dari tiap pola, bukan pola itu sendiri.
+        "packages/medusa"        -> "packages/medusa/"   (tanpa wildcard: apa adanya)
+        "packages/modules/*"     -> "packages/modules/"
+        "packages/*"             -> "packages/"
+        "packages/foo*"          -> "packages/"          (wildcard di tengah segmen)
+        "integration-tests/**/*" -> "integration-tests/"
+        "*"                      -> (dilewati: tidak ada sinyal)
+
+    Wildcard-nya sengaja TIDAK dicocokkan persis — begitu ketemu wildcard, mundur
+    ke folder induknya. Hasilnya sedikit lebih longgar, dan itu ARAH YANG BENAR:
+    modul ini gagal-membuka. Menebak-nebak pola akan berbahaya persis ke arah yang
+    salah — "packages/foo*" kalau ditafsirkan harfiah jadi "packages/foo/", folder
+    yang tidak ada, sehingga "packages/foo-a/" IKUT TERBUANG padahal dia workspace
+    yang dideklarasikan. Membuang kode produksi diam-diam adalah kegagalan yang
+    jauh lebih sulit dilihat daripada menyimpan sedikit noise.
+
+    Catatan: pola yang mendeklarasikan folder test (medusa:
+    "integration-tests/**/*") tetap disimpan. Menyaringnya di sini berarti kembali
+    menebak-nebak nama folder — dan itu urusan filters.py, bukan modul ini.
+    """
+    roots: set[str] = set()
+    for pattern in _workspace_patterns(data):
+        cleaned = pattern.strip().lstrip("./")
+        literal = cleaned.split("*", 1)[0]
+        if "*" in cleaned:
+            # Ada wildcard: mundur ke folder induk terakhir yang UTUH.
+            literal = literal.rsplit("/", 1)[0] if "/" in literal else ""
+        literal = literal.rstrip("/")
+        if not literal:
+            # Pola "*" / "**" saja -> seluruh repo -> tidak ada sinyal berguna.
+            continue
+        directory = f"{literal}/"
+        if any(p.startswith(directory) for p in all_paths):
+            roots.add(directory)
+    return roots
+
+
 def _js_product_paths(content: str, all_paths: set[str]) -> set[str]:
     """Baca package.json.
 
@@ -89,10 +158,14 @@ def _js_product_paths(content: str, all_paths: set[str]) -> set[str]:
     except json.JSONDecodeError:
         return set()
 
-    if not isinstance(data, dict) or data.get("workspaces"):
-        # Monorepo: satu package.json mengatur banyak paket. Terlalu berisiko
-        # ditebak di sini — biarkan semua file lewat.
+    if not isinstance(data, dict):
         return set()
+
+    if data.get("workspaces"):
+        # Monorepo. Dulu di sini menyerah dan meloloskan semua file; sekarang
+        # `workspaces` dibaca sebagai deklarasi lokasi paket. Lihat
+        # _workspace_product_paths untuk alasan lengkapnya.
+        return _workspace_product_paths(data, all_paths)
 
     entries = data.get("files")
     if not isinstance(entries, list) or not entries:

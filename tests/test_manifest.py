@@ -1,8 +1,9 @@
 """Test manifest.py + narrow_to_product (Peran 1).
 
-Manifest di sini disalin dari repo NYATA (fastapi, flask, requests, express) yang
-dipakai kerangka validasi — bukan versi ideal karangan sendiri. Bentuk aslinya
-memang beragam, dan justru keberagaman itulah yang harus ditangani.
+Manifest di sini disalin dari repo NYATA (fastapi, flask, requests, express,
+medusa, cal.com) yang dipakai kerangka validasi — bukan versi ideal karangan
+sendiri. Bentuk aslinya memang beragam, dan justru keberagaman itulah yang harus
+ditangani.
 """
 
 import pytest
@@ -18,6 +19,80 @@ def _ws(files: dict[str, str]) -> Workspace:
         source_ref="test",
         files=[WorkspaceFile(file_name=p.split("/")[-1], file_path=p, content=c) for p, c in files.items()],
     )
+
+
+def test_monorepo_yarn_dict_shape_medusa():
+    """medusa: `workspaces` berbentuk DICT (bentuk yarn), dan `name` = "root" —
+    tidak cocok folder mana pun, jadi jalur biasa memang buntu. Petunjuknya ada di
+    `workspaces` itu sendiri.
+
+    Diukur pada repo aslinya: 9.459 -> 7.355 file, dan `www/` (situs dokumentasi,
+    2.098 file = 22%) hilang seluruhnya. Itu bentuk yang sama persis dengan
+    `docs_src/` fastapi yang dulu bikin SDD menyebut "Manajemen Hero".
+    """
+    paths = {
+        "package.json": (
+            '{"name":"root","workspaces":{"packages":['
+            '"packages/medusa","packages/modules/*","integration-tests/**/*"]}}'
+        ),
+        "packages/medusa/src/index.ts": "x",
+        "packages/modules/auth/src/index.ts": "x",
+        "integration-tests/http/app.ts": "x",
+        "www/apps/docs/page.mdx": "x",  # situs dokumentasi -> harus terbuang
+    }
+
+    roots = find_product_paths(paths)
+
+    assert roots == {"packages/medusa/", "packages/modules/", "integration-tests/"}
+    assert is_product_path("packages/modules/auth/src/index.ts", roots)
+    assert not is_product_path("www/apps/docs/page.mdx", roots)
+
+
+def test_monorepo_list_shape_calcom():
+    """cal.com: `workspaces` berbentuk LIST polos, bukan dict. Dua-duanya nyata,
+    jadi dua-duanya harus ditangani."""
+    paths = {
+        "package.json": '{"name":"calcom-monorepo","workspaces":["apps/*","packages/*"]}',
+        "apps/web/pages/index.tsx": "x",
+        "packages/ui/src/Button.tsx": "x",
+        "docs/getting-started.mdx": "x",  # bukan workspace -> terbuang
+    }
+
+    roots = find_product_paths(paths)
+
+    assert roots == {"apps/", "packages/"}
+    assert not is_product_path("docs/getting-started.mdx", roots)
+
+
+def test_monorepo_declaring_test_dir_keeps_it():
+    """medusa mendeklarasikan `integration-tests/**/*` SEBAGAI workspace. Kita
+    simpan — menyaringnya di sini berarti kembali menebak-nebak nama folder, dan
+    itu urusan filters.py. Modul ini cuma menyampaikan apa kata manifest."""
+    paths = {
+        "package.json": '{"name":"root","workspaces":["integration-tests/**/*"]}',
+        "integration-tests/http/app.ts": "x",
+    }
+
+    assert find_product_paths(paths) == {"integration-tests/"}
+
+
+def test_monorepo_pattern_wider_than_declared_is_deliberate():
+    """Wildcard sengaja tidak dicocokkan persis: yang diambil bagian literal
+    sebelum '*'. Jadi "packages/foo*" jadi seluruh "packages/" — sedikit lebih
+    longgar, dan itu ARAH YANG BENAR. Modul ini gagal-membuka: menyimpan sedikit
+    lebih banyak jauh lebih aman daripada membuang kode produksi diam-diam."""
+    paths = {
+        "package.json": '{"name":"root","workspaces":["packages/foo*"]}',
+        "packages/foo-a/index.js": "x",
+        "packages/bar/index.js": "x",  # ikut tersimpan — sengaja
+        "website/index.js": "x",       # tetap terbuang: di luar prefiks literal
+    }
+
+    roots = find_product_paths(paths)
+
+    assert roots == {"packages/"}
+    assert is_product_path("packages/bar/index.js", roots)
+    assert not is_product_path("website/index.js", roots)
 
 
 def test_fastapi_layout_package_at_root():
@@ -105,8 +180,11 @@ def test_package_json_main_at_root_gives_no_signal():
             "nama dideklarasikan tapi foldernya tidak ada",
         ),
         (
-            {"package.json": '{"name":"m","workspaces":["packages/*"]}', "packages/a/i.js": "x"},
-            "monorepo — terlalu berisiko ditebak",
+            # Monorepo TANPA pola yang berguna: "*" berarti seluruh repo, jadi
+            # tidak ada sinyal. Monorepo yang polanya berguna sekarang DISARING —
+            # lihat test_monorepo_* di bawah.
+            {"package.json": '{"name":"m","workspaces":["*"]}', "packages/a/i.js": "x"},
+            "workspaces cuma '*' — tidak ada sinyal",
         ),
     ],
 )
