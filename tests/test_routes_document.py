@@ -1,6 +1,6 @@
 """Test routes_document.py (Peran 3) — endpoint /documents/sdd, /uat, /generate.
 
-Mermaid.ink dan pemanggilan LLM (Gemini) selalu di-mock supaya test tidak
+Mermaid.ink dan pemanggilan LLM (Claude) selalu di-mock supaya test tidak
 bergantung pada koneksi internet, API key, atau kuota.
 """
 

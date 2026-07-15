@@ -10,9 +10,8 @@ python-dotenv
 PyGithub
 requests
 
-# --- LLM & AI Orchestration (Gemini) ---
-langchain
-langchain-google-genai
+# --- LLM & AI Orchestration (Claude) ---
+anthropic
 
 # --- Templating & Document Generation ---
 Jinja2

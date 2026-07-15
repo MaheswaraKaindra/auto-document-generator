@@ -69,8 +69,27 @@ def _render_mermaid_to_image(mermaid_script: str, images_dir: Path) -> str:
 def _build_sdd_context(data: dict[str, Any]) -> dict[str, Any]:
     diagrams = data["diagrams"]
 
+    # Ganti newline jadi spasi supaya tidak merusak baris tabel Markdown
+    # (satu baris tabel Markdown wajib satu baris teks) — sama seperti
+    # penanganan uat_test_cases di _build_uat_context.
+    cleaned_features = [
+        {**feature, "description": feature["description"].replace("\n", " ")}
+        for feature in data.get("feature_requirements", [])
+    ]
+    cleaned_use_cases = [
+        {
+            **uc,
+            "description": uc["description"].replace("\n", " "),
+            "pre_condition": uc["pre_condition"].replace("\n", " "),
+            "acceptance_criteria": [ac.replace("\n", " ") for ac in uc.get("acceptance_criteria", [])],
+        }
+        for uc in data.get("use_cases", [])
+    ]
+
     return {
         **data,
+        "feature_requirements": cleaned_features,
+        "use_cases": cleaned_use_cases,
         "diagrams": {
             "system_architecture_image": _render_mermaid_to_image(
                 diagrams["system_architecture"], IMAGES_DIR
