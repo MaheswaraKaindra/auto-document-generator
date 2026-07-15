@@ -1,12 +1,25 @@
-import base64
+import io
 import re
+import tarfile
 
+import requests
 from github import Auth, BadCredentialsException, Github, GithubException, UnknownObjectException
 
 from app.domain.exceptions import SourceAuthError, SourceNotFoundError, SourceProviderError
 from app.domain.models import GithubIngestRequest, Workspace, WorkspaceFile
 from app.domain.ports import SourceProvider
-from app.ingestion.filters import MAX_FILE_SIZE_BYTES, is_relevant_path
+from app.ingestion.filters import (
+    MAX_FILE_SIZE_BYTES,
+    MAX_TOTAL_FILES,
+    MAX_TOTAL_UNCOMPRESSED_BYTES,
+    is_relevant_path,
+)
+
+# Tarball terkompresi. Repo yang lebih besar dari ini hampir pasti bukan target
+# realistis produk ini, dan menolaknya lebih baik daripada menghabiskan memori.
+MAX_ARCHIVE_BYTES = 100_000_000
+
+_ARCHIVE_TIMEOUT_SECONDS = 180
 
 
 def _parse_repo_full_name(repo_url: str) -> str:
@@ -19,10 +32,56 @@ def _parse_repo_full_name(repo_url: str) -> str:
     raise SourceNotFoundError(f"Tidak bisa mem-parsing owner/repo dari URL: {repo_url}")
 
 
+def _strip_archive_root(member_name: str) -> str:
+    """Buang folder pembungkus tarball GitHub.
+
+    Isi tarball selalu dibungkus TEPAT SATU folder root, jadi
+    `expressjs-express-4f0e5f6/lib/express.js` harus jadi `lib/express.js`.
+    Nama folder itu sendiri tidak konsisten — endpoint API memberi
+    `owner-repo-sha`, URL arsip web memberi `repo-branch` — makanya yang dibuang
+    komponen path pertama apa pun namanya, bukan pola nama tertentu.
+
+    Kalau prefix ini tidak dibuang, file_path di Contract A berubah bentuk dan
+    heuristik tipe file di parser (yang membaca path) ikut meleset.
+    """
+    _, _, rest = member_name.partition("/")
+    return rest
+
+
+def _download_archive(url: str, repo_url: str) -> bytes:
+    """Unduh tarball repo dalam SATU request.
+
+    Ini menggantikan pendekatan lama yang memanggil get_git_blob() sekali per
+    file. Repo 200 file dulu berarti 200 request berurutan — lambat, dan batas
+    anonim GitHub (60 request/jam) habis sebelum satu repo pun selesai.
+    """
+    try:
+        response = requests.get(url, timeout=_ARCHIVE_TIMEOUT_SECONDS, stream=True)
+        response.raise_for_status()
+    except requests.RequestException as e:
+        raise SourceProviderError(f"Gagal mengunduh arsip {repo_url}: {e}") from e
+
+    chunks = []
+    total = 0
+    for chunk in response.iter_content(chunk_size=1 << 16):
+        total += len(chunk)
+        if total > MAX_ARCHIVE_BYTES:
+            response.close()
+            raise SourceProviderError(
+                f"Arsip {repo_url} melebihi batas {MAX_ARCHIVE_BYTES} byte."
+            )
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
 class GithubSourceProvider(SourceProvider):
     """Menarik file esensial (source code + config) dari satu repositori GitHub.
-    access_token boleh berasal dari PAT yang di-paste user atau dari hasil OAuth
-    handshake - keduanya sama-sama diteruskan lewat GithubIngestRequest.access_token."""
+
+    Mengunduh tarball repo sekali jalan lalu membongkarnya di memori, bukan
+    mengambil file satu per satu lewat API. access_token boleh berasal dari PAT
+    yang di-paste user atau dari hasil OAuth handshake - keduanya sama-sama
+    diteruskan lewat GithubIngestRequest.access_token.
+    """
 
     def fetch(self, request: GithubIngestRequest) -> Workspace:
         client = Github(auth=Auth.Token(request.access_token)) if request.access_token else Github()
@@ -30,7 +89,7 @@ class GithubSourceProvider(SourceProvider):
         try:
             repo = client.get_repo(_parse_repo_full_name(request.repo_url))
             ref = request.branch or repo.default_branch
-            tree = repo.get_git_tree(sha=ref, recursive=True)
+            archive_url = repo.get_archive_link("tarball", ref)
         except BadCredentialsException as e:
             raise SourceAuthError(f"Token GitHub tidak valid untuk {request.repo_url}") from e
         except UnknownObjectException as e:
@@ -38,28 +97,51 @@ class GithubSourceProvider(SourceProvider):
         except GithubException as e:
             raise SourceProviderError(f"GitHub API error saat mengakses {request.repo_url}: {e}") from e
 
-        workspace = Workspace(repo_tag=request.repo_tag, source_ref=request.repo_url)
-        for entry in tree.tree:
-            if entry.type != "blob" or entry.size is None or entry.size > MAX_FILE_SIZE_BYTES:
-                continue
-            if not is_relevant_path(entry.path):
-                continue
+        archive_bytes = _download_archive(archive_url, request.repo_url)
 
-            blob = repo.get_git_blob(entry.sha)
-            if blob.encoding == "base64":
+        try:
+            archive = tarfile.open(fileobj=io.BytesIO(archive_bytes), mode="r:gz")
+        except tarfile.TarError as e:
+            raise SourceProviderError(f"Arsip {request.repo_url} tidak bisa dibuka: {e}") from e
+
+        workspace = Workspace(repo_tag=request.repo_tag, source_ref=request.repo_url)
+        seen_files = 0
+        total_size = 0
+
+        with archive:
+            for member in archive:
+                if not member.isfile():
+                    continue
+
+                seen_files += 1
+                if seen_files > MAX_TOTAL_FILES:
+                    raise SourceProviderError(
+                        f"{request.repo_url}: terlalu banyak file (> {MAX_TOTAL_FILES})"
+                    )
+                total_size += member.size
+                if total_size > MAX_TOTAL_UNCOMPRESSED_BYTES:
+                    raise SourceProviderError(
+                        f"{request.repo_url}: ukuran total setelah extract terlalu besar"
+                    )
+
+                path = _strip_archive_root(member.name)
+                if not path or member.size > MAX_FILE_SIZE_BYTES or not is_relevant_path(path):
+                    continue
+
+                extracted = archive.extractfile(member)
+                if extracted is None:
+                    continue
                 try:
-                    content = base64.b64decode(blob.content).decode("utf-8")
+                    content = extracted.read().decode("utf-8")
                 except UnicodeDecodeError:
                     continue
-            else:
-                content = blob.content
 
-            workspace.files.append(
-                WorkspaceFile(
-                    file_name=entry.path.split("/")[-1],
-                    file_path=entry.path,
-                    content=content,
+                workspace.files.append(
+                    WorkspaceFile(
+                        file_name=path.split("/")[-1],
+                        file_path=path,
+                        content=content,
+                    )
                 )
-            )
 
         return workspace

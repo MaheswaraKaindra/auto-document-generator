@@ -17,6 +17,12 @@ ESSENTIAL_FILENAMES = {
 
 MAX_FILE_SIZE_BYTES = 500_000
 
+# Guard anti archive-bomb. Ditaruh di sini (bukan di salah satu provider) supaya
+# ZIP upload dan tarball GitHub tunduk pada batas yang sama persis — Workspace
+# yang mereka hasilkan harus tidak bisa dibedakan oleh Parser.
+MAX_TOTAL_FILES = 5_000
+MAX_TOTAL_UNCOMPRESSED_BYTES = 200_000_000
+
 
 def is_relevant_path(path: str) -> bool:
     parts = path.split("/")

@@ -4,10 +4,12 @@ import zipfile
 from app.domain.exceptions import SourceNotFoundError, SourceProviderError
 from app.domain.models import Workspace, WorkspaceFile, ZipIngestRequest
 from app.domain.ports import SourceProvider
-from app.ingestion.filters import MAX_FILE_SIZE_BYTES, is_relevant_path
-
-MAX_TOTAL_FILES = 5_000
-MAX_TOTAL_UNCOMPRESSED_BYTES = 200_000_000
+from app.ingestion.filters import (
+    MAX_FILE_SIZE_BYTES,
+    MAX_TOTAL_FILES,
+    MAX_TOTAL_UNCOMPRESSED_BYTES,
+    is_relevant_path,
+)
 
 
 class ZipUploadProvider(SourceProvider):

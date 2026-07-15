@@ -35,18 +35,17 @@ python scripts/validation/run_validation.py --only flask    # Tahap 1, satu kasu
 python scripts/validation/run_validation.py --only flask --with-llm   # BERBAYAR
 ```
 
-## WAJIB: isi `GITHUB_TOKEN` dulu
+## `GITHUB_TOKEN` — dianjurkan, tidak lagi wajib
 
-Tanpa token, harness ini **tidak akan bisa jalan sama sekali** — dan ini bukan
-teori, ini temuan pertama harness ini (2026-07-15, lihat di bawah).
+Sejak ingestion pindah ke tarball (2026-07-15, lihat Temuan), satu repo cuma
+memakan **~2 request API** berapa pun jumlah filenya — unduhan tarball-nya lewat
+codeload dan tidak memotong jatah. Jadi batas anonim 60/jam sudah cukup untuk
+menjalankan seluruh daftar kasus.
 
-`app/ingestion/providers/github_provider.py` memanggil `get_git_blob()` **satu
-request per file**, berurutan. Repo dengan 200 file relevan = 200 request GitHub.
-Batas anonim cuma **60 request/jam**, jadi repo apa pun yang realistis mustahil
-di-ingest. Dengan token, batasnya 5.000/jam.
-
-Harness memeriksa jatah sebelum mulai dan menolak jalan kalau tidak cukup, jadi
-kondisi ini muncul dalam sedetik sebagai pesan jelas.
+Token tetap dianjurkan (batas naik jadi 5.000/jam, dan perlu untuk repo privat),
+tapi bukan lagi penghalang. Harness tetap memeriksa jatah sebelum mulai dan
+menolak jalan kalau tidak cukup, supaya kehabisan jatah muncul dalam sedetik
+sebagai pesan jelas, bukan hang tanpa sebab.
 
 ## Membaca hasilnya
 
@@ -80,16 +79,19 @@ menumpuk repo:
 
 ## Temuan
 
-**2026-07-15 — Ingestion 1 request per file.** Ditemukan saat percobaan pertama
-harness ini: mencoba `express` (repo kecil) menghabiskan seluruh 60 request
-anonim lalu menggantung >7 menit tanpa sebab yang kelihatan. Akarnya
-`get_git_blob()` per file di `github_provider.py:48`.
+**2026-07-15 — Ingestion 1 request per file. SUDAH DIPERBAIKI.** Ditemukan saat
+percobaan pertama harness ini: mencoba `express` (repo kecil) menghabiskan
+seluruh 60 request anonim lalu menggantung >7 menit tanpa sebab yang kelihatan.
+Akarnya `get_git_blob()` dipanggil per file di `github_provider.py`.
 
-Dampaknya lebih besar dari sekadar validasi: ini menyentuh produk. Untuk SaaS
-yang menjanjikan "repo mana pun", ingest satu repo = ratusan panggilan API
-berurutan — lambat, rapuh, dan boros kuota pengguna. Perbaikan yang mungkin:
-unduh tarball/zipball repo dalam **satu** request (`repo.get_archive_link()`),
-bukan per blob. Belum dikerjakan.
+Dampaknya lebih besar dari sekadar validasi — ini menyentuh produk: untuk SaaS
+yang menjanjikan "repo mana pun", ingest satu repo berarti ratusan panggilan API
+berurutan, lambat dan boros kuota pengguna.
 
-Harness sekarang punya preflight yang menolak jalan kalau jatah tidak cukup,
-jadi gejalanya tidak lagi berupa hang misterius.
+Diperbaiki dengan mengunduh tarball repo dalam satu request lalu membongkarnya di
+memori: biaya API turun dari ~N request (N = jumlah file) jadi ~2 per repo,
+konstan berapa pun ukuran reponya. Harness juga diberi preflight cek jatah, jadi
+kehabisan kuota tidak lagi muncul sebagai hang misterius.
+
+Harness ini membuktikan nilainya justru dengan gagal pada percobaan perdananya —
+itu memang gunanya.
