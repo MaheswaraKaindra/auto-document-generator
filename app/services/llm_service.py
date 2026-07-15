@@ -5,9 +5,14 @@ import anthropic
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
 
+from app.core import config
+
 load_dotenv()
 
-MODEL = "claude-opus-4-8"
+# Dibaca dari .env (LLM_MODEL) supaya ganti model tidak perlu menyentuh kode.
+# Ini model yang dipakai APLIKASI untuk menulis dokumen — terpisah dari model
+# yang dipakai Claude Code saat mengerjakan project ini.
+MODEL = config.LLM_MODEL
 
 
 class UATTestCase(BaseModel):
