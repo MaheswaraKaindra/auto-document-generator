@@ -189,6 +189,14 @@ def run_stage2(case: dict, doc_type: str) -> dict:
         parsed_repo_context=context, target_doc_type=doc_type
     )
 
+    # Simpan Contract B mentahnya, bukan cuma docx-nya. Menilai kualitas berarti
+    # membaca narasi yang ditulis LLM, dan membaca JSON jauh lebih enak daripada
+    # membongkar docx. Ini juga bikin hasil panggilan berbayar bisa diperiksa
+    # ulang berkali-kali tanpa membayar lagi.
+    (OUT_DIR / f"{case['name']}__{doc_type}_contract_b.json").write_text(
+        json.dumps(content, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
+
     docx_path = generate_docx(doc_type, content, project_name=case["name"])
     out_docx = OUT_DIR / f"{case['name']}__{doc_type}.docx"
     out_docx.write_bytes(Path(docx_path).read_bytes())
