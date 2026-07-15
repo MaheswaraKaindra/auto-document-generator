@@ -113,20 +113,26 @@ class GithubSourceProvider(SourceProvider):
                 if not member.isfile():
                     continue
 
+                path = _strip_archive_root(member.name)
+                if not path or member.size > MAX_FILE_SIZE_BYTES or not is_relevant_path(path):
+                    continue
+
+                # Guard dihitung SESUDAH filter relevansi, sebelum extractfile().
+                # member.size dibaca dari header tar (gratis, tanpa ekstraksi),
+                # jadi menyaring duluan tidak mengurangi perlindungan sama sekali
+                # — yang berbahaya justru extractfile() di bawah. Sebelumnya
+                # pencacahnya di atas sini, jadi monorepo ditolak karena punya
+                # banyak dokumentasi/gambar. Lihat catatan di filters.py.
                 seen_files += 1
                 if seen_files > MAX_TOTAL_FILES:
                     raise SourceProviderError(
-                        f"{request.repo_url}: terlalu banyak file (> {MAX_TOTAL_FILES})"
+                        f"{request.repo_url}: terlalu banyak file relevan (> {MAX_TOTAL_FILES})"
                     )
                 total_size += member.size
                 if total_size > MAX_TOTAL_UNCOMPRESSED_BYTES:
                     raise SourceProviderError(
                         f"{request.repo_url}: ukuran total setelah extract terlalu besar"
                     )
-
-                path = _strip_archive_root(member.name)
-                if not path or member.size > MAX_FILE_SIZE_BYTES or not is_relevant_path(path):
-                    continue
 
                 extracted = archive.extractfile(member)
                 if extracted is None:

@@ -58,7 +58,26 @@ MAX_FILE_SIZE_BYTES = 500_000
 # Guard anti archive-bomb. Ditaruh di sini (bukan di salah satu provider) supaya
 # ZIP upload dan tarball GitHub tunduk pada batas yang sama persis — Workspace
 # yang mereka hasilkan harus tidak bisa dibedakan oleh Parser.
-MAX_TOTAL_FILES = 5_000
+#
+# KEDUANYA MENGHITUNG FILE YANG BENAR-BENAR DIAMBIL, bukan seluruh isi arsip.
+# Ini bukan detail: yang berbahaya itu MENGEKSTRAK, bukan membaca header arsip.
+# Versi sebelumnya mencacah lebih dulu lalu menyaring belakangan, jadi repo
+# ditolak karena banyak dokumentasi/gambar — bukan karena banyak kode. Diukur
+# pada medusa (2026-07-15): 22.966 member file, cuma 9.459 yang relevan (41%),
+# dan yang benar-benar diekstrak cuma 23 MB — jauh di bawah batas byte.
+#
+# Yang mengikat sebenarnya MAX_TOTAL_UNCOMPRESSED_BYTES: berapa pun jumlah
+# filenya, memori tetap terbatas 200 MB karena tiap file juga dibatasi
+# MAX_FILE_SIZE_BYTES. MAX_TOTAL_FILES cuma menjaga kasus "sangat banyak file
+# mungil" (overhead per-objek), jadi 5.000 tidak perlu — angka itu warisan dari
+# saat pencacahnya masih menghitung SEMUA file. Rujukan repo nyata: saleor 2.573
+# file relevan, medusa 9.459. 20.000 memberi ruang di atas monorepo terbesar
+# yang pernah diukur, tanpa mengubah batas memori sama sekali.
+#
+# "Repo terlalu besar untuk didokumentasikan" sekarang dijawab di tempat yang
+# benar — _guard_context_window di llm_service.py, yang MENGUKUR token alih-alih
+# menebak lewat proksi jumlah file.
+MAX_TOTAL_FILES = 20_000
 MAX_TOTAL_UNCOMPRESSED_BYTES = 200_000_000
 
 

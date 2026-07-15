@@ -10,7 +10,11 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 
 from app.api.schemas_document import GenerateDocumentRequest
-from app.domain.exceptions import DiagramRenderError, SourceProviderError
+from app.domain.exceptions import (
+    ContextWindowExceededError,
+    DiagramRenderError,
+    SourceProviderError,
+)
 from app.domain.models import GithubIngestRequest, SourceType
 from app.services.compiler_service import generate_docx
 from app.services.ingestion_service import IngestionService
@@ -109,6 +113,14 @@ def generate_document_full_pipeline(body: GenerateDocumentRequest):
             parsed_repo_context=parsed_repo_context,
             target_doc_type=doc_type,
         )
+    except ContextWindowExceededError as e:
+        # HARUS ditangkap sebelum `except Exception` di bawah. Ini kegagalan yang
+        # PERMANEN untuk repo+model ini, jadi menyuruh "coba lagi" itu saran yang
+        # salah — pengguna akan mengulang selamanya tanpa pernah berhasil.
+        # 413 dipilih karena itulah sebabnya: yang diminta menghasilkan input
+        # yang terlalu besar untuk diproses.
+        logger.warning("Contract A melebihi context window: %s", e)
+        raise HTTPException(status_code=413, detail=str(e)) from e
     except Exception as e:
         logger.exception("Pemanggilan LLM gagal")
         raise HTTPException(

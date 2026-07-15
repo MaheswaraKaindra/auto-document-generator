@@ -1,12 +1,13 @@
 import json
 import logging
-from typing import List
+from typing import List, Optional
 
 import anthropic
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
 
 from app.core import config
+from app.domain.exceptions import ContextWindowExceededError
 
 load_dotenv()
 
@@ -144,6 +145,41 @@ ATURAN UMUM & PENCEGAHAN SYNTAX ERROR (SANGAT PENTING):
 """
 
 
+# Jawaban dari Models API, di-cache per model. Bukan optimasi — tanpa cache,
+# setiap generation menambah satu panggilan jaringan untuk fakta yang tidak
+# berubah selama proses hidup.
+_CONTEXT_WINDOW_CACHE: dict[str, Optional[int]] = {}
+
+
+def _context_window(client: anthropic.Anthropic, model: str) -> Optional[int]:
+    """Berapa token input yang muat di model ini? TANYA API-nya, jangan hardcode.
+
+    Daftar hardcoded pasti basi — context window berubah antar model dan antar
+    rilis. Dan daftar basi di sini justru berbahaya: guard-nya meloloskan repo
+    yang sebenarnya kebesaran, API yang menolak, lalu kita kembali ke pesan
+    "coba lagi nanti" yang menyesatkan — persis masalah yang guard ini ada untuk
+    mencegah. Ini pelajaran yang sama dengan manifest.py: tanya sumber
+    kebenarannya, jangan menebak lalu berharap tebakannya tetap benar.
+
+    None = tidak bisa ditanya (jaringan putus, model tak dikenal). Sengaja
+    GAGAL-MEMBUKA: pemeriksaan yang gagal tidak boleh menghalangi generation
+    yang mungkin sebenarnya baik-baik saja. Kalau ternyata memang kebesaran,
+    API tetap menolaknya — kita cuma kehilangan pesan yang bagus.
+    """
+    if model not in _CONTEXT_WINDOW_CACHE:
+        try:
+            _CONTEXT_WINDOW_CACHE[model] = client.models.retrieve(model).max_input_tokens
+        except Exception:
+            logger.warning(
+                "Tidak bisa menanyakan context window %s ke Models API; "
+                "pemeriksaan ukuran dilewati untuk panggilan ini.",
+                model,
+                exc_info=True,
+            )
+            _CONTEXT_WINDOW_CACHE[model] = None
+    return _CONTEXT_WINDOW_CACHE[model]
+
+
 class LLMService:
     def __init__(self):
         # Repo nyata bisa punya banyak fitur/endpoint sehingga generation-nya
@@ -151,6 +187,40 @@ class LLMService:
         # non-streaming) bisa melebihi default client timeout (10 menit) —
         # naikkan supaya repo besar tidak keburu di-cancel oleh SDK.
         self.client = anthropic.Anthropic(timeout=1500.0)
+
+    def _guard_context_window(self, messages: list) -> None:
+        """Tolak SEBELUM membayar kalau Contract A tidak akan muat.
+
+        Pola yang sama dengan _render_mermaid_to_image di compiler_service:
+        periksa dulu, gagal dengan pesan yang menyebut sebab asli beserta
+        angkanya, jangan habiskan request percuma.
+
+        Diukur pada repo nyata (2026-07-15): Contract A saleor = 1.224.476 token
+        = 122% dari context window 1M. Tanpa guard ini, aplikasi bisnis Python
+        sungguhan cuma menghasilkan 502 "coba lagi nanti" — saran yang tidak
+        akan pernah menolong, berapa kali pun dicoba.
+
+        count_tokens gratis (bukan generation), jadi guard ini tidak menambah
+        biaya. Angkanya sedikit di bawah kenyataan karena skema output_format
+        belum ikut terhitung — jadi ini LANTAI: yang ditolak di sini pasti
+        memang kebesaran, tapi yang lolos tipis masih bisa ditolak API.
+        """
+        window = _context_window(self.client, MODEL)
+        if window is None:
+            return
+
+        counted = self.client.messages.count_tokens(
+            model=MODEL, system=SYSTEM_PROMPT, messages=messages
+        ).input_tokens
+        if counted <= window:
+            return
+
+        raise ContextWindowExceededError(
+            f"Repo ini terlalu besar untuk model {MODEL}: metadata kodenya "
+            f"{counted:,} token, sementara model ini cuma memuat {window:,}. "
+            f"Mengulang tidak akan menolong. Pilih repo/cakupan yang lebih kecil, "
+            f"atau pakai model dengan context window lebih besar lewat LLM_MODEL di .env."
+        )
 
     def generate_document_content(self, parsed_repo_context: dict, target_doc_type: str) -> dict:
         """
@@ -181,12 +251,15 @@ class LLMService:
             "type": "text",
             "text": f"Jenis dokumen yang diminta saat ini (target_doc_type): {target_doc_type}",
         }
+        messages = [{"role": "user", "content": [context_block, task_block]}]
+
+        self._guard_context_window(messages)
 
         response = self.client.messages.parse(
             model=MODEL,
             max_tokens=16000,
             system=SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": [context_block, task_block]}],
+            messages=messages,
             output_format=DocumentContent,
         )
 

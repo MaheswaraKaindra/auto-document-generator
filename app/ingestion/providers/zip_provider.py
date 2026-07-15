@@ -23,12 +23,24 @@ class ZipUploadProvider(SourceProvider):
         except zipfile.BadZipFile as e:
             raise SourceNotFoundError(f"File ZIP tidak valid/rusak: {request.filename}") from e
 
-        infos = [info for info in archive.infolist() if not info.is_dir()]
-        if len(infos) > MAX_TOTAL_FILES:
+        # Saring DULU, cacah belakangan — sama seperti jalur tarball GitHub.
+        # info.file_size dibaca dari header ZIP (gratis, tanpa ekstraksi), jadi
+        # menyaring duluan tidak mengurangi perlindungan: yang berbahaya itu
+        # archive.read() di bawah. Versi sebelumnya mencacah seluruh isi arsip,
+        # sehingga ZIP berisi banyak dokumentasi/gambar ditolak karena "terlalu
+        # banyak file" padahal kode produknya sedikit. Lihat catatan di filters.py.
+        relevant = [
+            info
+            for info in archive.infolist()
+            if not info.is_dir()
+            and info.file_size <= MAX_FILE_SIZE_BYTES
+            and is_relevant_path(info.filename)
+        ]
+        if len(relevant) > MAX_TOTAL_FILES:
             raise SourceProviderError(
-                f"{request.filename}: terlalu banyak file ({len(infos)} > {MAX_TOTAL_FILES})"
+                f"{request.filename}: terlalu banyak file relevan ({len(relevant)} > {MAX_TOTAL_FILES})"
             )
-        total_size = sum(info.file_size for info in infos)
+        total_size = sum(info.file_size for info in relevant)
         if total_size > MAX_TOTAL_UNCOMPRESSED_BYTES:
             raise SourceProviderError(
                 f"{request.filename}: ukuran total setelah extract terlalu besar ({total_size} bytes)"
@@ -36,10 +48,8 @@ class ZipUploadProvider(SourceProvider):
 
         workspace = Workspace(repo_tag=request.repo_tag, source_ref=request.filename)
         with archive:
-            for info in infos:
+            for info in relevant:
                 path = info.filename
-                if info.file_size > MAX_FILE_SIZE_BYTES or not is_relevant_path(path):
-                    continue
                 try:
                     content = archive.read(info).decode("utf-8")
                 except UnicodeDecodeError:

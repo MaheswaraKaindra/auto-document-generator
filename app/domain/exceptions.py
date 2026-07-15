@@ -16,3 +16,13 @@ class DiagramRenderError(Exception):
     Carries a message stating the actual cause (service unreachable, script
     rejected, script too large) so the caller does not have to guess.
     """
+
+
+class ContextWindowExceededError(Exception):
+    """Contract A does not fit in the configured model's context window.
+
+    Deliberately NOT a generic error: this is permanent for the given repo and
+    model, so the caller must not tell the user to "try again". Same reasoning
+    as DiagramRenderError above — carry the real cause and the real numbers
+    instead of flattening them into a retry suggestion.
+    """

@@ -119,6 +119,45 @@ def test_fetch_rejects_archive_larger_than_limit(fake_github):
         github_provider.MAX_ARCHIVE_BYTES = monkeypatch_target
 
 
+def test_irrelevant_files_do_not_count_against_the_file_limit(fake_github, monkeypatch):
+    """Guard anti-bomb harus mencacah yang DIAMBIL, bukan seluruh isi arsip.
+
+    Ini bug yang menolak monorepo nyata di pintu: diukur pada medusa, 22.966
+    member file tapi cuma 9.459 yang relevan (41%) — sisanya dokumentasi dan
+    gambar. Versi lama mencacah dulu lalu menyaring belakangan, jadi repo ditolak
+    karena punya banyak dokumentasi, bukan karena punya banyak kode.
+    """
+    monkeypatch.setattr(github_provider, "MAX_TOTAL_FILES", 5)
+    files = {f"docs/img/shot_{i}.png": f"pretend-binary-{i}" for i in range(50)}
+    files["app/main.py"] = "print(1)"
+
+    workspace = _fetch(_make_tarball(files))
+
+    assert [f.file_path for f in workspace.files] == ["app/main.py"]
+
+
+def test_too_many_relevant_files_still_rejected(fake_github, monkeypatch):
+    """Pasangan test di atas: batasnya tetap ditegakkan untuk file yang benar-benar
+    diambil. Tanpa ini, test di atas bisa lolos dengan cara menghapus guard-nya."""
+    monkeypatch.setattr(github_provider, "MAX_TOTAL_FILES", 5)
+
+    with pytest.raises(SourceProviderError, match="terlalu banyak file relevan"):
+        _fetch(_make_tarball({f"app/mod_{i}.py": f"x = {i}" for i in range(20)}))
+
+
+def test_irrelevant_file_bytes_do_not_count_against_the_size_limit(fake_github, monkeypatch):
+    """Sama untuk batas byte: yang dihitung harus yang diekstrak. member.size
+    dibaca dari header tar (gratis), jadi menyaring duluan tidak mengurangi
+    perlindungan — yang berbahaya itu extractfile()."""
+    monkeypatch.setattr(github_provider, "MAX_TOTAL_UNCOMPRESSED_BYTES", 200)
+    files = {f"docs/img/big_{i}.png": "x" * 500 for i in range(20)}  # 10 KB tak relevan
+    files["app/main.py"] = "print(1)"
+
+    workspace = _fetch(_make_tarball(files))
+
+    assert [f.file_path for f in workspace.files] == ["app/main.py"]
+
+
 def test_fetch_wraps_download_failure_as_source_provider_error(fake_github):
     request = GithubIngestRequest(repo_tag="Backend", repo_url="https://github.com/expressjs/express")
 

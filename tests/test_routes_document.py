@@ -16,6 +16,7 @@ from fastapi.testclient import TestClient
 
 from app.api import routes_document
 from app.api.schemas_document import DocumentMetadata
+from app.domain.exceptions import ContextWindowExceededError
 from app.main import app
 
 FIXTURES_DIR = Path(__file__).resolve().parent.parent / "dummy_data"
@@ -105,6 +106,30 @@ def test_generate_full_pipeline_returns_502_when_llm_fails(client):
         )
 
     assert response.status_code == 502
+
+
+def test_context_window_exceeded_returns_413_not_retry_advice(client):
+    """Setengah bug-nya ada di sini. `except Exception` meratakan SEMUA kegagalan
+    LLM jadi 502 "coba lagi beberapa saat" — untuk repo yang kebesaran, itu saran
+    yang tidak akan pernah menolong berapa kali pun dicoba. Kelas kesalahan yang
+    sama dengan 502 yang dulu menelan 414 dari mermaid.ink."""
+    with patch.object(
+        routes_document._llm_service,
+        "generate_document_content",
+        side_effect=ContextWindowExceededError(
+            "Repo ini terlalu besar untuk model claude-sonnet-5: metadata kodenya "
+            "1,224,476 token, sementara model ini cuma memuat 1,000,000."
+        ),
+    ):
+        response = client.post(
+            "/documents/generate",
+            json={"document_type": "SDD", "repositories": []},
+        )
+
+    assert response.status_code == 413
+    detail = response.json()["detail"]
+    assert "1,224,476" in detail  # sebab aslinya diteruskan, bukan disamarkan
+    assert "coba lagi" not in detail.lower()
 
 
 def _docx_text_from_response(response, tmp_path) -> str:
