@@ -6,12 +6,11 @@ mereka sediakan."""
 
 import logging
 
-import requests
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 
 from app.api.schemas_document import GenerateDocumentRequest
-from app.domain.exceptions import SourceProviderError
+from app.domain.exceptions import DiagramRenderError, SourceProviderError
 from app.domain.models import GithubIngestRequest, SourceType
 from app.services.compiler_service import generate_docx
 from app.services.ingestion_service import IngestionService
@@ -39,12 +38,12 @@ def _render_docx_or_502(doc_type: str, content: dict, project_name: str = "") ->
         return generate_docx(doc_type, content, project_name=project_name)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
-    except requests.RequestException as e:
-        logger.exception("Gagal merender diagram Mermaid (mermaid.ink)")
-        raise HTTPException(
-            status_code=502,
-            detail="Gagal merender diagram (layanan render Mermaid tidak merespons). Coba lagi beberapa saat.",
-        ) from e
+    except DiagramRenderError as e:
+        # Teruskan sebab aslinya apa adanya. Versi sebelumnya meratakan SEMUA
+        # kegagalan jadi "layanan tidak merespons", yang menyembunyikan HTTP 414
+        # (script kepanjangan) dan bikin bugnya lama tidak terdiagnosis.
+        logger.exception("Gagal merender diagram Mermaid")
+        raise HTTPException(status_code=502, detail=f"Gagal merender diagram: {e}") from e
     except RuntimeError as e:
         logger.exception("Pandoc tidak tersedia saat export docx")
         raise HTTPException(status_code=500, detail=str(e)) from e

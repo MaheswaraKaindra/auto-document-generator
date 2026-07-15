@@ -4,7 +4,10 @@ Mermaid.ink selalu di-mock supaya test tidak bergantung pada koneksi internet
 atau layanan pihak ketiga yang tidak stabil.
 """
 
+import base64
 import json
+import uuid
+import zlib
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -12,6 +15,7 @@ import pytest
 import requests
 from docx import Document
 
+from app.domain.exceptions import DiagramRenderError
 from app.services import compiler_service
 
 FIXTURES_DIR = Path(__file__).resolve().parent.parent / "dummy_data"
@@ -84,12 +88,82 @@ def test_generate_docx_invalid_type_raises_value_error():
         compiler_service.generate_docx("BUKAN_TIPE_VALID", data)
 
 
-def test_mermaid_render_failure_propagates_as_request_exception():
+def test_mermaid_unreachable_raises_diagram_render_error():
     data = _load_fixture("document_content_sdd.json")
 
     with patch(
         "app.services.compiler_service.requests.get",
         side_effect=requests.ConnectionError("mermaid.ink tidak terjangkau"),
     ):
-        with pytest.raises(requests.RequestException):
+        with pytest.raises(DiagramRenderError, match="tidak merespons"):
             compiler_service.generate_docx("SDD", data)
+
+
+def _decode_pako_url(url: str) -> str:
+    """Balik URL 'pako:' jadi script Mermaid aslinya, untuk verifikasi test."""
+    payload = url.split("/img/pako:", 1)[1]
+    return json.loads(zlib.decompress(base64.urlsafe_b64decode(payload)))["code"]
+
+
+def test_mermaid_url_uses_pako_and_round_trips(mock_mermaid_ok):
+    """Encoding harus 'pako:' (terkompresi), dan script harus bisa dibalik utuh.
+
+    Ini yang menahan URL di bawah batas ~8KB mermaid.ink; encoding base64 polos
+    sebelumnya menembus batas itu pada repo besar dan dijawab HTTP 414.
+    """
+    data = _load_fixture("document_content_sdd.json")
+
+    compiler_service.generate_docx("SDD", data)
+
+    url = mock_mermaid_ok.call_args_list[0].args[0]
+    assert "/img/pako:" in url
+    assert _decode_pako_url(url) == data["diagrams"]["system_architecture"]
+
+
+def test_pako_keeps_large_diagram_under_url_limit(mock_mermaid_ok):
+    """Diagram besar yang dulu bikin 414 harus lolos batas panjang URL."""
+    big_script = "graph LR\n" + "\n".join(
+        f"N{i}[Service Node Number {i}]-->N{i + 1}[Service Node Number {i + 1}]"
+        for i in range(120)
+    )
+    plain_b64_len = len(base64.urlsafe_b64encode(big_script.encode()))
+
+    compiler_service._render_mermaid_to_image(big_script, compiler_service.IMAGES_DIR)
+
+    url = mock_mermaid_ok.call_args_list[0].args[0]
+    assert plain_b64_len > compiler_service._MERMAID_URL_LIMIT  # dulu: 414
+    assert len(url) < compiler_service._MERMAID_URL_LIMIT  # sekarang: muat
+
+
+def test_oversized_diagram_fails_before_hitting_network(mock_mermaid_ok):
+    """Kalau tetap kebesaran walau dikompresi, gagal dengan pesan jelas dan
+    jangan buang-buang request ke mermaid.ink."""
+    # Teks acak supaya tidak bisa dikompresi -- meniru diagram yang benar-benar besar.
+    incompressible = "graph LR\n" + "\n".join(uuid.uuid4().hex for _ in range(600))
+
+    with pytest.raises(DiagramRenderError, match="terlalu besar"):
+        compiler_service._render_mermaid_to_image(incompressible, compiler_service.IMAGES_DIR)
+
+    mock_mermaid_ok.assert_not_called()
+
+
+def test_http_error_message_names_the_real_status():
+    """Sebab asli (mis. 414) harus tersebut, bukan diratakan jadi 'tidak merespons'
+    -- persis penyamaran itu yang dulu bikin bug ini lama tak terdiagnosis."""
+    response = Mock(status_code=414)
+    error = requests.HTTPError("414 Client Error", response=response)
+    response.raise_for_status = Mock(side_effect=error)
+
+    with patch("app.services.compiler_service.requests.get", return_value=response):
+        with pytest.raises(DiagramRenderError, match="414"):
+            compiler_service._render_mermaid_to_image("graph LR\nA-->B", compiler_service.IMAGES_DIR)
+
+
+def test_code_fence_is_stripped_before_encoding(mock_mermaid_ok):
+    """LLM kadang membungkus script dengan ```mermaid -- fence bikin 400."""
+    compiler_service._render_mermaid_to_image(
+        "```mermaid\ngraph LR\nA-->B\n```", compiler_service.IMAGES_DIR
+    )
+
+    url = mock_mermaid_ok.call_args_list[0].args[0]
+    assert _decode_pako_url(url) == "graph LR\nA-->B"
