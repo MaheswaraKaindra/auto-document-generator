@@ -10,6 +10,10 @@ PERAN1_NOTES.md
 output_*.docx
 ~$*
 
+# Artefak run validasi (Contract A, docx, laporan) — hasil eksperimen, bukan
+# bagian dari repo. Yang di-commit cuma harness dan daftar kasusnya.
+scripts/validation/out/
+
 # Dokumen referensi internal (mis. SDD contoh dari perusahaan) — repo ini
 # ditujukan jadi produk publik, jangan sampai ikut ter-commit.
 *.pdf

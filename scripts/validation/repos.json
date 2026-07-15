@@ -1,0 +1,70 @@
+{
+  "_comment": [
+    "Daftar kasus validasi. Tiap kasus sengaja dipilih untuk menguji SATU asumsi",
+    "produk, bukan asal menumpuk repo. Kolom 'expect' ditulis SEBELUM dijalankan —",
+    "kalau hasilnya beda jauh dari ekspektasi, di situlah temuannya, entah karena",
+    "produknya kurang atau karena ekspektasi kita yang keliru.",
+    "",
+    "Satu kasus bisa berisi >1 repo (lihat realworld-fullstack) untuk menguji",
+    "cross-repo mapping FE<->BE."
+  ],
+  "cases": [
+    {
+      "name": "flask",
+      "asumsi_yang_diuji": "Baseline Python: repo yang didukung penuh harus menghasilkan coverage tinggi.",
+      "expect": "coverage >0.5, banyak class/function terdeteksi. Kalau baseline ini saja jelek, masalahnya di parser, bukan di bahasanya.",
+      "repos": [
+        { "repo_tag": "Backend", "repo_url": "https://github.com/pallets/flask" }
+      ]
+    },
+    {
+      "name": "express",
+      "asumsi_yang_diuji": "Baseline JS: deteksi Express-style call harus jalan di repo Express-nya sendiri.",
+      "expect": "coverage sedang-tinggi, endpoint terdeteksi.",
+      "repos": [
+        { "repo_tag": "Backend", "repo_url": "https://github.com/expressjs/express" }
+      ]
+    },
+    {
+      "name": "realworld-fullstack",
+      "asumsi_yang_diuji": "Cross-repo mapping (FE fetch <-> BE endpoint) — pembeda utama produk ini, dan satu-satunya kasus yang benar-benar mengujinya.",
+      "expect": "Kedua repo terparse; BE memunculkan api_endpoints, FE memunculkan ui_component. Kualitas mapping-nya cuma bisa dinilai di Tahap 2 dengan membaca dokumennya.",
+      "repos": [
+        { "repo_tag": "Backend", "repo_url": "https://github.com/gothinkster/node-express-realworld-example-app" },
+        { "repo_tag": "FE-Web", "repo_url": "https://github.com/gothinkster/react-redux-realworld-example-app" }
+      ]
+    },
+    {
+      "name": "requests-library",
+      "asumsi_yang_diuji": "Apakah produk ini diam-diam mengasumsikan setiap repo adalah aplikasi web? requests adalah LIBRARY: tanpa endpoint, tanpa aktor, tanpa alur bisnis.",
+      "expect": "Parse lancar tapi 0 endpoint. Pertanyaan sebenarnya ada di Tahap 2: apakah LLM mengarang use case/aktor yang tidak ada? Kalau ya, itu masalah serius — dokumen terdengar meyakinkan padahal fiktif.",
+      "repos": [
+        { "repo_tag": "Backend", "repo_url": "https://github.com/psf/requests" }
+      ]
+    },
+    {
+      "name": "gin-go",
+      "asumsi_yang_diuji": "Bahasa di luar Python/TS-JS. Go jatuh ke fallback 'other'.",
+      "expect": "coverage ~0 (hampir semua file 'other'). Ini BUKAN kegagalan — ini mengukur seberapa besar lubangnya. Angkanya menentukan seberapa mendesak dukungan Go.",
+      "repos": [
+        { "repo_tag": "Backend", "repo_url": "https://github.com/gin-gonic/gin" }
+      ]
+    },
+    {
+      "name": "spring-petclinic-java",
+      "asumsi_yang_diuji": "Sama seperti gin-go, untuk Java — bahasa enterprise yang justru paling mungkin dipakai calon pengguna SDD/UAT.",
+      "expect": "coverage ~0. Kalau Tahap 2 dijalankan di sini dan dokumennya tetap 'terlihat bagus', itu tanda bahaya: berarti LLM mengarang dari nama file.",
+      "repos": [
+        { "repo_tag": "Backend", "repo_url": "https://github.com/spring-projects/spring-petclinic" }
+      ]
+    },
+    {
+      "name": "fastapi-large",
+      "asumsi_yang_diuji": "Skala. Repo Python besar dengan banyak endpoint — menguji waktu ingest, ukuran Contract A, dan (di Tahap 2) apakah diagramnya membengkak.",
+      "expect": "Parse berhasil tapi lambat; Contract A besar. Inilah kandidat utama yang dulu memicu bug 414 mermaid.ink — sekarang harusnya lolos berkat encoding pako.",
+      "repos": [
+        { "repo_tag": "Backend", "repo_url": "https://github.com/tiangolo/fastapi" }
+      ]
+    }
+  ]
+}
