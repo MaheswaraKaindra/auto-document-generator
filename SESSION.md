@@ -12,12 +12,14 @@
 
 ## Ringkasan satu paragraf
 
-Sesi ini menutup celah terbesar yang pernah dicatat project ini: **produk ini
-akhirnya menghasilkan dokumen untuk aplikasi bisnis nyata berbahasa Python** —
-sesuatu yang belum pernah terjadi sepanjang umurnya. Jalannya lewat tiga bug yang
-semuanya ditemukan oleh kasus validasi baru, dan **ketiganya kelas kesalahan yang
-sama**: sebab asli tertelan gejala. Total biaya API: **~$0,42**. 109 test hijau.
-Semua sudah di-commit ke `develop` (belum di-push).
+Sesi ini menutup dua celah terbesar yang pernah dicatat project ini. **(1) Produk
+ini akhirnya menghasilkan dokumen untuk aplikasi bisnis nyata berbahasa Python** —
+belum pernah terjadi sepanjang umurnya; jalannya lewat lima bug yang semuanya
+ditemukan oleh kasus validasi baru, dan **empat di antaranya kelas kesalahan yang
+sama**: sebab asli tertelan gejala. **(2) Penghalang produksi terbesar hilang** —
+pipeline 191 detik tidak lagi ditahan di satu request HTTP; POST balik dalam
+~50ms. Total biaya API: **~$0,42**. 113 test hijau. Semua sudah di-push ke
+`origin/develop`.
 
 ---
 
@@ -30,6 +32,7 @@ Semua sudah di-commit ke `develop` (belum di-push).
 | 3 | Monorepo ditolak di pintu | Guard anti-bomb mencacah **seluruh isi arsip** sebelum menyaring relevansi. Filter dinaikkan ke atas pencacah di **kedua** provider; `MAX_TOTAL_FILES` 5.000 → 20.000. |
 | 4 | **Flask = nol endpoint** | `route` bukan anggota `HTTP_METHODS`. Sekarang `@bp.route(...)` dikenali, termasuk `methods=` dan default GET. |
 | 5 | Dokumen terpotong → "Invalid JSON" | `max_tokens` 16.000 → 32.000 + pindah ke `.stream()`. `DocumentTruncatedError` periksa `stop_reason` → **500** yang menyebut tempat memperbaikinya. |
+| 6 | **Pipeline 191 detik ditahan di 1 request HTTP** | Proxy memutus di 30-60 detik → produk mustahil di-deploy. Sekarang **202 + job_id dalam ~50ms**, kerja di `BackgroundTasks`, status di **SQLite** (`job_store.py`), klien polling. Nol dependency baru. |
 
 Ditambah ke `repos.json`: **saleor-django**, **medusa-monorepo**, **esteler-flask**.
 Ketiganya langsung berbuah — semua bug di atas ditemukan oleh mereka.
@@ -53,22 +56,30 @@ Ketiganya langsung berbuah — semua bug di atas ditemukan oleh mereka.
 
 ## Pelajaran metodologis (yang paling mahal kalau dilupakan)
 
-**Satu kelas bug muncul TIGA kali sesi ini.** 502 menelan 414 mermaid (kemarin),
-502 menelan context window, "Invalid JSON" menelan `max_tokens`. Polanya sama:
-error handler meratakan sebab yang spesifik jadi pesan generik, dan gejalanya
-selalu "kadang gagal" — mahal justru karena pesannya menyesatkan. **Kalau menulis
-`except Exception`, tanyakan dulu: sebab apa yang sedang saya sembunyikan?**
+**Satu kelas bug muncul EMPAT kali sesi ini.** 502 menelan 414 mermaid (kemarin),
+502 menelan context window, "Invalid JSON" menelan `max_tokens`, dan — yang paling
+memalukan — `except RuntimeError` untuk "Pandoc tidak ada" saya taruh membungkus
+seluruh pipeline, jadi RuntimeError dari LLM dilaporkan sebagai "Pandoc tidak
+tersedia". Yang terakhir saya tulis **sambil memberantas pola itu**, dan yang
+menangkapnya test. Polanya sama tiap kali: error handler meratakan sebab yang
+spesifik jadi pesan generik, gejalanya cuma "kadang gagal", dan mahal justru
+karena pesannya menyesatkan. **Kalau menulis `except`, tanyakan dulu: sebab apa
+yang sedang saya sembunyikan, dan apakah cakupan tangkapannya sesempit sebabnya?**
 
-**Menuduh karangan itu klaim, dan klaim juga harus diukur.** Saya sempat menulis
-di CLAUDE.md bahwa "Neon" di diagram esteler adalah karangan — dasarnya: nol jejak
-di `dependencies`. Pemilik repo mengoreksi ("memang pakai Neon"), dan ternyata
-"Neon" **ada** di Contract A, di **docstring** `config.py::_normalize_db_url()`.
-Saya menggeledah satu field lalu menyimpulkan tentang seluruh dokumen. Kalau mau
-mengaudit karangan: geledah `json.dumps(ctx)`, bukan `dependencies` — Contract A
-juga membawa docstring lewat `functions[].description`, dan LLM membacanya.
-Tuduhan karangan yang salah lebih berbahaya daripada tidak menuduh sama sekali:
-dia bikin orang "memperbaiki" masalah yang tidak ada, dan menggerus kepercayaan
-pada bagian produk yang sebenarnya bekerja.
+**Dua klaim SAYA ternyata salah, dan dua-duanya karena mencocokkan pola alih-alih
+memeriksa.** (a) "Neon di diagram esteler itu karangan" — dasarnya nol jejak di
+`dependencies`; ternyata ADA di Contract A, di **docstring**
+`config.py::_normalize_db_url()`. Saya menggeledah satu field lalu menyimpulkan
+tentang seluruh dokumen. (b) "Tidak bisa multi-worker" — dasarnya pola kegagalan
+klasik `BackgroundTasks` (state di `dict` memori); padahal state di sini ada di
+SQLite, file di disk yang dibaca semua proses. Diukur kemudian: `--workers 3`,
+50 GET lintas worker 0 kali 404, 30 POST bersamaan 30 sukses.
+
+Keduanya ketahuan bukan dari saya, tapi dari pemilik repo. Keduanya sama
+berbahayanya: **klaim salah bikin orang memperbaiki masalah yang tidak ada** —
+membangun Redis untuk multi-worker yang sudah jalan, atau menambah guard untuk
+LLM yang sebenarnya membaca dengan benar. **Kalau menulis keterbatasan atau
+tuduhan karangan, ukur dulu. Pola yang cocok bukan bukti.**
 
 **Ukur dulu, jangan menebak — bahkan untuk hal yang kelihatan sepele.** Rencana
 "pindahkan filter ke atas pencacah" ternyata tidak cukup (medusa 9.459 > 5.000);
@@ -82,23 +93,28 @@ asli, bukan cuma ke mock.
 
 ## Kalau melanjutkan besok, mulai dari sini
 
-1. **Push** — semua sudah di-commit, belum di-push.
-2. **`narrow_to_product` fail-open di monorepo** — medusa: dari 9.459 file,
+1. **`narrow_to_product` fail-open di monorepo** — medusa: dari 9.459 file,
    disaring 0; `www/` (dokumentasi) menyumbang 22%. Bentuk yang sama dengan
-   `docs_src/` fastapi. Perlu baca manifest di `packages/*/`, bukan cuma root.
-4. **Endpoint Django** — sengaja belum: satu-satunya kasus Django (saleor)
-   terhalang context window, jadi tidak bisa dibuktikan. Butuh aplikasi Django
-   kecil di `repos.json` dulu.
-5. **`url_prefix` Blueprint Flask** — path tercatat `/login`, aslinya
-   `/auth/login`. Butuh analisis lintas-file.
-6. **Async + database** — penghalang produksi paling nyata. Terukur lagi sesi ini:
-   generation esteler **191 detik** dalam satu request sinkron, sementara
-   proxy/load balancer umumnya memutus di 30-60 detik.
-7. **Tabel Revision History** masih baris kosong — butuh keputusan produk dulu
+   `docs_src/` fastapi yang dulu bikin SDD menyebut "Manajemen Hero". Perlu baca
+   manifest di `packages/*/`, bukan cuma yang di root.
+2. **Job hilang kalau proses mati** — sisa nyata dari async. `BackgroundTasks`
+   jalan in-process: restart/crash/deploy saat job jalan → job berhenti selamanya
+   di `running` dan klien polling tanpa akhir. Belum ada reaper untuk job
+   `running` yang basi. Catatan: **multi-worker BUKAN masalah** (sudah diukur,
+   jalan); **serverless masih masalah** (relevan: esteler ada di Vercel).
+3. **Endpoint Django** — sengaja belum: satu-satunya kasus Django (saleor)
+   terhalang guard context window, jadi perbaikannya tidak bisa dibuktikan
+   end-to-end. Butuh aplikasi Django kecil di `repos.json` dulu.
+4. **`url_prefix` Blueprint Flask** — path tercatat `/login`, aslinya
+   `/auth/login`. Gejalanya: `routes/admin.py` dan `routes/customer.py` sama-sama
+   melaporkan `GET /`. Butuh analisis lintas-file (`register_blueprint`).
+5. **Tabel Revision History** masih baris kosong — butuh keputusan produk dulu
    (kolom `Summary of Changes` tidak punya jawaban jujur untuk dokumen baru).
-8. **Bandingkan Sonnet 5 vs Opus** (~$0,30) — default pindah ke Sonnet 5 atas
-   dasar reputasi, bukan pengukuran. Sekarang ada kasus uji yang layak
-   (esteler murah dan hasilnya bagus, jadi pembandingnya jelas).
+6. **Bandingkan Sonnet 5 vs Opus** (~$0,30) — default pindah ke Sonnet 5 atas
+   dasar reputasi, bukan pengukuran. Sekarang ada kasus uji yang layak: esteler
+   murah (~$0,24) dan hasilnya bagus, jadi pembandingnya jelas.
+7. **Bersihkan `data/documents/`** — tumbuh selamanya, ~400 KB per dokumen.
+   Belum ada TTL. Belum masalah sekarang, jadi masalah begitu dipakai rutin.
 
 ---
 
