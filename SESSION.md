@@ -18,7 +18,7 @@ belum pernah terjadi sepanjang umurnya; jalannya lewat lima bug yang semuanya
 ditemukan oleh kasus validasi baru, dan **empat di antaranya kelas kesalahan yang
 sama**: sebab asli tertelan gejala. **(2) Penghalang produksi terbesar hilang** —
 pipeline 191 detik tidak lagi ditahan di satu request HTTP; POST balik dalam
-~50ms. Total biaya API: **~$0,42**. 113 test hijau. Semua sudah di-push ke
+~50ms. Total biaya API: **~$0,42**. 117 test hijau. Semua sudah di-push ke
 `origin/develop`.
 
 ---
@@ -33,6 +33,7 @@ pipeline 191 detik tidak lagi ditahan di satu request HTTP; POST balik dalam
 | 4 | **Flask = nol endpoint** | `route` bukan anggota `HTTP_METHODS`. Sekarang `@bp.route(...)` dikenali, termasuk `methods=` dan default GET. |
 | 5 | Dokumen terpotong → "Invalid JSON" | `max_tokens` 16.000 → 32.000 + pindah ke `.stream()`. `DocumentTruncatedError` periksa `stop_reason` → **500** yang menyebut tempat memperbaikinya. |
 | 6 | **Pipeline 191 detik ditahan di 1 request HTTP** | Proxy memutus di 30-60 detik → produk mustahil di-deploy. Sekarang **202 + job_id dalam ~50ms**, kerja di `BackgroundTasks`, status di **SQLite** (`job_store.py`), klien polling. Nol dependency baru. |
+| 7 | **Monorepo: `www/` medusa (22%) mencemari dokumen** | `manifest.py` MENDETEKSI monorepo lalu sengaja menyerah. Petunjuknya ada di field yang sama: `workspaces` mendeklarasikan lokasi paket. **9.459 → 7.355 file, `www/` 2.098 → 0**, nol regresi. |
 
 Ditambah ke `repos.json`: **saleor-django**, **medusa-monorepo**, **esteler-flask**.
 Ketiganya langsung berbuah — semua bug di atas ditemukan oleh mereka.
@@ -49,7 +50,9 @@ Ketiganya langsung berbuah — semua bug di atas ditemukan oleh mereka.
   `PostgreSQL (Neon)` dari **docstring** `config.py::_normalize_db_url()`.
 - **Flask 0 → 38 endpoint**, coverage 41% → 55%, `routes/` otomatis jadi
   `controller` — tanpa menyentuh heuristik `type` sama sekali.
-- **medusa** ditolak di pintu → terparse (9.459 file, 39 endpoint).
+- **medusa** ditolak di pintu → terparse (9.459 file) → disaring `workspaces`
+  jadi **7.355 file**, `www/` (situs dokumentasi, 22%) hilang seluruhnya.
+  Nol regresi: fastapi 49→49, flask 25→25, express 8→8.
 - **saleor** 502 "coba lagi" → pesan benar, **tanpa membayar sepeser pun**.
 
 ---
@@ -84,6 +87,10 @@ tuduhan karangan, ukur dulu. Pola yang cocok bukan bukti.**
 **Ukur dulu, jangan menebak — bahkan untuk hal yang kelihatan sepele.** Rencana
 "pindahkan filter ke atas pencacah" ternyata tidak cukup (medusa 9.459 > 5.000);
 ketahuan cuma karena diukur dulu. Dan estimasi token 4 karakter/token meleset 2×.
+Kebalikannya juga terbukti: prediksi monorepo (7.354) meleset SATU dari hasil
+(7.355) — bukan keberuntungan, tapi karena `workspaces` medusa dibaca dulu.
+Ternyata ada DUA bentuk (`list` di cal.com, `dict` di medusa) dan `name`-nya
+"root" — tidak satu pun akan ditebak benar.
 
 **Test hijau tidak pernah cukup di repo ini.** 11 test hijau pernah menemani
 diagram yang gagal di tiap repo nyata. Tiap perbaikan sesi ini dibuktikan ke repo
@@ -93,10 +100,15 @@ asli, bukan cuma ke mock.
 
 ## Kalau melanjutkan besok, mulai dari sini
 
-1. **`narrow_to_product` fail-open di monorepo** — medusa: dari 9.459 file,
-   disaring 0; `www/` (dokumentasi) menyumbang 22%. Bentuk yang sama dengan
-   `docs_src/` fastapi yang dulu bikin SDD menyebut "Manajemen Hero". Perlu baca
-   manifest di `packages/*/`, bukan cuma yang di root.
+1. **Contract A monorepo tidak muat, dan menyaring TIDAK akan menolong** — temuan
+   baru, dan lebih dalam dari yang kita kira. Sesudah `workspaces` dibaca, medusa
+   turun 9.459 → 7.355 file tapi Contract A-nya masih **2.831 KB** — jauh di atas
+   context window 1M, jadi medusa **tetap tidak bisa dibuatkan dokumen**. Sisa
+   7.297 file itu **memang kode produk**. Masalahnya: produk ini mengirim
+   **SELURUH** Contract A dalam satu panggilan. Arah: pecah per-workspace-package
+   lalu gabungkan, atau ringkas dulu. **Ini menyambung ke hambatan SaaS #3** —
+   dan memperbaiki dukungan Java tidak ada gunanya sebelum ini beres, karena repo
+   enterprise justru yang paling besar.
 2. **Job hilang kalau proses mati** — sisa nyata dari async. `BackgroundTasks`
    jalan in-process: restart/crash/deploy saat job jalan → job berhenti selamanya
    di `running` dan klien polling tanpa akhir. Belum ada reaper untuk job
