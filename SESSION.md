@@ -41,8 +41,9 @@ Ketiganya langsung berbuah — semua bug di atas ditemukan oleh mereka.
 - **Dokumen pertama untuk aplikasi bisnis Python**: `esteler-app` → 10 fitur, 9
   use case, 8 test case, 9 activity diagram, docx 408 KB (~$0,24). Isinya
   diperiksa: fiturnya memetakan satu-satu ke `services/*` yang nyata, aktornya
-  **Admin & Customer** (bukan Developer/API Client), dan Groq/Cloudinary di
-  diagram **punya jejak** di `dependencies`.
+  **Admin & Customer** (bukan Developer/API Client), dan seluruh isi diagramnya
+  **punya jejak** — Groq/Cloudinary/SQLAlchemy dari `dependencies`, dan
+  `PostgreSQL (Neon)` dari **docstring** `config.py::_normalize_db_url()`.
 - **Flask 0 → 38 endpoint**, coverage 41% → 55%, `routes/` otomatis jadi
   `controller` — tanpa menyentuh heuristik `type` sama sekali.
 - **medusa** ditolak di pintu → terparse (9.459 file, 39 endpoint).
@@ -58,6 +59,17 @@ error handler meratakan sebab yang spesifik jadi pesan generik, dan gejalanya
 selalu "kadang gagal" — mahal justru karena pesannya menyesatkan. **Kalau menulis
 `except Exception`, tanyakan dulu: sebab apa yang sedang saya sembunyikan?**
 
+**Menuduh karangan itu klaim, dan klaim juga harus diukur.** Saya sempat menulis
+di CLAUDE.md bahwa "Neon" di diagram esteler adalah karangan — dasarnya: nol jejak
+di `dependencies`. Pemilik repo mengoreksi ("memang pakai Neon"), dan ternyata
+"Neon" **ada** di Contract A, di **docstring** `config.py::_normalize_db_url()`.
+Saya menggeledah satu field lalu menyimpulkan tentang seluruh dokumen. Kalau mau
+mengaudit karangan: geledah `json.dumps(ctx)`, bukan `dependencies` — Contract A
+juga membawa docstring lewat `functions[].description`, dan LLM membacanya.
+Tuduhan karangan yang salah lebih berbahaya daripada tidak menuduh sama sekali:
+dia bikin orang "memperbaiki" masalah yang tidak ada, dan menggerus kepercayaan
+pada bagian produk yang sebenarnya bekerja.
+
 **Ukur dulu, jangan menebak — bahkan untuk hal yang kelihatan sepele.** Rencana
 "pindahkan filter ke atas pencacah" ternyata tidak cukup (medusa 9.459 > 5.000);
 ketahuan cuma karena diukur dulu. Dan estimasi token 4 karakter/token meleset 2×.
@@ -71,11 +83,7 @@ asli, bukan cuma ke mock.
 ## Kalau melanjutkan besok, mulai dari sini
 
 1. **Push** — semua sudah di-commit, belum di-push.
-2. **Diagram mengarang KEKHUSUSAN, bukan komponen.** esteler: kotak database
-   berbunyi "Database PostgreSQL (Neon)" padahal "Neon" nol jejak (SQLAlchemy
-   cuma membenarkan "Database"). Larangan "jangan gambar komponen tanpa jejak"
-   tidak akan menangkap ini — aturannya perlu sampai ke level label.
-3. **`narrow_to_product` fail-open di monorepo** — medusa: dari 9.459 file,
+2. **`narrow_to_product` fail-open di monorepo** — medusa: dari 9.459 file,
    disaring 0; `www/` (dokumentasi) menyumbang 22%. Bentuk yang sama dengan
    `docs_src/` fastapi. Perlu baca manifest di `packages/*/`, bukan cuma root.
 4. **Endpoint Django** — sengaja belum: satu-satunya kasus Django (saleor)
