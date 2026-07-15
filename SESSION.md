@@ -1,4 +1,4 @@
-# Catatan Sesi — 2026-07-15
+# Catatan Sesi — 2026-07-15 (sesi lanjutan)
 
 > **File ini ditimpa habis setiap sesi baru.** Isinya cuma satu hal: apa yang
 > dikerjakan sesi kemarin, supaya sesi berikutnya tidak mulai dari nol.
@@ -12,130 +12,111 @@
 
 ## Ringkasan satu paragraf
 
-Sesi ini berangkat dari satu bug (diagram gagal render) dan berakhir dengan
-**pembeda utama produk terbukti bekerja untuk pertama kalinya**. Rantainya
-berantai: tiap perbaikan membuka masalah berikutnya yang lebih dalam. Semua
-sudah di `develop`, 82 test hijau, tidak ada kerja yang menggantung setengah
-jalan.
+Mengerjakan prioritas #1 sesi sebelumnya: penanda `(diisi manual)` sekarang
+ditanyakan lewat form, jadi dokumennya keluar utuh. Jumlahnya ternyata **28**,
+bukan 16 — 25 ditutup lewat form, 3 sengaja dibiarkan (tanda tangan & sertifikasi
+hasil UAT tidak seharusnya diisi sistem). 91 test hijau. **Biaya API sesi ini: $0**
+— fitur ini tidak menyentuh LLM sama sekali, jalurnya metadata → template → docx.
 
-Total biaya API sesi ini: **~$0,56** untuk 6 panggilan Claude.
-
----
-
-## Yang diselesaikan (semua sudah merge ke `develop`)
-
-Urut dari yang paling awal. Tiap baris punya commit-nya sendiri.
-
-| # | Masalah | Inti perbaikannya |
-|---|---|---|
-| 1 | Diagram gagal render di repo besar (`502`) | 502 itu **pesan kita sendiri** yang menelan `414` dari mermaid.ink. Ganti base64 → **pako** (kompresi ~7x), dan berhenti menyamarkan sebab asli. |
-| 2 | Log menyebut provider lama ("Gemini") | Nama provider dihapus, bukan diganti — route layer tidak seharusnya tahu providernya siapa. |
-| 3 | Repo berantakan | Root tracked sekarang cuma file konfigurasi/dokumen. Output docx, PDF internal, `.pytest_cache` diabaikan git. |
-| 4 | **Ingestion 1 request per file** | Repo 200 file = 200 request → jatah anonim GitHub (60/jam) habis sebelum satu repo selesai. Sekarang **tarball sekali unduh**: ~3 request/repo, konstan. |
-| 5 | Kode test & contoh ikut ter-ingest | Pada express, **1169 dari 1265 endpoint** ternyata dari `test/`. Ditambah filter dir + pola nama file test (Go menaruh `foo_test.go` di sebelah `foo.go` — blocklist folder saja tidak cukup). |
-| 6 | **Kontaminasi `docs_src/` (yang terpenting)** | 86% file fastapi dari folder tutorial → SDD-nya menyebut "Manajemen **Hero**" (nama tabel tutorial SQLModel) sebagai fitur produk. Diganti **deteksi manifest**: tanya `pyproject.toml`/`package.json` mana yang produk. fastapi **530 → 49 file**. |
-| 7 | Model aplikasi di-hardcode | Pindah ke `LLM_MODEL` di `.env`, default **`claude-sonnet-5`** (dari Opus, alasan biaya — keputusan pemilik project). |
-| 8 | Contract A dibayar dua kali untuk repo yang sama | `target_doc_type` ada di **depan** Contract A → merusak prefix cache. Urutan dibalik + `cache_control`. Terverifikasi: `cache_read=7919`. |
-
-Dibuat baru sesi ini: **kerangka validasi** (`scripts/validation/`) — 2 tahap
-dipisah berdasarkan biaya. Harness inilah yang menemukan #4, #5, dan #6.
+Sudah di-commit ke `develop` (belum di-push, belum ada PR): satu commit fitur
+(kode + test + entry CLAUDE.md) dan satu commit SESSION.md, mengikuti konvensi
+repo yang memisahkan commit "Catat ..." dari commit kode.
 
 ---
 
-## Yang dibuktikan lewat API sungguhan (bukan mock)
+## Yang dikerjakan
 
-Ini yang mock tidak akan pernah bisa jawab:
-
-1. **Cross-repo mapping FE↔BE jalan** — `Login.js → POST /users/login`,
-   `Home/index.js → GET /articles`, lintas dua repo terpisah. **Pembeda utama
-   produk ini, dan sampai sesi ini belum pernah diuji sama sekali.**
-2. **Dokumen fastapi jujur sekarang** — dari "kumpulan aplikasi backend...
-   Manajemen Hero" jadi "FastAPI adalah **framework** backend berbasis Python"
-   dengan fitur Routing, Injeksi Dependensi, WebSocket. Semuanya benar.
-3. **Caching aktif** — `cache_write=7919` lalu `cache_read=7919`.
-4. **`target_doc_type` tetap membedakan** setelah urutan prompt dibalik —
-   SDD 5 test case vs UAT 9.
+| Berkas | Perubahan |
+|---|---|
+| `app/api/schemas_document.py` | **baru**: `DocumentMetadata` (25 field, semua `Optional`) + `document_metadata` di `GenerateDocumentRequest` |
+| `app/services/compiler_service.py` | `_MetadataDict.__missing__` → fallback `*(diisi manual)*`; param baru `document_metadata` di `generate_docx()` |
+| `app/templates/sdd_template.md` | 17 penanda → `{{ meta.* }}`; blok Persetujuan diperjelas kalimatnya |
+| `app/templates/uat_template.md` | 8 penanda → `{{ meta.* }}`; 2 blok tanda tangan/sertifikasi diperjelas |
+| `app/api/routes_document.py` | teruskan `document_metadata` ke compiler |
+| `frontend/src/App.jsx` + `App.css` | section `<details>` "Informasi Dokumen (opsional)", tertutup default, field didefinisikan sebagai data |
+| `tests/` | +9 test (total 91), termasuk penjaga typo field di template |
 
 ---
 
-## Pelajaran metodologis (yang paling mahal kalau dilupakan)
+## Keputusan yang diambil (dan alasannya — jangan dibalik tanpa baca ini)
 
-**Ukur dulu sebelum memperbaiki.** Kami hampir menghabiskan berhari-hari
-memperbaiki heuristik `type` karena flask coverage-nya 0%. Dua panggilan Claude
-($0,75) membuktikan itu **bukan bottleneck**: flask dengan coverage 0%
-menghasilkan dokumen yang **akurat**, malah lebih banyak fiturnya daripada
-fastapi yang coverage 63%. LLM ternyata sanggup menyimpulkan peran file dari nama
-class dan `dependencies`.
+1. **Angka 16 di CLAUDE.md salah, yang benar 28** (18 SDD + 10 UAT). Hitungan lama
+   cuma mencacah SDD, itu pun melewatkan blok terbesarnya — tabel Demografi (7
+   baris). UAT tidak dihitung sama sekali. Sudah dikoreksi di CLAUDE.md.
 
-**Salah pilih kasus uji terlihat seperti cacat produk.** Semua penilaian
-kualitas sebelum realworld diambil dari framework/library. Framework memang tidak
-punya aktor bisnis — jadi dokumennya terasa janggal, dan itu bikin kami mengira
-produknya bermasalah. Begitu diberi aplikasi bisnis nyata, formatnya langsung
-pas: aktornya `Guest`/`Registered User`, bukan `Developer`/`API Client`.
+2. **Targetnya bukan "nol placeholder", tapi "nol placeholder yang manusianya
+   sudah tahu jawabannya saat generate".** 3 dibiarkan sengaja: dua blok tanda
+   tangan (tanda tangan bukan data yang diketik di form — dokumen acuan enterprise
+   juga mengosongkannya) dan Sertifikasi Keberhasilan UAT (isinya tanggal
+   penyelesaian + hasil Lolos/Gagal; menanyakannya di form = mengundang orang
+   mensertifikasi tes yang belum dijalankan). Kalimatnya diubah supaya terbaca
+   sebagai desain, bukan lubang kelupaan.
 
-**Filter yang terlalu rakus lebih berbahaya daripada noise.** Aturan `samples`
-sempat menghapus **seluruh 48 file Java** spring-petclinic karena nama package-nya
-`org.springframework.samples`. Ketahuan oleh validasi, bukan oleh review. Karena
-itu `manifest.py` sengaja **gagal-membuka**: tidak yakin = simpan semua.
+3. **Semua field opsional** (keputusan pemilik project). Perilaku lama jadi
+   *lantai*: form boleh dilewati total → dokumen seperti versi sebelumnya. Kalau
+   field diwajibkan, repo tanpa konteks enterprise (proyek open-source yang tidak
+   punya nomor RFC) jadi tidak bisa digenerate sama sekali — padahal produk ini
+   diposisikan sebagai SaaS generik.
 
-**Mock bisa hijau sementara produknya rusak.** 11 test hijau sementara diagram
-gagal untuk tiap repo nyata — karena mermaid.ink di-mock. Itu alasan
-`scripts/validation/` ada.
+4. **`DocumentMetadata` terpisah dari `DocumentContent` (Contract B).** Contract B
+   itu output LLM, ini input manusia — arahnya berlawanan. Digabung = LLM disuruh
+   mengarang nomor RFC.
+
+5. **Cuma `dev_system_type` yang jadi dropdown**, sisanya teks bebas. Alasannya
+   template-nya sendiri yang menyatakan pilihannya ("ERP / NON ERP"). Mengarang
+   enum untuk Document Classification akan memaksa pengguna ikut istilah kita.
 
 ---
 
-## Perbandingan dengan dokumen acuan (dilakukan di akhir sesi)
+## Cara verifikasinya (semua gratis, tidak ada panggilan LLM)
 
-Dokumen Solution Design enterprise sungguhan (87 halaman, PDF di root,
-di-gitignore) dibaca dan dibandingkan bab per bab dengan `sdd_template.md`.
-Hasilnya mengubah prioritas:
+- **91 test hijau** (82 lama + 9 baru) — tidak ada regresi.
+- **Mutation check**: hapus satu field mana pun dari 17 field SDD → penandanya
+  balik tepat 1×; lengkap → 0×. Membuktikan pemetaan field↔lubang 1:1, dan
+  membuktikan test "tidak ada penanda tersisa" itu benar-benar bisa merah.
+- **Cross-check 3 lapis**: field di `App.jsx` (25) == field di schema (25) ==
+  field yang dipakai template (17 SDD + 8 UAT). Ini penting karena typo di form
+  akan **diabaikan diam-diam** oleh Pydantic, bukan error.
+- **Docx sungguhan dibaca ulang** (bukan cuma assert substring) — tabel Informasi
+  Dokumen & Demografi terisi, blok tanda tangan tetap ada.
+- **SSR render** komponen React: 19 input / 2 textarea / 2 select, `<details>`
+  tertutup default. Build lolos ≠ render lolos, jadi ini dicek terpisah.
+- **Server hidup** (`/openapi.json`): 25 field terdaftar, `document_metadata`
+  opsional, `required` tetap `['document_type', 'repositories']` → klien lama aman.
 
-**Strukturnya sudah cocok hampir seluruhnya.** Template kita jelas dimodelkan
-dari dokumen itu — Revision History, Persetujuan, Deskripsi, Dev System Type,
-Demografi, System Requirement, How to Access, Infrastructure, Architecture,
-Security, Features Requirement, Flow Proses Bisnis, Use Case, Activity Diagram
-semuanya ada. **Jadi jaraknya bukan soal struktur.**
-
-Yang belum ada: Daftar Gambar + Daftar Tabel (mekanis), Mockup Website + Mockup
-Aplikasi (mustahil dari kode — kandidat slot upload).
-
-Jaraknya ada di **kedalaman** (87 halaman vs ~25) dan **16 placeholder yang
-dibiarkan kosong**. Tapi jangan kejar 87 halaman: dokumen acuan panjang sebagian
-besar karena mockup, timeline, dan tanda tangan.
+---
 
 ## Kalau melanjutkan besok, mulai dari sini
 
-Urut menurut dampak-per-usaha. Semua sudah tercatat lengkap di **Keterbatasan**
-CLAUDE.md.
-
-1. **Isi 16 placeholder lewat form** — rasio dampak-per-usaha tertinggi yang
-   diketahui. Isinya (RFC #, No. Solution Design, Document Classification, baris
-   approval, checklist security) memang tidak bisa datang dari kode — tapi
-   **manusia tahu**. Sekarang produk menyerahkan docx berisi 16 lubang dan
-   pengguna berburu di Word. Seharusnya: tanyakan di form, dokumen keluar utuh.
-   Sentuh `frontend/src/App.jsx` + `GenerateDocumentRequest` + template.
-2. **Async + database** — penghalang produksi paling diremehkan. Generation ~100-125
+1. **Tabel Revision History masih keluar sebagai baris kosong** — temuan baru sesi
+   ini, sudah dicatat di Keterbatasan CLAUDE.md. Tiga tabel (Document + Application
+   Revision History di SDD, Version History di UAT) punya header tapi isinya
+   `| | | | | |`. Luput dari hitungan 28 karena bentuknya bukan penanda `(diisi
+   manual)`, tapi dampaknya sama: dua tabel kosong di halaman pertama SDD, persis
+   di bawah tabel yang sekarang terisi rapi. Sebagian datanya sudah ada di
+   `DocumentMetadata`. **Butuh keputusan produk dulu**, bukan sekadar coding:
+   kolom `Summary of Changes` tidak punya jawaban jujur untuk dokumen yang baru
+   pertama kali digenerate.
+2. **Async + database** — penghalang produksi paling diremehkan, dan **item teknis
+   teratas** kalau tidak mau menunggu keputusan produk di #1. Generation ~100-125
    detik ditahan di satu request HTTP sinkron; proxy/load balancer umumnya memutus
    di 30-60 detik, jadi ini patah begitu di-deploy walau di localhost aman. Plus:
    tidak ada DB sama sekali, dokumen hilang setelah response terkirim.
 3. **Tambah 2-3 aplikasi bisnis ke `repos.json`** — celah validasi terbesar. Dari 7
    repo, cuma `realworld` yang aplikasi bisnis berbahasa didukung, dan itu pun
-   aplikasi contoh yang sengaja rapi. Kode perusahaan sungguhan jauh lebih
-   berantakan. Tahap 1 gratis; Tahap 2 ~$0,15-0,30 per repo.
+   aplikasi contoh yang sengaja rapi. Tahap 1 gratis; Tahap 2 ~$0,15-0,30 per repo.
 4. **Bandingkan Sonnet 5 vs Opus** (~$0,30 sekali bayar) — default pindah ke Sonnet
    5 atas dasar **reputasi umum, bukan pengukuran**. Produk ini menjual kualitas
-   dokumen; jangan gantung lama. Sekarang waktunya tepat karena input sudah bersih.
+   dokumen; jangan gantung lama.
 5. **Larang diagram menggambar komponen tanpa bukti** — fastapi punya nol dependency
-   database tapi diagramnya tetap menggambar `Backend → Database`. (LLM **memang**
-   baca kode — realworld menghasilkan `Database (PostgreSQL via Prisma)` dan prisma
-   memang ada 4x. Masalahnya cuma dia tidak berhenti saat buktinya kosong.)
+   database tapi diagramnya tetap menggambar `Backend → Database`.
 6. **Heuristik `type`** — prioritas **rendah**, terbukti bukan bottleneck. Jangan
-   kerjakan sebelum lima di atas.
+   kerjakan sebelum yang di atas.
 
 Belum dikerjakan dan bukan bug, cuma memang belum: parser di luar Python/TS-JS,
-test untuk `parser_service.py`, OAuth GitHub (masih scaffold), frontend masih
-form dasar, mermaid.ink masih layanan pihak ketiga (isu privasi untuk repo
-confidential).
+test untuk `parser_service.py`, OAuth GitHub (masih scaffold), bagian atas form
+masih polos tanpa penjelasan, mermaid.ink masih layanan pihak ketiga (isu privasi
+untuk repo confidential).
 
 ---
 
@@ -143,7 +124,9 @@ confidential).
 
 - **Revoke `GOOGLE_API_KEY` dan `LLAMA_API_KEY`.** Sudah dihapus dari `.env`
   lokal, tapi **kuncinya masih hidup** di penyedia masing-masing sampai dicabut
-  lewat console. Menghapus baris ≠ mencabut kunci.
-- **Isi `GITHUB_TOKEN`** kalau mau sering menjalankan validasi. Tidak wajib lagi
-  sejak pindah ke tarball (~3 request/repo), tapi batas anonim 60/jam gampang
-  habis kalau iterasi cepat.
+  lewat console. Menghapus baris ≠ mencabut kunci. (Masih belum dilakukan.)
+- **Isi `GITHUB_TOKEN`** kalau mau sering menjalankan validasi. Tidak wajib sejak
+  pindah ke tarball (~3 request/repo), tapi batas anonim 60/jam gampang habis.
+- **Buka form-nya dan lihat sendiri** (`npm run dev` → section "Informasi Dokumen").
+  Saya sudah verifikasi render lewat SSR, tapi apakah 17 field terasa terlalu
+  banyak atau labelnya membingungkan — itu penilaian manusia.
