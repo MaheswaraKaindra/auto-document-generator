@@ -35,6 +35,30 @@
       ]
     },
     {
+      "name": "saleor-django",
+      "asumsi_yang_diuji": "Aplikasi bisnis Python yang BUKAN FastAPI. Deteksi endpoint kita cuma mengenali decorator berbentuk app.<method>('path'); Django menaruh route di urls.py lewat path(), bukan decorator. Django adalah framework paling umum di aplikasi bisnis Python, jadi kalau ini kosong, 'dukungan Python' kita sebenarnya cuma 'dukungan FastAPI'.",
+      "expect": "Parse berhasil; manifest (pyproject.toml, name=saleor) menyaring ke folder saleor/. Endpoint ~0 — bukan karena parser rusak, tapi karena Django tidak memakai decorator. Coverage sedang: models.py dan schema.py tertangkap heuristik ('model'/'schema'), tapi views.py/urls.py/admin.py jatuh ke 'other'. Pertanyaan sebenarnya ada di Tahap 2: dengan 0 endpoint, apakah LLM tetap menulis fitur dengan percaya diri? Kalau ya, itu karangan. CONFOUND yang harus diakui: saleor GraphQL-first, jadi 0 endpoint punya dua sebab yang menyatu (Django + GraphQL). Untuk memisahkannya perlu kasus Django-REST tersendiri.",
+      "repos": [
+        { "repo_tag": "Backend", "repo_url": "https://github.com/saleor/saleor" }
+      ]
+    },
+    {
+      "name": "medusa-monorepo",
+      "asumsi_yang_diuji": "narrow_to_product() di MONOREPO. Deteksi manifest sejauh ini cuma diuji pada repo satu-paket (fastapi, flask, express, requests). Monorepo Turborepo menaruh package.json di root yang cuma mendeklarasikan workspace, sementara kode aslinya di packages/*/ dengan package.json masing-masing.",
+      "expect": "Manifest root diduga TIDAK menunjuk ke kode mana pun (tidak ada 'files', 'name'-nya tidak cocok dengan folder mana pun) -> desain fail-open menyimpan SEMUA file. Kalau benar, www/ (situs dokumentasi) dan integration-tests/ ikut terbawa — kelas bug yang sama persis dengan docs_src/ fastapi yang dulu bikin SDD menyebut 'Manajemen Hero' sebagai fitur produk. Mungkin juga menembus batas MAX_TOTAL_FILES (5.000). Fail-open memang disengaja (filter rakus lebih berbahaya daripada noise), tapi monorepo bikin 'tidak yakin' jadi kasus UMUM, bukan pengecualian — dan itu yang belum pernah diukur.",
+      "repos": [
+        { "repo_tag": "Backend", "repo_url": "https://github.com/medusajs/medusa" }
+      ]
+    },
+    {
+      "name": "esteler-flask",
+      "asumsi_yang_diuji": "Kode NYATA yang bukan aplikasi contoh. Semua kasus lain di daftar ini ditulis untuk dipamerkan (framework populer, atau realworld yang sengaja dibuat rapi sebagai referensi). Ini aplikasi Flask sungguhan milik anggota tim — konvensinya apa adanya, tidak dirapikan untuk siapa pun. Sekaligus menguji URL berakhiran '.git' (bentuk yang orang salin dari tombol Clone).",
+      "expect": "Endpoint ~0 — Flask memakai @app.route(...), dan 'route' bukan anggota HTTP_METHODS, jadi deteksi decorator kita tidak mengenalinya. Ini lubang yang sama dengan saleor tapi lewat pintu berbeda, dan justru lebih penting: Flask itu framework yang WAJAR dipakai aplikasi bisnis Python. Coverage diduga SEDANG-TINGGI (tidak seperti flask si framework yang 0%) karena repo ini menamai foldernya routes/ dan services/ serta punya models.py — yang semuanya kebetulan cocok dengan heuristik substring. Manifest diduga fail-open (cuma ada requirements.txt, bukan pyproject.toml) -> simpan semua; dampaknya kecil karena repo ini tidak punya folder dokumentasi/tutorial sebesar fastapi. Contract A diduga kecil, jadi Tahap 2 murah dan aman.",
+      "repos": [
+        { "repo_tag": "Backend", "repo_url": "https://github.com/yudhasw/esteler-app.git" }
+      ]
+    },
+    {
       "name": "requests-library",
       "asumsi_yang_diuji": "Apakah produk ini diam-diam mengasumsikan setiap repo adalah aplikasi web? requests adalah LIBRARY: tanpa endpoint, tanpa aktor, tanpa alur bisnis.",
       "expect": "Parse lancar tapi 0 endpoint. Pertanyaan sebenarnya ada di Tahap 2: apakah LLM mengarang use case/aktor yang tidak ada? Kalau ya, itu masalah serius — dokumen terdengar meyakinkan padahal fiktif.",
