@@ -160,8 +160,12 @@ frontend/                    # React + Vite, form sederhana yang hit POST /docum
   src/App.jsx, src/main.jsx
 
 tests/                       # pytest — lihat bagian Testing
-dummy_data/                  # fixture JSON untuk testing manual tanpa perlu repo asli
+dummy_data/                  # fixture JSON — dipakai test otomatis DAN testing manual
+scripts/                     # utilitas dev sekali-pakai, bukan bagian dari aplikasi
+  model_getter.py            # cetak daftar model yang tersedia untuk API key kamu
 ```
+
+Root sengaja dijaga cuma berisi file konfigurasi/dokumen (`.env.example`, `.gitignore`, `CLAUDE.md`, `README.md`, `requirements.txt`) — kode dan aset selalu masuk folder. Kalau menambah script utilitas, taruh di `scripts/`, jangan di root.
 
 ## Tech Stack
 
@@ -192,6 +196,13 @@ venv\Scripts\activate        # Windows
 
 # 2. Install dependency Python
 pip install -r requirements.txt
+
+# Punya venv dari SEBELUM migrasi Claude (2026-07-15)? Wajib jalankan ulang
+# perintah di atas. venv lama tidak punya `anthropic`, dan gejalanya bukan
+# test gagal — pytest langsung mati saat collect dengan
+# `ModuleNotFoundError: No module named 'anthropic'`, yang gampang disalahartikan
+# sebagai migrasinya yang rusak. Paket lama (langchain*, google-genai) juga masih
+# menempel dan sudah tidak dipakai; aman dibuang.
 
 # 3. Pandoc wajib ada di sistem untuk fitur export .docx
 #    (kalau belum ada, jalankan sekali):
@@ -253,7 +264,8 @@ Untuk testing manual end-to-end (hit API sungguhan, termasuk panggilan LLM yang 
 - **OAuth GitHub baru scaffold** — endpoint-nya ada tapi belum bisa dipakai sungguhan sampai ada GitHub OAuth App terdaftar (`GITHUB_CLIENT_ID`/`SECRET` belum diisi).
 - **Belum ada unit test otomatis untuk `parser_service.py` dan `ingestion_service.py`** (Peran 1) — test yang ada baru meng-cover compiler/routes (Peran 3).
 - **Cross-repo dependency resolution (FE fetch call <-> BE endpoint) sepenuhnya didelegasikan ke instruksi prompt LLM**, bukan langkah pencocokan deterministik terpisah seperti di diagram arsitektur target (`Cross Repository Mapping` -> `Unified Context` sebelum masuk LLM). Bisa jadi cukup untuk MVP, tapi tidak 100% deterministik.
-- **Render diagram Mermaid lewat layanan hosted pihak ketiga (`mermaid.ink`)** — ini mengirim ISI diagram (bisa memuat nama endpoint, struktur komponen internal) ke internet. Untuk data confidential (repo perusahaan) di produksi, sebaiknya diganti rendering lokal (mis. `mermaid-cli`). **Juga ditemukan (2026-07-15): render bisa gagal (`502 Gagal merender diagram`) untuk repo nyata yang menghasilkan diagram besar/kompleks** — dugaan awal terkait panjang URL base64 dari GET request ke mermaid.ink, belum dikonfirmasi/di-fix (diagram sederhana tetap render normal). Kalau menemukan ini lagi, cek dulu apakah scriptnya sangat panjang sebelum menyalahkan koneksi.
+- **Render diagram Mermaid lewat layanan hosted pihak ketiga (`mermaid.ink`)** — ini mengirim ISI diagram (bisa memuat nama endpoint, struktur komponen internal) ke internet. Untuk data confidential (repo perusahaan) di produksi, sebaiknya diganti rendering lokal (mis. `mermaid-cli`). Ini satu-satunya keterbatasan mermaid.ink yang tersisa; bug 502 untuk repo besar sudah selesai (lihat Riwayat Perubahan 2026-07-15).
+- **Ceiling diagram masih ada, cuma jauh lebih tinggi.** `mermaid.ink` ada di balik reverse proxy dengan batas URL ~8KB (diukur: 7.720 karakter masih `200`, 9.376 karakter sudah `414`). Encoding `pako:` memberi kompresi ~7x, jadi diagram realistis aman — tapi diagram yang sangat ekstrem tetap bisa menembusnya. `_render_mermaid_to_image` sudah memeriksa panjang URL sebelum request dan gagal dengan pesan jelas (`DiagramRenderError`), bukan menghabiskan request percuma.
 - **`LLMService` memakai timeout client 1500 detik (25 menit)** untuk mengantisipasi generation yang lama pada repo besar/kompleks (default SDK 10 menit terbukti kurang untuk repo nyata yang cukup besar saat diuji). Kalau generation tetap sering lambat di masa depan, pertimbangkan pindah ke `.stream()` daripada menaikkan timeout terus-menerus.
 - **Frontend (`frontend/src/App.jsx`) masih berupa form dasar tanpa penjelasan** — belum benar-benar dioptimalkan supaya "kalangan manapun" (bukan cuma developer) langsung paham cara pakainya. Prinsip non-teknis sejauh ini baru diterapkan di *isi dokumen yang digenerate* (lewat system prompt LLM), bukan di UI form itu sendiri.
 - **Tidak ada hubungan/integrasi dengan project sibling `auto-project-tester`** — keduanya independen. Kalau menjalankan keduanya bersamaan secara lokal, perhatikan **keduanya sama-sama default ke port 8000** untuk backend-nya masing-masing — pastikan tidak salah port sebelum menyimpulkan sesuatu error/berhasil.
@@ -262,4 +274,5 @@ Untuk testing manual end-to-end (hit API sungguhan, termasuk panggilan LLM yang 
 
 - **2026-07-14** — Peran 1 (ingestion multi-source + parser Tree-sitter) selesai & merge ke `develop` (PR #1). Peran 2 versi pertama merge (PR #2), pakai LangChain + Google Gemini (`gemini-2.5-flash`).
 - **2026-07-14/15** — Peran 3 (compiler service, template Jinja2, endpoint orkestrator, frontend React+Vite) merge ke `develop` (PR #4, #5) — pipeline penuh `ingest -> parse -> LLM -> template -> docx` tersambung lewat `POST /documents/generate` untuk pertama kali.
+- **2026-07-15** — **Bug render diagram untuk repo besar selesai.** Gejalanya dulu tercatat sebagai "502 Gagal merender diagram" dan diduga soal panjang URL. Dugaan itu benar soal akar masalahnya, tapi 502-nya menyesatkan: itu **pesan error aplikasi sendiri**. `_render_docx_or_502` meratakan SEMUA `requests.RequestException` jadi 502 "layanan tidak merespons" — padahal `raise_for_status()` melempar `HTTPError` (subclass-nya) saat mermaid.ink membalas **`414 URI Too Long`**. Jadi mermaid.ink sebetulnya menjawab dengan jelas, cuma jawabannya ditelan error handler kita. Diperbaiki tiga lapis: (1) encoding `pako:` (zlib) menggantikan base64 polos — kompresi ~7x, diagram 120-node turun dari 9.376 jadi 1.273 karakter URL; (2) `DiagramRenderError` membawa sebab asli (status HTTP + artinya) alih-alih menyamarkannya; (3) code fence ```` ```mermaid ```` dari LLM dibuang otomatis (dulu bikin `400`). Semua angka di atas diukur langsung ke mermaid.ink, bukan diperkirakan.
 - **2026-07-15** — Migrasi provider LLM: **Google Gemini (LangChain) -> Anthropic Claude (`claude-opus-4-8`, SDK resmi langsung)**. Sekaligus memperbaiki bug `target_doc_type` yang sebelumnya tidak berpengaruh ke output (selalu bergaya SDD apa pun tipe dokumennya), dan memperkaya Contract B dengan `feature_requirements[]` dan `use_cases[]` (menutup dua bagian template SDD yang sebelumnya kosong/`(diisi manual)`: "Application Features Requirement" dan tabel Use Case per aktor). Perubahan sudah diverifikasi lewat pemanggilan API sungguhan (bukan cuma mock test), termasuk lewat `POST /documents/generate` terhadap repo asli.

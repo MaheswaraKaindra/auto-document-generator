@@ -11,14 +11,18 @@ Peran 2 (llm_service.py) — modul ini murni konsumen dari Contract B.
 """
 
 import base64
+import json
 import tempfile
 import uuid
+import zlib
 from pathlib import Path
 from typing import Any
 
 import pypandoc
 import requests
 from jinja2 import Environment, FileSystemLoader
+
+from app.domain.exceptions import DiagramRenderError
 
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
 OUTPUT_DIR = Path(tempfile.gettempdir()) / "auto_document_generator"
@@ -38,14 +42,45 @@ _TEMPLATE_BY_DOC_TYPE = {
     "UAT": "uat_template.md",
 }
 
+# mermaid.ink ada di balik reverse proxy dengan batas panjang URL ~8KB.
+# Diukur langsung: URL 7720 karakter masih 200, 9376 karakter sudah 414.
+_MERMAID_URL_LIMIT = 8000
+
+_HTTP_HINTS = {
+    400: "script Mermaid tidak valid (cek syntax-nya)",
+    414: "URL kepanjangan — script diagram terlalu besar",
+    503: "layanan sedang kelebihan beban, coba lagi nanti",
+}
+
+
+def _strip_code_fence(mermaid_script: str) -> str:
+    """Buang code fence Markdown (```mermaid ... ```) kalau LLM terlanjur
+    menyertakannya. Fence bikin mermaid.ink menolak script dengan HTTP 400."""
+    script = mermaid_script.strip()
+    if not script.startswith("```"):
+        return script
+    lines = [ln for ln in script.splitlines() if not ln.strip().startswith("```")]
+    return "\n".join(lines).strip()
+
+
+def _encode_pako(mermaid_script: str) -> str:
+    """Encode script jadi segmen URL "pako:" (zlib deflate + base64url).
+
+    mermaid.ink menerima dua bentuk: base64 polos dan "pako:" terkompresi.
+    Kita pakai pako karena teks Mermaid sangat repetitif sehingga rasio
+    kompresinya tinggi (~7x pada diagram nyata) — itulah yang menahan URL
+    tetap di bawah batas ~8KB untuk repo besar (lihat _MERMAID_URL_LIMIT).
+    """
+    state = {"code": mermaid_script, "mermaid": {"theme": "default"}}
+    raw = json.dumps(state, separators=(",", ":")).encode("utf-8")
+    compressor = zlib.compressobj(9, zlib.DEFLATED, 15)
+    deflated = compressor.compress(raw) + compressor.flush()
+    return "pako:" + base64.urlsafe_b64encode(deflated).decode("ascii")
+
 
 def _render_mermaid_to_image(mermaid_script: str, images_dir: Path) -> str:
     """
-    Render satu script Mermaid jadi file gambar PNG.
-
-    Implementasi saat ini pakai layanan hosted mermaid.ink (GET request,
-    base64 dari teks mermaid) — sudah diverifikasi jalan lewat tes
-    end-to-end (termasuk pipeline penuh ke repo GitHub asli).
+    Render satu script Mermaid jadi file gambar PNG lewat mermaid.ink.
 
     PERHATIAN: cara ini mengirim ISI DIAGRAM (bisa memuat nama endpoint,
     struktur komponen internal) ke layanan pihak ketiga lewat internet.
@@ -55,11 +90,28 @@ def _render_mermaid_to_image(mermaid_script: str, images_dir: Path) -> str:
     """
     images_dir.mkdir(parents=True, exist_ok=True)
 
-    encoded = base64.urlsafe_b64encode(mermaid_script.encode("utf-8")).decode("ascii")
-    url = f"https://mermaid.ink/img/{encoded}"
+    script = _strip_code_fence(mermaid_script)
+    url = f"https://mermaid.ink/img/{_encode_pako(script)}"
 
-    response = requests.get(url, timeout=30)
-    response.raise_for_status()
+    if len(url) > _MERMAID_URL_LIMIT:
+        raise DiagramRenderError(
+            f"Script diagram terlalu besar untuk mermaid.ink walau sudah dikompresi "
+            f"(URL {len(url)} karakter, batas ~{_MERMAID_URL_LIMIT}). Pecah diagram "
+            f"jadi beberapa bagian, atau pindah ke rendering lokal (mermaid-cli)."
+        )
+
+    try:
+        response = requests.get(url, timeout=30)
+        response.raise_for_status()
+    except requests.HTTPError as e:
+        status = e.response.status_code if e.response is not None else "?"
+        raise DiagramRenderError(
+            f"mermaid.ink menolak diagram (HTTP {status}): {_HTTP_HINTS.get(status, 'sebab tidak dikenal')}."
+        ) from e
+    except requests.RequestException as e:
+        raise DiagramRenderError(
+            f"mermaid.ink tidak merespons ({type(e).__name__}). Cek koneksi internet."
+        ) from e
 
     image_path = images_dir / f"{uuid.uuid4().hex}.png"
     image_path.write_bytes(response.content)
