@@ -101,7 +101,7 @@ def generate_document_full_pipeline(body: GenerateDocumentRequest):
             target_doc_type=doc_type,
         )
     except Exception as e:
-        logger.exception("Pemanggilan LLM (Gemini) gagal")
+        logger.exception("Pemanggilan LLM gagal")
         raise HTTPException(
             status_code=502,
             detail="Gagal menghasilkan konten dokumen dari AI. Coba lagi beberapa saat.",
