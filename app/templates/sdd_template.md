@@ -5,10 +5,10 @@
 | Field | Isi |
 | --- | --- |
 | Nama Project | {{ project_name }} |
-| No. Solution Design | *(diisi manual)* |
-| RFC # | *(diisi manual)* |
-| Versi | *(diisi manual)* |
-| Document Classification | *(diisi manual)* |
+| No. Solution Design | {{ meta.solution_design_no }} |
+| RFC # | {{ meta.rfc_number }} |
+| Versi | {{ meta.version }} |
+| Document Classification | {{ meta.document_classification }} |
 
 ## Document Revision History
 
@@ -24,7 +24,7 @@
 
 ## Persetujuan Dokumen
 
-*(diisi manual — timeline aktivitas, cost estimation, dan tanda tangan perwakilan user & pengembang)*
+Timeline aktivitas, cost estimation, serta tanda tangan perwakilan user dan pengembang dilengkapi pada dokumen cetak setelah dokumen ini disetujui. Bagian ini memang dikosongkan — tanda tangan tidak dapat dihasilkan oleh sistem.
 
 ## 1. Deskripsi Aplikasi
 
@@ -32,19 +32,19 @@
 
 ## 2. Application Dev System Type
 
-*(diisi manual — ERP / NON ERP)*
+{{ meta.dev_system_type }}
 
 ## 3. Informasi Demografi Aplikasi
 
 | No. | Subject | Uraian | Remark |
 | --- | --- | --- | --- |
-| 1 | Business Requestor | *(diisi manual)* | |
-| 2 | Business User | *(diisi manual)* | |
-| 3 | Projected User Number | *(diisi manual)* | |
-| 4 | Value (Rp) | *(diisi manual)* | |
-| 5 | Application Coverage Area | *(diisi manual)* | |
-| 6 | Collaboration Profile | *(diisi manual)* | |
-| 7 | Technology Capability | *(diisi manual)* | |
+| 1 | Business Requestor | {{ meta.business_requestor }} | |
+| 2 | Business User | {{ meta.business_user }} | |
+| 3 | Projected User Number | {{ meta.projected_user_number }} | |
+| 4 | Value (Rp) | {{ meta.value_rp }} | |
+| 5 | Application Coverage Area | {{ meta.coverage_area }} | |
+| 6 | Collaboration Profile | {{ meta.collaboration_profile }} | |
+| 7 | Technology Capability | {{ meta.technology_capability }} | |
 
 ## 4. System Requirement
 
@@ -54,11 +54,11 @@
 
 ## 5. How to Access
 
-*(diisi manual)*
+{{ meta.how_to_access }}
 
 ## 6. Infrastructure & Capacity Planning
 
-*(diisi manual)*
+{{ meta.infrastructure_capacity }}
 
 ## 7. Application Architecture
 
@@ -74,9 +74,9 @@
 
 | No. | Check List | Remark |
 | --- | --- | --- |
-| 1 | Penetration Test | *(diisi manual)* |
-| 2 | Secure Coding Practice | *(diisi manual)* |
-| 3 | Reverse Proxy | *(diisi manual)* |
+| 1 | Penetration Test | {{ meta.security_penetration_test }} |
+| 2 | Secure Coding Practice | {{ meta.security_secure_coding }} |
+| 3 | Reverse Proxy | {{ meta.security_reverse_proxy }} |
 
 ## 9. Application Features Requirement
 

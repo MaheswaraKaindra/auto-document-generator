@@ -5,17 +5,17 @@
 | Field | Isi |
 | --- | --- |
 | Nama Project | {{ project_name }} |
-| Related RFC # | *(diisi manual)* |
-| Related Work Order # | *(diisi manual)* |
-| Change Owner | *(diisi manual)* |
-| Prepared By | *(diisi manual)* |
-| Preparation Date | *(diisi manual)* |
-| Reviewed By | *(diisi manual)* |
-| Review Date | *(diisi manual)* |
+| Related RFC # | {{ meta.related_rfc_number }} |
+| Related Work Order # | {{ meta.related_work_order }} |
+| Change Owner | {{ meta.change_owner }} |
+| Prepared By | {{ meta.prepared_by }} |
+| Preparation Date | {{ meta.preparation_date }} |
+| Reviewed By | {{ meta.reviewed_by }} |
+| Review Date | {{ meta.review_date }} |
 
 ## Distribution List
 
-*(diisi manual)*
+{{ meta.distribution_list }}
 
 ## Version History
 
@@ -29,11 +29,11 @@ Dokumen ini menjelaskan prosedur pelaksanaan pengujian fungsional serta metode p
 
 Persetujuan atas dokumen ini oleh perwakilan pengguna pengujian menunjukkan bahwa hasil pengujian telah sesuai dengan kebutuhan, dan dengan demikian pengujian dianggap diterima.
 
-*(diisi manual — nama, jabatan, dan tanda tangan perwakilan user pengujian & perwakilan pengembang)*
+Nama, jabatan, dan tanda tangan perwakilan user pengujian serta perwakilan pengembang dibubuhkan pada dokumen cetak saat persetujuan diberikan.
 
 ## Sertifikasi Keberhasilan Pelaksanaan Pengujian
 
-*(diisi manual — tanggal penyelesaian, klasifikasi hasil Lolos/Gagal, tanda tangan)*
+Tanggal penyelesaian, klasifikasi hasil (Lolos/Gagal), dan tanda tangan diisi setelah seluruh kasus pengujian pada Bab 3 selesai dieksekusi. Bagian ini sengaja dikosongkan — hasilnya belum ada saat dokumen ini dibuat.
 
 ## 1. Prosedur Pengujian
 

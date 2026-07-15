@@ -52,6 +52,36 @@ _HTTP_HINTS = {
     503: "layanan sedang kelebihan beban, coba lagi nanti",
 }
 
+_MANUAL_PLACEHOLDER = "*(diisi manual)*"
+
+
+class _MetadataDict(dict):
+    """dict yang mengembalikan penanda *(diisi manual)* untuk field yang tidak
+    diisi pengguna.
+
+    Alasan pakai __missing__ ketimbang daftar field eksplisit: daftar itu harus
+    disinkronkan manual dengan DocumentMetadata di layer API, dan compiler tidak
+    boleh mengimpor ke atas ke layer API. Dengan cara ini menambah field metadata
+    cuma menyentuh schema + template — tidak ada daftar ketiga yang bisa basi.
+    """
+
+    def __missing__(self, key: str) -> str:
+        return _MANUAL_PLACEHOLDER
+
+
+def _build_metadata_context(document_metadata: dict[str, Any] | None) -> _MetadataDict:
+    """Ambil field yang benar-benar diisi; sisanya biar __missing__ yang jawab.
+
+    String kosong/spasi diperlakukan sama dengan tidak diisi — input form yang
+    dikosongkan pengguna tidak boleh menghasilkan sel tabel kosong melompong.
+    """
+    filled = {
+        key: value.strip()
+        for key, value in (document_metadata or {}).items()
+        if isinstance(value, str) and value.strip()
+    }
+    return _MetadataDict(filled)
+
 
 def _strip_code_fence(mermaid_script: str) -> str:
     """Buang code fence Markdown (```mermaid ... ```) kalau LLM terlanjur
@@ -176,7 +206,12 @@ def _build_uat_context(data: dict[str, Any]) -> dict[str, Any]:
     return {**data, "uat_test_cases": cleaned_cases}
 
 
-def generate_docx(document_type: str, document_content: dict[str, Any], project_name: str = "") -> str:
+def generate_docx(
+    document_type: str,
+    document_content: dict[str, Any],
+    project_name: str = "",
+    document_metadata: dict[str, Any] | None = None,
+) -> str:
     """
     Entry point utama Peran 3.
 
@@ -184,6 +219,9 @@ def generate_docx(document_type: str, document_content: dict[str, Any], project_
     document_content: dict hasil DocumentContent.model_dump() dari LLMService
                        milik Peran 2 (Contract B), atau dummy JSON dengan
                        skema yang sama.
+    document_metadata: isian manusia dari form (nomor RFC, demografi, dst).
+                       None/kosong = template pakai penanda *(diisi manual)*
+                       seperti sebelum form ini ada.
     Mengembalikan path file .docx yang sudah jadi.
     """
     normalized_type = document_type.upper()
@@ -191,7 +229,11 @@ def generate_docx(document_type: str, document_content: dict[str, Any], project_
     if template_name is None:
         raise ValueError(f"document_type tidak dikenal: {document_type!r} (harus 'SDD' atau 'UAT')")
 
-    context = {"project_name": project_name, **document_content}
+    context = {
+        "project_name": project_name,
+        "meta": _build_metadata_context(document_metadata),
+        **document_content,
+    }
 
     if normalized_type == "SDD":
         context = {**context, **_build_sdd_context(document_content)}

@@ -22,13 +22,18 @@ label {
 }
 
 input,
-select {
+select,
+textarea {
   font: inherit;
   padding: 8px;
   border: 1px solid var(--border);
   border-radius: 4px;
   background: var(--bg);
   color: var(--text-h);
+}
+
+textarea {
+  resize: vertical;
 }
 
 fieldset {
@@ -76,4 +81,39 @@ button[type='submit'] {
 p[role='status'] {
   min-height: 1.5em;
   margin-top: 16px;
+}
+
+.metadata-details {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 12px;
+}
+
+.metadata-details summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.metadata-details[open] summary {
+  margin-bottom: 12px;
+}
+
+.metadata-details fieldset {
+  margin-top: 12px;
+}
+
+.optional-tag {
+  font-weight: 400;
+  opacity: 0.7;
+  font-size: 0.85em;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 1px 8px;
+  margin-left: 4px;
+}
+
+.metadata-hint {
+  opacity: 0.75;
+  font-size: 0.9em;
+  margin: 0;
 }

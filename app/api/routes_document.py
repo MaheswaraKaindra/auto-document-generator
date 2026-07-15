@@ -31,11 +31,21 @@ _FILENAME_BY_TYPE = {
 }
 
 
-def _render_docx_or_502(doc_type: str, content: dict, project_name: str = "") -> str:
+def _render_docx_or_502(
+    doc_type: str,
+    content: dict,
+    project_name: str = "",
+    document_metadata: dict | None = None,
+) -> str:
     """Bungkus generate_docx() supaya kegagalan pihak ketiga (render diagram,
     pandoc) tidak bocor sebagai HTTP 500 mentah ke klien."""
     try:
-        return generate_docx(doc_type, content, project_name=project_name)
+        return generate_docx(
+            doc_type,
+            content,
+            project_name=project_name,
+            document_metadata=document_metadata,
+        )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     except DiagramRenderError as e:
@@ -106,6 +116,11 @@ def generate_document_full_pipeline(body: GenerateDocumentRequest):
             detail="Gagal menghasilkan konten dokumen dari AI. Coba lagi beberapa saat.",
         ) from e
 
-    output_path = _render_docx_or_502(doc_type, document_content, project_name=body.project_name or "")
+    output_path = _render_docx_or_502(
+        doc_type,
+        document_content,
+        project_name=body.project_name or "",
+        document_metadata=body.document_metadata.model_dump() if body.document_metadata else None,
+    )
 
     return FileResponse(output_path, media_type=_DOCX_MEDIA_TYPE, filename=_FILENAME_BY_TYPE[doc_type])
