@@ -4,3 +4,11 @@ __pycache__/
 *.pyc
 PERAN1_NOTES.md
 *.msi
+
+# Dokumen hasil generate saat testing manual + file lock Word
+output_*.docx
+~$*
+
+# Dokumen referensi internal (mis. SDD contoh dari perusahaan) — repo ini
+# ditujukan jadi produk publik, jangan sampai ikut ter-commit.
+*.pdf
