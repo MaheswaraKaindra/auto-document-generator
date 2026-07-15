@@ -17,6 +17,29 @@ from app.services.llm_service import LLMService
 _CONTEXT_A = {"project_name": "x", "repositories": []}
 
 
+def test_contract_a_serialized_compact_without_wasted_whitespace():
+    """Indentasi tidak menambah informasi apa pun untuk LLM — dia cuma dibayar.
+
+    Diukur pada saleor: indent=2 = 1.224.476 token (122% context window, DITOLAK)
+    vs compact rapat = 854.181 token (85%, MUAT). Aplikasi e-commerce Django nyata
+    jadi bisa dilayani hanya dengan berhenti membayari spasi.
+    """
+    payload = llm_service.format_contract_a({"project_name": "x", "repositories": []})
+
+    assert payload == '{"project_name":"x","repositories":[]}'
+    assert "\n" not in payload
+    assert ": " not in payload
+
+
+def test_contract_a_serialization_is_deterministic():
+    """Prompt caching itu cocok-dari-depan: satu byte berbeda membatalkan semua
+    sesudahnya. Serialisasi yang tidak deterministik akan diam-diam mematikan
+    cache, dan gejalanya cuma tagihan lebih mahal dari perkiraan."""
+    ctx = {"project_name": "x", "repositories": [{"repo_tag": "B", "files": []}]}
+
+    assert llm_service.format_contract_a(ctx) == llm_service.format_contract_a(ctx)
+
+
 def _fake_stream(final_message=None, error=None, stop_reason="end_turn"):
     """Tiru context manager client.messages.stream(...).
 

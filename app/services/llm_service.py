@@ -18,6 +18,28 @@ logger = logging.getLogger(__name__)
 # yang dipakai Claude Code saat mengerjakan project ini.
 MODEL = config.LLM_MODEL
 
+
+def format_contract_a(parsed_repo_context: dict) -> str:
+    """Serialisasi Contract A persis seperti yang dikirim ke LLM.
+
+    DIEKSPOR supaya siapa pun yang ingin mengukur Contract A mengukur BENDA YANG
+    SAMA. Ini bukan kerapian: `scripts/validation/` dulu memakai `json.dumps()`
+    polos sementara di sini `indent=2`, jadi laporan ukurannya **meleset 21-25%**
+    — medusa dilaporkan 2.831 KB padahal yang dikirim 1,58 juta token. Tiap
+    keputusan yang bersandar pada angka itu ikut meleset. Dua tempat men-serialisasi
+    hal yang sama = dua tempat yang bisa berbeda diam-diam.
+
+    Compact rapat, tanpa spasi. Indentasi tidak menambah informasi apa pun untuk
+    LLM — dia cuma dibayar. Diukur pada saleor: indent=2 = 1.224.476 token (122%
+    context window, DITOLAK) vs rapat = 854.181 token (85%, MUAT). Aplikasi
+    e-commerce Django nyata jadi bisa dilayani hanya dengan berhenti membayari
+    spasi.
+
+    Deterministik (dict Python menjaga urutan sisip), jadi prompt caching tetap
+    nyantol — cocok-dari-depan butuh byte yang identik.
+    """
+    return json.dumps(parsed_repo_context, separators=(",", ":"))
+
 # max_tokens itu batas TOTAL: thinking + teks jawaban berbagi jatah yang sama.
 # Ini yang bikin 16.000 patah pada esteler-app (2026-07-15): claude-sonnet-5
 # menjalankan adaptive thinking secara DEFAULT kalau field `thinking` tidak
@@ -252,7 +274,7 @@ class LLMService:
             "type": "text",
             "text": (
                 "Berikut adalah metadata repositori (Contract A):\n"
-                f"{json.dumps(parsed_repo_context, indent=2)}"
+                f"{format_contract_a(parsed_repo_context)}"
             ),
             "cache_control": {"type": "ephemeral"},
         }

@@ -54,6 +54,10 @@ from app.core import config  # noqa: E402
 from app.domain.models import GithubIngestRequest, SourceType  # noqa: E402
 from app.services.compiler_service import generate_docx  # noqa: E402
 from app.services.ingestion_service import IngestionService  # noqa: E402
+# Cuma fungsi serialisasinya, BUKAN LLMService — yang itu tetap di-import tertunda
+# di dalam run_stage2 supaya Tahap 1 tidak pernah membuat client Anthropic.
+# format_contract_a tidak menyentuh jaringan maupun API key.
+from app.services.llm_service import format_contract_a  # noqa: E402
 from app.services.parser_service import build_parsed_repo_context  # noqa: E402
 
 CASES_FILE = Path(__file__).parent / "repos.json"
@@ -139,7 +143,13 @@ def _summarize(context: dict) -> dict:
         "endpoints": sum(len(f.get("api_endpoints", [])) for f in files),
         "classes": sum(len(f.get("classes", [])) for f in files),
         "functions": sum(len(f.get("functions", [])) for f in files),
-        "contract_a_kb": round(len(json.dumps(context).encode("utf-8")) / 1024, 1),
+        # format_contract_a() dari llm_service, BUKAN json.dumps() sendiri: harness
+        # ini dulu mengukur bentuk compact sementara llm_service mengirim indent=2,
+        # jadi laporannya meleset 21-25% dan menyesatkan tiap keputusan yang
+        # bersandar padanya (medusa dilaporkan 2.831 KB; yang dikirim 1,58 juta
+        # token). Alat ukur yang tidak mengukur benda yang dikirim itu lebih buruk
+        # daripada tidak mengukur sama sekali — dia memberi rasa aman palsu.
+        "contract_a_kb": round(len(format_contract_a(context).encode("utf-8")) / 1024, 1),
     }
 
 
