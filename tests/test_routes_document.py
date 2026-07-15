@@ -18,6 +18,7 @@ from app.api import routes_document
 from app.api.schemas_document import DocumentMetadata
 from app.domain.exceptions import ContextWindowExceededError
 from app.main import app
+from app.services import job_store
 
 FIXTURES_DIR = Path(__file__).resolve().parent.parent / "dummy_data"
 
@@ -32,9 +33,29 @@ def _load_fixture(name: str) -> dict:
     return json.loads((FIXTURES_DIR / name).read_text(encoding="utf-8"))
 
 
+@pytest.fixture(autouse=True)
+def isolated_job_db(tmp_path, monkeypatch):
+    """Arahkan SQLite ke tmp_path, jangan sentuh data/jobs.db milik pengembang."""
+    monkeypatch.setattr(job_store, "DB_PATH", tmp_path / "jobs.db")
+    job_store.init_db()
+
+
 @pytest.fixture
 def client():
     return TestClient(app)
+
+
+def _generate(client, **body) -> dict:
+    """POST /documents/generate lalu ambil status job-nya.
+
+    TestClient menjalankan BackgroundTasks SESUDAH response terkirim tapi SEBELUM
+    client.post() balik — jadi begitu baris ini selesai, job-nya sudah rampung.
+    Itu yang bikin test async ini tetap deterministik tanpa sleep/polling.
+    """
+    response = client.post("/documents/generate", json={"repositories": [], **body})
+    assert response.status_code == 202, response.text
+    job_id = response.json()["job_id"]
+    return client.get(f"/documents/jobs/{job_id}").json()
 
 
 @pytest.fixture
@@ -94,25 +115,48 @@ def test_generate_full_pipeline_rejects_invalid_document_type(client):
     assert response.status_code == 422
 
 
-def test_generate_full_pipeline_returns_502_when_llm_fails(client):
+def test_generate_returns_202_immediately_without_doing_the_work(client, mock_mermaid_ok):
+    """Inti dari async: POST balik SEBELUM pipeline jalan.
+
+    Versi lama menahan seluruh pipeline (terukur 191 detik pada repo nyata) di
+    satu request HTTP, sementara proxy umumnya memutus di 30-60 detik.
+    """
+    content = _load_fixture("document_content_sdd.json")
+
+    with patch.object(
+        routes_document._llm_service, "generate_document_content", return_value=content
+    ):
+        response = client.post(
+            "/documents/generate", json={"document_type": "SDD", "repositories": []}
+        )
+
+    assert response.status_code == 202
+    body = response.json()
+    assert body["status"] == "queued"
+    assert body["status_url"] == f"/documents/jobs/{body['job_id']}"
+
+
+def test_llm_failure_lands_on_the_job_not_the_request(client):
+    """Kegagalan pipeline tidak lagi bisa dikembalikan sebagai status HTTP request
+    — requestnya sudah balik lama. Harus mendarat di job."""
     with patch.object(
         routes_document._llm_service,
         "generate_document_content",
         side_effect=RuntimeError("LLM gagal"),
     ):
-        response = client.post(
-            "/documents/generate",
-            json={"document_type": "SDD", "repositories": []},
-        )
+        job = _generate(client, document_type="SDD")
 
-    assert response.status_code == 502
+    assert job["status"] == "failed"
+    assert job["error_status"] == 502
+    assert "coba lagi" in job["error"].lower()  # sebab tak dikenal: mengulang memang masuk akal
 
 
-def test_context_window_exceeded_returns_413_not_retry_advice(client):
-    """Setengah bug-nya ada di sini. `except Exception` meratakan SEMUA kegagalan
-    LLM jadi 502 "coba lagi beberapa saat" — untuk repo yang kebesaran, itu saran
-    yang tidak akan pernah menolong berapa kali pun dicoba. Kelas kesalahan yang
-    sama dengan 502 yang dulu menelan 414 dari mermaid.ink."""
+def test_context_window_failure_keeps_its_413_after_going_async(client):
+    """Penjaga regresi paling penting dari perpindahan ke async: pemetaan
+    exception -> kode HTTP tidak boleh HILANG hanya karena kegagalannya sekarang
+    terjadi di latar belakang. Repo kebesaran itu PERMANEN — pengguna harus tetap
+    bisa membedakannya dari 502 'coba lagi'. Kalau semua kegagalan job dilaporkan
+    sama, kita balik ke penyamaran yang sudah tiga kali diperbaiki."""
     with patch.object(
         routes_document._llm_service,
         "generate_document_content",
@@ -121,15 +165,12 @@ def test_context_window_exceeded_returns_413_not_retry_advice(client):
             "1,224,476 token, sementara model ini cuma memuat 1,000,000."
         ),
     ):
-        response = client.post(
-            "/documents/generate",
-            json={"document_type": "SDD", "repositories": []},
-        )
+        job = _generate(client, document_type="SDD")
 
-    assert response.status_code == 413
-    detail = response.json()["detail"]
-    assert "1,224,476" in detail  # sebab aslinya diteruskan, bukan disamarkan
-    assert "coba lagi" not in detail.lower()
+    assert job["status"] == "failed"
+    assert job["error_status"] == 413
+    assert "1,224,476" in job["error"]  # sebab aslinya diteruskan, bukan disamarkan
+    assert "coba lagi" not in job["error"].lower()
 
 
 def _docx_text_from_response(response, tmp_path) -> str:
@@ -145,28 +186,28 @@ def _docx_text_from_response(response, tmp_path) -> str:
     return "\n".join(parts)
 
 
-def test_generate_full_pipeline_puts_form_metadata_into_docx(client, mock_mermaid_ok, tmp_path):
-    """Jalur yang benar-benar dipakai end user: isian form harus menembus
-    request -> route -> compiler -> template dan muncul di docx yang diunduh."""
+def test_form_metadata_survives_the_whole_async_round_trip(client, mock_mermaid_ok, tmp_path):
+    """Jalur yang benar-benar dipakai end user, sekarang tiga langkah: isian form
+    harus menembus POST -> background task -> compiler -> template -> DB -> lalu
+    keluar utuh di docx yang diunduh lewat /jobs/{id}/download."""
     content = _load_fixture("document_content_sdd.json")
 
     with patch.object(
         routes_document._llm_service, "generate_document_content", return_value=content
     ):
-        response = client.post(
-            "/documents/generate",
-            json={
-                "document_type": "SDD",
-                "repositories": [],
-                "document_metadata": {
-                    "rfc_number": "RFC-2026-088",
-                    "business_requestor": "Divisi Operasional",
-                },
+        job = _generate(
+            client,
+            document_type="SDD",
+            document_metadata={
+                "rfc_number": "RFC-2026-088",
+                "business_requestor": "Divisi Operasional",
             },
         )
 
-    assert response.status_code == 200
-    text = _docx_text_from_response(response, tmp_path)
+    assert job["status"] == "done"
+    download = client.get(job["download_url"])
+    assert download.status_code == 200
+    text = _docx_text_from_response(download, tmp_path)
     assert "RFC-2026-088" in text
     assert "Divisi Operasional" in text
 
@@ -186,18 +227,43 @@ def test_every_meta_field_in_templates_exists_in_schema():
         assert not unknown, f"{template} memakai field yang tidak ada di DocumentMetadata: {sorted(unknown)}"
 
 
-def test_generate_full_pipeline_works_without_metadata(client, mock_mermaid_ok, tmp_path):
-    """document_metadata opsional -- request lama (tanpa field ini) harus tetap
-    jalan dan menghasilkan dokumen berpenanda seperti sebelumnya."""
+def test_generate_works_without_metadata(client, mock_mermaid_ok, tmp_path):
+    """document_metadata opsional -- request tanpa field ini harus tetap jalan
+    dan menghasilkan dokumen berpenanda seperti sebelumnya."""
     content = _load_fixture("document_content_sdd.json")
 
     with patch.object(
         routes_document._llm_service, "generate_document_content", return_value=content
     ):
-        response = client.post(
-            "/documents/generate",
-            json={"document_type": "SDD", "repositories": []},
-        )
+        job = _generate(client, document_type="SDD")
 
-    assert response.status_code == 200
-    assert "(diisi manual)" in _docx_text_from_response(response, tmp_path)
+    assert job["status"] == "done"
+    download = client.get(job["download_url"])
+    assert "(diisi manual)" in _docx_text_from_response(download, tmp_path)
+
+
+def test_download_before_finished_says_not_ready_not_not_found(client):
+    """409, bukan 404: job-nya ADA, cuma belum siap. 404 bikin klien mengira
+    job_id-nya salah lalu berhenti polling."""
+    job_id = job_store.create_job(document_type="SDD", project_name=None)
+
+    response = client.get(f"/documents/jobs/{job_id}/download")
+
+    assert response.status_code == 409
+    assert "belum selesai" in response.json()["detail"]
+
+
+def test_unknown_job_returns_404(client):
+    assert client.get("/documents/jobs/tidak-ada").status_code == 404
+    assert client.get("/documents/jobs/tidak-ada/download").status_code == 404
+
+
+def test_bad_document_type_rejected_synchronously_without_creating_a_job(client):
+    """Validasi murah tetap sinkron: request salah bentuk harus ditolak SEKARANG,
+    bukan jadi job yang gagal tiga menit kemudian."""
+    response = client.post(
+        "/documents/generate", json={"document_type": "INVALID", "repositories": []}
+    )
+
+    assert response.status_code == 422
+    assert "job_id" not in response.json()

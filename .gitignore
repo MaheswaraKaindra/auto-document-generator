@@ -17,3 +17,6 @@ scripts/validation/out/
 # Dokumen referensi internal (mis. SDD contoh dari perusahaan) — repo ini
 # ditujukan jadi produk publik, jangan sampai ikut ter-commit.
 *.pdf
+
+# Database SQLite (status job + dokumen hasil) — dibuat otomatis saat runtime.
+data/

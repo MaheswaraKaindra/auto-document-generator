@@ -109,6 +109,37 @@ function extractFilename(response, fallback) {
   return match ? match[1] : fallback
 }
 
+const POLL_INTERVAL_MS = 2000
+// Generation terukur ~100-190 detik pada repo nyata. 10 menit memberi ruang
+// untuk repo yang jauh lebih besar tanpa menggantung tab selamanya kalau
+// server-nya mati diam-diam.
+const POLL_TIMEOUT_MS = 10 * 60 * 1000
+
+/** Tanya status job sampai selesai.
+ *
+ *  Ada karena backend tidak lagi mengembalikan .docx di response POST: kerjanya
+ *  jalan di latar belakang supaya tidak ada request yang digantung 3 menit dan
+ *  diputus proxy. Konsekuensinya klien yang harus bertanya.
+ */
+async function pollJob(jobId, onTick) {
+  const startedAt = Date.now()
+  while (Date.now() - startedAt < POLL_TIMEOUT_MS) {
+    const response = await fetch(`${API_BASE_URL}/documents/jobs/${jobId}`)
+    if (!response.ok) {
+      throw new Error(`Gagal menanyakan status job (${response.status})`)
+    }
+    const job = await response.json()
+    if (job.status === 'done' || job.status === 'failed') return job
+
+    onTick(Math.round((Date.now() - startedAt) / 1000))
+    await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS))
+  }
+  throw new Error(
+    'Job belum selesai setelah 10 menit. Prosesnya mungkin masih jalan di server — ' +
+      `cek /documents/jobs/${jobId} secara manual.`,
+  )
+}
+
 /** Buang field kosong; kembalikan null kalau tidak ada yang diisi sama sekali,
  *  supaya request-nya jujur menyatakan "tidak ada metadata" ketimbang mengirim
  *  25 field null. */
@@ -150,7 +181,7 @@ function App() {
   const handleSubmit = async (event) => {
     event.preventDefault()
     setIsSubmitting(true)
-    setStatus('Memproses... (bisa beberapa saat, sistem sedang membaca repo & memanggil AI)')
+    setStatus('Mengirim permintaan...')
 
     const payload = {
       project_name: projectName || null,
@@ -176,8 +207,28 @@ function App() {
         throw new Error(`Server merespons ${response.status}: ${detail}`)
       }
 
-      const blob = await response.blob()
-      const filename = extractFilename(response, 'dokumen.docx')
+      // 202 Accepted: pekerjaannya BELUM jalan, baru diantrikan.
+      const { job_id: jobId } = await response.json()
+      setStatus('Diantrikan. Sistem sedang membaca repo & memanggil AI...')
+
+      const job = await pollJob(jobId, (seconds) =>
+        setStatus(`Sedang diproses... (${seconds} detik) — biasanya 2-3 menit.`),
+      )
+      if (job.status === 'failed') {
+        // Pesan dari server diteruskan apa adanya: dia sudah menjelaskan sebab
+        // aslinya (repo kebesaran, diagram gagal, dst) dan cuma menyarankan
+        // "coba lagi" kalau mengulang memang masuk akal.
+        throw new Error(job.error)
+      }
+
+      setStatus('Dokumen siap, mengunduh...')
+      const download = await fetch(`${API_BASE_URL}${job.download_url}`)
+      if (!download.ok) {
+        throw new Error(`Gagal mengunduh dokumen (${download.status})`)
+      }
+
+      const blob = await download.blob()
+      const filename = extractFilename(download, 'dokumen.docx')
       const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url

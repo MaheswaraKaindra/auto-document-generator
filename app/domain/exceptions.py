@@ -18,6 +18,17 @@ class DiagramRenderError(Exception):
     """
 
 
+class PandocUnavailableError(Exception):
+    """Pandoc is not installed on the system.
+
+    compiler_service raises a bare RuntimeError for this. That was fine while the
+    caller caught it right around generate_docx(), but the async job runner wraps
+    the whole pipeline — and a bare RuntimeError there is indistinguishable from
+    a RuntimeError raised anywhere else, so an unrelated failure would be
+    reported as "Pandoc missing". Naming it keeps the catch honest.
+    """
+
+
 class DocumentTruncatedError(Exception):
     """The model hit max_tokens before finishing the JSON document.
 

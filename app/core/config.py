@@ -16,6 +16,12 @@ ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 # turun — perbandingannya belum diuji langsung, lihat Keterbatasan di CLAUDE.md.
 LLM_MODEL = os.getenv("LLM_MODEL", "claude-sonnet-5")
 
+# SQLite untuk status job + path dokumen. Sengaja BUKAN di folder temp: generation
+# itu async sekarang, dan seluruh gunanya database ini adalah bertahan melewati
+# response — bahkan melewati restart. DB di temp akan hilang diam-diam dan
+# meninggalkan riwayat yang menunjuk ke file yang sudah tidak ada.
+DATABASE_PATH = os.getenv("DATABASE_PATH", "data/jobs.db")
+
 GITHUB_CLIENT_ID = os.getenv("GITHUB_CLIENT_ID")
 GITHUB_CLIENT_SECRET = os.getenv("GITHUB_CLIENT_SECRET")
 GITHUB_OAUTH_REDIRECT_URI = os.getenv("GITHUB_OAUTH_REDIRECT_URI", "http://localhost:8000/auth/github/callback")

@@ -52,6 +52,25 @@ Pandoc  ->  .docx
 Solution Design Document (.docx)  /  UAT Document (.docx)
 ```
 
+Seluruh rantai di atas jalan **di latar belakang** (sejak 2026-07-16). Dari sisi
+klien bentuknya tiga langkah, bukan satu:
+
+```
+POST /documents/generate   ->  202 + {job_id}      (~50ms; kerjanya belum jalan)
+        |                          |
+        |                     BackgroundTasks: rantai di atas (~100-190 detik)
+        |                          |
+        |                     job_store (SQLite): queued -> running -> done/failed
+        v                          v
+GET /documents/jobs/{id}   ->  status  ->  GET /documents/jobs/{id}/download
+```
+
+Alasannya bukan kerapian: menahan pipeline 191 detik di satu request HTTP membuat
+produk ini **mustahil di-deploy** — proxy/load balancer memutus di 30-60 detik
+(Heroku 30, nginx & AWS ALB 60, Vercel 10-60), sementara server tetap lanjut
+bekerja dan tetap membayar LLM untuk dokumen yang tidak pernah sampai ke siapa
+pun. Di localhost tidak ada satu pun batas itu, jadi bug-nya tak terlihat.
+
 Prinsip desain: setiap tahap dipisah dengan **kontrak JSON** yang jelas (Contract A, Contract B), supaya tim bisa kerja paralel dan tiap tahap bisa diganti tanpa merusak tahap lain (mis. ganti sumber kode dari GitHub ke ZIP tidak menyentuh kode parser; ganti LLM provider tidak menyentuh kode ingestion/parser).
 
 ## Tim & Pembagian Kerja
@@ -169,11 +188,12 @@ app/
     parser_service.py        # Tree-sitter structural extraction, Contract A (Peran 1)
     github_oauth_service.py  # OAuth GitHub scaffold (Peran 1)
     llm_service.py           # LLMService, Contract A -> Contract B via Claude (Peran 2)
+    job_store.py             # status job + path dokumen (SQLite stdlib) — Peran 3
     compiler_service.py      # Contract B -> render Mermaid -> Jinja2 -> .docx (Peran 3)
   api/
     routes_ingestion.py      # POST /ingest/github, POST /ingest/zip
     routes_auth.py           # GET /auth/github/login, GET /auth/github/callback
-    routes_document.py       # POST /documents/sdd, /documents/uat, /documents/generate
+    routes_document.py       # POST /documents/{sdd,uat,generate}, GET /documents/jobs/*
     schemas.py, schemas_document.py
   templates/
     sdd_template.md, uat_template.md   # template Jinja2 (Markdown) sebelum dikonversi ke docx
@@ -183,7 +203,7 @@ app/
 frontend/                    # React + Vite, form sederhana yang hit POST /documents/generate
   src/App.jsx, src/main.jsx
 
-tests/                       # pytest (109 test) — lihat bagian Testing
+tests/                       # pytest (113 test) — lihat bagian Testing
 dummy_data/                  # fixture JSON — dipakai test otomatis DAN testing manual
 scripts/                     # utilitas dev, bukan bagian dari aplikasi
   model_getter.py            # cetak daftar model yang tersedia untuk API key kamu
@@ -213,6 +233,7 @@ Root sengaja dijaga cuma berisi file konfigurasi/dokumen (`.env.example`, `.giti
 |---|---|---|
 | `ANTHROPIC_API_KEY` | Ya (untuk fitur LLM / Peran 2) | https://console.anthropic.com/settings/keys |
 | `LLM_MODEL` | Opsional | Model yang dipakai **aplikasi** untuk menulis dokumen. Kosong = `claude-sonnet-5`. Harga per 1M token (input/output, per 2026-07-15): `claude-sonnet-5` $3/$15 (intro $2/$10 s/d 2026-08-31), `claude-opus-4-8` $5/$25, `claude-haiku-4-5` $1/$5. |
+| `DATABASE_PATH` | Opsional | Lokasi SQLite untuk status job + dokumen. Kosong = `data/jobs.db` (di-gitignore, dibuat otomatis). **Sengaja bukan folder temp**: generation itu async, dan seluruh guna DB ini adalah bertahan melewati response — bahkan melewati restart. |
 | `GITHUB_TOKEN` | Opsional | PAT untuk akses repo privat lewat endpoint ingest berbasis PAT. Repo publik tetap bisa tanpa token, cuma rate-limited 60 req/jam. |
 | `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` / `GITHUB_OAUTH_REDIRECT_URI` | Opsional | Cuma perlu kalau mau flow OAuth GitHub beneran jalan (perlu GitHub OAuth App terdaftar — belum ada saat ini, lihat Keterbatasan). |
 
@@ -273,7 +294,9 @@ Frontend hardcode `API_BASE_URL = http://localhost:8000` (lihat `frontend/src/Ap
 | `GET` | `/auth/github/callback` | Callback OAuth GitHub |
 | `POST` | `/documents/sdd` | Terima `DocumentContent` (Contract B) langsung, render jadi SDD `.docx` — untuk testing template tanpa perlu ingest+LLM. **Tidak menerima `document_metadata`** (body-nya murni Contract B); dokumennya keluar dengan penanda `(diisi manual)` |
 | `POST` | `/documents/uat` | Sama seperti di atas, untuk UAT `.docx` |
-| `POST` | `/documents/generate` | **Endpoint utama** — orkestrator penuh: ingest -> parse -> LLM -> compile, satu request, langsung dapat file `.docx`. Satu-satunya yang menerima `document_metadata` (isian form, opsional — lihat `DocumentMetadata`) |
+| `POST` | `/documents/generate` | **Endpoint utama, ASYNC.** Balik **202** + `{job_id, status_url}` dalam ~50ms; pipeline penuh (ingest -> parse -> LLM -> compile) jalan di latar belakang. Satu-satunya yang menerima `document_metadata` (isian form, opsional — lihat `DocumentMetadata`) |
+| `GET` | `/documents/jobs/{job_id}` | Status job: `queued`/`running`/`done`/`failed`. **200 walau job-nya gagal** — kegagalannya ada di payload (`error` + `error_status`), karena pertanyaannya sendiri berhasil dijawab |
+| `GET` | `/documents/jobs/{job_id}/download` | Unduh `.docx` hasil. **409** kalau job belum selesai (bukan 404 — job-nya ada, cuma belum siap) |
 
 ## Testing
 
@@ -281,7 +304,7 @@ Frontend hardcode `API_BASE_URL = http://localhost:8000` (lihat `frontend/src/Ap
 pytest
 ```
 
-109 test, **selalu mock** pemanggilan LLM (Claude), Mermaid.ink, dan GitHub — supaya test tidak bergantung pada koneksi internet, API key, atau kuota, dan tidak pernah mengeluarkan biaya API secara tidak sengaja.
+113 test, **selalu mock** pemanggilan LLM (Claude), Mermaid.ink, dan GitHub — supaya test tidak bergantung pada koneksi internet, API key, atau kuota, dan tidak pernah mengeluarkan biaya API secara tidak sengaja.
 
 | File | Meng-cover |
 |---|---|
@@ -337,12 +360,14 @@ Untuk testing manual end-to-end (hit API sungguhan, termasuk panggilan LLM yang 
 - **Ceiling diagram masih ada, cuma jauh lebih tinggi.** `mermaid.ink` ada di balik reverse proxy dengan batas URL ~8KB (diukur: 7.720 karakter masih `200`, 9.376 karakter sudah `414`). Encoding `pako:` memberi kompresi ~7x, jadi diagram realistis aman — tapi diagram yang sangat ekstrem tetap bisa menembusnya. `_render_mermaid_to_image` sudah memeriksa panjang URL sebelum request dan gagal dengan pesan jelas (`DiagramRenderError`), bukan menghabiskan request percuma.
 - **`LLMService` memakai timeout client 1500 detik (25 menit)** untuk mengantisipasi generation yang lama pada repo besar/kompleks (default SDK 10 menit terbukti kurang untuk repo nyata yang cukup besar saat diuji). Kalau generation tetap sering lambat di masa depan, pertimbangkan pindah ke `.stream()` daripada menaikkan timeout terus-menerus.
 - **Tabel Revision History masih keluar sebagai baris kosong** (ditemukan 2026-07-15 sesudah form metadata selesai, belum diperbaiki). Tiga tabel — Document Revision History + Application Revision History (SDD), Version History (UAT) — punya header lengkap tapi isinya satu baris kosong `| | | | | |`. Ini **bukan** bagian dari 28 penanda `(diisi manual)` yang sudah ditutup form, jadi luput dari hitungan itu, tapi dampaknya persis sama: dua tabel kosong nongkrong di halaman pertama SDD, tepat di bawah tabel Informasi Dokumen yang sekarang terisi rapi. Sebagian datanya sudah ada di `DocumentMetadata` (`version`, `prepared_by`, `preparation_date`). Yang bikin ini tidak langsung dikerjakan: kolom `Summary of Changes` tidak punya jawaban jujur untuk dokumen yang baru pertama kali digenerate — mengisinya "Dokumen dibuat otomatis dari source code" berarti sistem mengarang riwayat revisi. Perlu keputusan produk dulu, bukan sekadar coding.
-- **Belum ada eksekusi asynchronous, dan ini penghalang produksi yang paling diremehkan.** Generation makan ~100-125 detik (terukur pada flask/fastapi/realworld), dan seluruhnya ditahan di satu request HTTP sinkron lewat `POST /documents/generate`. Load balancer, reverse proxy, dan gateway umumnya memutus koneksi di 30-60 detik — jadi ini akan patah begitu di-deploy di belakang infrastruktur apa pun yang wajar, meskipun di localhost terlihat baik-baik saja. Perlu job queue + endpoint polling/webhook sebelum produk ini bisa dipakai orang lain. Berkaitan: **tidak ada database sama sekali** — begitu response terkirim, dokumennya hilang; tidak ada riwayat, tidak bisa unduh ulang.
+- **Job hilang kalau server restart, dan tidak bisa multi-worker** (batas yang diketahui & diterima sejak async masuk, 2026-07-16). `BackgroundTasks` menjalankan job di dalam proses yang sama: kalau uvicorn di-restart saat job jalan, job itu berhenti selamanya di status `running` — tidak ada yang memungutnya kembali. Begitu juga kalau di-deploy multi-worker (`--workers 4`), job cuma hidup di worker yang menerima POST-nya. **Ini keputusan sadar, bukan kelalaian**: penghalang yang sebenarnya adalah request digantung 191 detik lalu diputus proxy, dan itu **sudah selesai** dengan nol infrastruktur baru. Redis + RQ menyelesaikan sisanya tapi menambah layanan yang harus hidup saat deploy. Naikkan kalau produk ini benar-benar dipakai orang lain; sebelum itu, berlebihan. Catatan penting untuk deploy: **di platform serverless (Vercel/Lambda) `BackgroundTasks` tidak aman** — proses bisa dibekukan begitu response terkirim, jadi job-nya mati di tengah jalan. Butuh worker sungguhan di sana.
+- **Dokumen tidak pernah dibersihkan.** `data/documents/` tumbuh selamanya — satu docx ~400 KB (terukur pada esteler). Belum ada TTL, belum ada penghapusan job lama. Belum jadi masalah untuk pemakaian sekarang, tapi jadi masalah begitu ada yang memakainya rutin.
 - **Frontend (`frontend/src/App.jsx`) masih berupa form dasar tanpa penjelasan** — belum benar-benar dioptimalkan supaya "kalangan manapun" (bukan cuma developer) langsung paham cara pakainya. Bagian atas form (nama project, tipe dokumen, token, daftar repo) masih polos: tidak ada penjelasan apa itu `repo_tag`, kenapa butuh token, atau apa bedanya SDD vs UAT. Section "Informasi Dokumen" yang ditambahkan 2026-07-15 sudah punya paragraf pengantar dan field-nya berlabel istilah dokumen (bukan istilah kode), jadi polanya sudah ada — tinggal diterapkan ke bagian atas. Prinsip non-teknis selebihnya masih baru diterapkan di *isi dokumen yang digenerate* (lewat system prompt LLM), bukan di UI.
 - **Tidak ada hubungan/integrasi dengan project sibling `auto-project-tester`** — keduanya independen. Kalau menjalankan keduanya bersamaan secara lokal, perhatikan **keduanya sama-sama default ke port 8000** untuk backend-nya masing-masing — pastikan tidak salah port sebelum menyimpulkan sesuatu error/berhasil.
 
 ## Riwayat Perubahan Penting
 
+- **2026-07-16** — **`POST /documents/generate` jadi ASYNC + database job (SQLite). Penghalang produksi terbesar selesai.** Versi lama menahan SELURUH pipeline di satu request HTTP — terukur **191 detik** pada repo nyata — sementara proxy/load balancer memutus di 30-60 detik (Heroku 30, nginx & AWS ALB 60, Vercel 10-60). Di localhost tidak ada satu pun batas itu, jadi bug-nya tidak terlihat sampai di-deploy; dan ketika koneksinya diputus, **server tetap lanjut bekerja dan tetap membayar LLM** untuk dokumen yang tidak pernah sampai ke siapa pun. Sekarang: POST balik **202 + job_id dalam ~50ms** (diukur di server hidup, bukan test), kerja jalan lewat `BackgroundTasks`, klien polling `GET /documents/jobs/{id}` lalu unduh. **Database ikut karena async menuntutnya**: begitu POST balik duluan, harus ada tempat menaruh status dan hasil — sebelumnya tidak ada apa pun, `FileResponse` mengirim file dari temp lalu jejaknya hilang. `sqlite3` stdlib, **nol dependency baru, nol layanan tambahan** — skemanya sengaja rata (bukan ORM) supaya pindah ke Postgres cuma soal mengganti isi `job_store.py`. **Yang paling penting dijaga: pemetaan exception → kode HTTP tidak hilang.** 413 (repo kebesaran) dan 500 (dokumen terpotong) itu kegagalan permanen, dan pengguna harus tetap bisa membedakannya dari 502 "coba lagi" — kalau semua kegagalan job dilaporkan sama, kita balik ke penyamaran yang sudah tiga kali diperbaiki. Karena itu job menyimpan `error_status`. **Dan penyamaran itu nyaris terjadi lagi di sini**: `except RuntimeError` (untuk "Pandoc tidak ada") sempat ditaruh membungkus seluruh pipeline, sehingga `RuntimeError` dari LLM dilaporkan sebagai "Pandoc tidak tersedia" — ditangkap test, diperbaiki dengan `PandocUnavailableError` yang ditangkap di sekeliling `generate_docx()` saja. Batas yang diketahui & diterima ada di Keterbatasan (restart, multi-worker, serverless).
 - **2026-07-16** — **DOKUMEN PERTAMA UNTUK APLIKASI BISNIS NYATA BERBAHASA PYTHON — sesuatu yang belum pernah terjadi sepanjang umur project ini.** Dibuat untuk `esteler-app` (Flask, aplikasi pemesanan Es Teler milik anggota tim, ~$0,24): 10 fitur, 9 use case, 8 test case, 9 activity diagram, docx 408 KB. **Kualitasnya kuat dan terverifikasi bukan karangan**: `app_description` menyebut pre-order/walk-in/pembayaran WhatsApp/chatbot — semuanya benar; sepuluh fiturnya memetakan satu-satu ke `services/*` dan endpoint yang nyata (Manajemen Menu, Dashboard Analitik, Keranjang, Rating, Chatbot, Rekomendasi); aktornya **Admin & Customer**, bukan Developer/API Client. **Diagramnya sepenuhnya berdasar bukti** — termasuk `Database PostgreSQL (Neon)`, yang sempat saya tuduh karangan sampai pemilik repo mengoreksi: "Neon" memang ada di Contract A, di **docstring** `config.py::_normalize_db_url()`, dan parser memang mengekstrak docstring. Pelajarannya dicatat di Keterbatasan: `dependencies` bukan satu-satunya bukti di Contract A. Yang membuka jalan: **deteksi endpoint Flask** (`@bp.route(...)`) di `parser_service.py` — `route` bukan anggota `HTTP_METHODS`, jadi Flask menghasilkan **nol** endpoint selama ini. Perbaikannya berantai jauh melampaui endpoint: esteler **0 → 38 endpoint**, coverage **41% → 55%**, dan `routes/` otomatis dikenali `controller` tanpa menyentuh heuristik `type` sama sekali (sinyal `has_endpoints` yang sudah ada langsung bekerja begitu endpoint terlihat). Satu decorator bisa jadi banyak endpoint (`methods=["GET","POST"]` = 2) dan `methods=` yang dihilangkan berarti GET — dua-duanya diambil dari kode nyata, bukan diasumsikan. `parser_service.py` yang selama ini nol test sekarang punya 7 test untuk bagian ini.
 - **2026-07-16** — **`max_tokens` naik 16.000 → 32.000 dan pindah ke `.stream()`; pemotongan dokumen sekarang mengaku.** Ditemukan saat generation esteler pertama gagal dengan `ValidationError: Invalid JSON: EOF while parsing a string` — terbaca seperti LLM mengeluarkan sampah, padahal dokumennya **terpotong** karena menabrak `max_tokens`. Ini **kelas kesalahan yang sama untuk ketiga kalinya** (sesudah 502→414 mermaid dan 502→context window): sebab asli tertelan gejala. Sebabnya berlapis: **`claude-sonnet-5` menjalankan adaptive thinking secara DEFAULT** kalau field `thinking` tidak diisi (beda dari Sonnet 4.6 yang default-nya mati), dan `max_tokens` itu batas **total** thinking+teks — thinking memakan ~11K dari 16K, menyisakan ~5K untuk JSON. Ditambah deteksi endpoint Flask bikin dokumennya jauh lebih kaya. Thinking sengaja **tidak** dimatikan (tugas ini justru sintesis, persis yang diuntungkan thinking); jatahnya yang dinaikkan. `.stream()` menggantikan `.parse()` sesuai saran yang sudah tercatat di CLAUDE.md sendiri sejak timeout dinaikkan jadi 1500 detik. `DocumentTruncatedError` memeriksa `stop_reason == "max_tokens"` lewat `current_message_snapshot` → HTTP **500** dengan pesan yang menyebut tempat memperbaikinya, bukan 502 "coba lagi".
 - **2026-07-15** — **Dua bug yang menolak/menyesatkan aplikasi bisnis nyata, ditemukan oleh kasus validasi baru (saleor + medusa).** (1) **Tidak ada guard terhadap Contract A yang melebihi context window.** Terukur: Contract A saleor = **1.226.875 token vs batas 1M** — panggilan berbayar tetap dikirim hanya untuk ditolak API, lalu `except Exception` di `routes_document.py` meratakannya jadi 502 *"Coba lagi beberapa saat"* — saran yang tidak akan pernah menolong karena kegagalannya permanen. **Kelas kesalahan yang sama persis dengan 502 yang dulu menelan 414 mermaid.ink**: sebab spesifik disamarkan jadi ajakan mengulang. Sekarang `_guard_context_window` di `llm_service.py` memeriksa lewat `count_tokens` (gratis) sebelum membayar, dan gagal dengan `ContextWindowExceededError` yang menyebut angka aslinya → HTTP **413**, bukan 502. Batas context window **ditanyakan ke Models API**, tidak di-hardcode (daftar hardcoded pasti basi, dan yang basi diam-diam mengembalikan bug ini); gagal-membuka kalau API tak terjangkau. (2) **Guard anti-bomb mencacah seluruh isi arsip sebelum menyaring relevansi**, jadi monorepo ditolak karena banyak dokumentasi/gambar — bukan karena banyak kode. Terukur di medusa: **22.966 member file, cuma 9.459 relevan (41%), dan cuma 23 MB yang diekstrak** — jauh di bawah batas 200 MB, tapi ditolak di pintu. Filter dinaikkan ke atas pencacah di **kedua** provider (tarball & ZIP punya bug yang sama), dan `MAX_TOTAL_FILES` 5.000 → 20.000 (angka lama warisan dari saat pencacahnya menghitung semua; yang mengikat sebenarnya batas byte, jadi batas memori tidak berubah). Dibuktikan ke repo nyata, bukan cuma test: medusa yang tadinya ditolak sekarang terparse (9.459 file), dan saleor gagal dengan pesan yang benar **tanpa membayar sepeser pun**. 100 test hijau (91 + 9). Biaya sesi: **$0**.
