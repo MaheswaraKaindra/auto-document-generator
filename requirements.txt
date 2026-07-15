@@ -22,3 +22,6 @@ pypandoc
 # --- Code Parsing (generic, multi-language) ---
 tree-sitter
 tree-sitter-language-pack
+
+# --- Testing ---
+pytest
