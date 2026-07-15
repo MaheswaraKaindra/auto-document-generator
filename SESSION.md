@@ -18,7 +18,7 @@ belum pernah terjadi sepanjang umurnya; jalannya lewat lima bug yang semuanya
 ditemukan oleh kasus validasi baru, dan **empat di antaranya kelas kesalahan yang
 sama**: sebab asli tertelan gejala. **(2) Penghalang produksi terbesar hilang** —
 pipeline 191 detik tidak lagi ditahan di satu request HTTP; POST balik dalam
-~50ms. Total biaya API: **~$0,42**. 117 test hijau. Semua sudah di-push ke
+~50ms. Total biaya API: **~$0,66**. 119 test hijau. Semua sudah di-push ke
 `origin/develop`.
 
 ---
@@ -34,6 +34,7 @@ pipeline 191 detik tidak lagi ditahan di satu request HTTP; POST balik dalam
 | 5 | Dokumen terpotong → "Invalid JSON" | `max_tokens` 16.000 → 32.000 + pindah ke `.stream()`. `DocumentTruncatedError` periksa `stop_reason` → **500** yang menyebut tempat memperbaikinya. |
 | 6 | **Pipeline 191 detik ditahan di 1 request HTTP** | Proxy memutus di 30-60 detik → produk mustahil di-deploy. Sekarang **202 + job_id dalam ~50ms**, kerja di `BackgroundTasks`, status di **SQLite** (`job_store.py`), klien polling. Nol dependency baru. |
 | 7 | **Monorepo: `www/` medusa (22%) mencemari dokumen** | `manifest.py` MENDETEKSI monorepo lalu sengaja menyerah. Petunjuknya ada di field yang sama: `workspaces` mendeklarasikan lokasi paket. **9.459 → 7.355 file, `www/` 2.098 → 0**, nol regresi. |
+| 8 | **Kami membayari spasi; dan alat ukur kami berbohong** | `indent=2` = **30% token**. saleor **1.224.476 → 854.181 token: DITOLAK jadi MUAT**, nol perubahan arsitektur. Sekaligus: harness mengukur `compact` sementara yang dikirim `indent=2` — meleset 21-25%. Diperbaiki jadi **satu sumber kebenaran** (`format_contract_a`). |
 
 Ditambah ke `repos.json`: **saleor-django**, **medusa-monorepo**, **esteler-flask**.
 Ketiganya langsung berbuah — semua bug di atas ditemukan oleh mereka.
@@ -54,6 +55,9 @@ Ketiganya langsung berbuah — semua bug di atas ditemukan oleh mereka.
   jadi **7.355 file**, `www/` (situs dokumentasi, 22%) hilang seluruhnya.
   Nol regresi: fastapi 49→49, flask 25→25, express 8→8.
 - **saleor** 502 "coba lagi" → pesan benar, **tanpa membayar sepeser pun**.
+- **saleor sekarang MUAT** (854.181 token = 85% batas) cuma karena berhenti
+  mengirim indentasi. A/B kualitas di esteler (~$0,24): 10→11 fitur, aktor &
+  jejak diagram tetap — tidak ada yang turun.
 
 ---
 
@@ -69,20 +73,26 @@ spesifik jadi pesan generik, gejalanya cuma "kadang gagal", dan mahal justru
 karena pesannya menyesatkan. **Kalau menulis `except`, tanyakan dulu: sebab apa
 yang sedang saya sembunyikan, dan apakah cakupan tangkapannya sesempit sebabnya?**
 
-**Dua klaim SAYA ternyata salah, dan dua-duanya karena mencocokkan pola alih-alih
-memeriksa.** (a) "Neon di diagram esteler itu karangan" — dasarnya nol jejak di
-`dependencies`; ternyata ADA di Contract A, di **docstring**
-`config.py::_normalize_db_url()`. Saya menggeledah satu field lalu menyimpulkan
-tentang seluruh dokumen. (b) "Tidak bisa multi-worker" — dasarnya pola kegagalan
-klasik `BackgroundTasks` (state di `dict` memori); padahal state di sini ada di
-SQLite, file di disk yang dibaca semua proses. Diukur kemudian: `--workers 3`,
-50 GET lintas worker 0 kali 404, 30 POST bersamaan 30 sukses.
+**MEMERIKSA PROKSI, BUKAN BARANGNYA — muncul 3×.** Tiap kali ada sesuatu yang
+MIRIP barangnya, dan saya memeriksa itu:
 
-Keduanya ketahuan bukan dari saya, tapi dari pemilik repo. Keduanya sama
-berbahayanya: **klaim salah bikin orang memperbaiki masalah yang tidak ada** —
-membangun Redis untuk multi-worker yang sudah jalan, atau menambah guard untuk
-LLM yang sebenarnya membaca dengan benar. **Kalau menulis keterbatasan atau
-tuduhan karangan, ukur dulu. Pola yang cocok bukan bukti.**
+| Yang saya periksa (proksi) | Barangnya | Akibatnya |
+|---|---|---|
+| Field `dependencies` | **Seluruh** Contract A | "Neon itu karangan" — padahal ADA di **docstring** |
+| Pola kegagalan `BackgroundTasks` yang lazim | **Kode yang benar-benar ada** | "tidak bisa multi-worker" — padahal jalan |
+| `json.dumps()` compact di harness | `indent=2` yang **dikirim** | Laporan meleset 21-25%; medusa "2.831 KB" = **1,58 juta token** |
+
+Dua yang pertama ketahuan dari pemilik repo, bukan dari saya. **Yang ketiga
+paling berbahaya** karena proksinya adalah **alat ukur kami sendiri** — dan alat
+ukur yang salah lebih buruk daripada tidak ada: dia memberi rasa aman palsu.
+Kesimpulan "monorepo butuh chunking" sebagian lahir dari angka yang salah itu.
+
+**Akar masalah yang ketiga bukan `indent=2`** — tapi **dua tempat men-serialisasi
+hal yang sama**. Itu bukan duplikasi; itu **dua jawaban yang menunggu untuk
+berbeda**. Diperbaiki dengan satu sumber kebenaran, bukan menambal dua tempat.
+
+> Sebelum menyimpulkan, tanya: **yang saya periksa ini BENDA-nya, atau sesuatu
+> yang mirip benda itu?**
 
 **Ukur dulu, jangan menebak — bahkan untuk hal yang kelihatan sepele.** Rencana
 "pindahkan filter ke atas pencacah" ternyata tidak cukup (medusa 9.459 > 5.000);
@@ -100,32 +110,41 @@ asli, bukan cuma ke mock.
 
 ## Kalau melanjutkan besok, mulai dari sini
 
-1. **Contract A monorepo tidak muat, dan menyaring TIDAK akan menolong** — temuan
-   baru, dan lebih dalam dari yang kita kira. Sesudah `workspaces` dibaca, medusa
-   turun 9.459 → 7.355 file tapi Contract A-nya masih **2.831 KB** — jauh di atas
-   context window 1M, jadi medusa **tetap tidak bisa dibuatkan dokumen**. Sisa
-   7.297 file itu **memang kode produk**. Masalahnya: produk ini mengirim
-   **SELURUH** Contract A dalam satu panggilan. Arah: pecah per-workspace-package
-   lalu gabungkan, atau ringkas dulu. **Ini menyambung ke hambatan SaaS #3** —
-   dan memperbaiki dukungan Java tidak ada gunanya sebelum ini beres, karena repo
-   enterprise justru yang paling besar.
-2. **Job hilang kalau proses mati** — sisa nyata dari async. `BackgroundTasks`
+1. **Ukur Contract A `spring-petclinic` (Java) dalam token — GRATIS, dan hasilnya
+   menentukan prioritas berikutnya.** Ini menggantikan "chunking" yang tadinya #1.
+   Alasannya: waktu itu ditulis, saleor juga tidak muat, jadi kesimpulannya
+   *"aplikasi bisnis besar tidak terlayani, ukuran dulu baru bahasa"*. **Sesudah
+   compact, saleor MUAT (85%)** — jadi yang tersisa tidak muat cuma **monorepo
+   raksasa**, kasus yang jauh lebih sempit. Repo Java enterprise kemungkinan
+   seukuran **saleor** (satu aplikasi besar), bukan **medusa** (monorepo 7.000
+   file) — kalau benar, **dukungan Java bisa dikerjakan sekarang** tanpa menunggu
+   chunking, dan urutan prioritasnya terbalik lagi. **Ini hipotesis, bukan
+   kesimpulan.** Ukur dulu; satu perintah `count_tokens`, nol biaya.
+2. **Chunking untuk monorepo raksasa** — urgensinya TURUN (lihat #1). medusa
+   sesudah compact: **1.253.878 token = 125%**, tetap ditolak. Diukur per-field:
+   `api_endpoints` cuma **0,1%** (buang = sia-sia), yang mahal justru `classes`
+   (21%) dan `dependencies` (23%) — dua-duanya bahan baku dokumen. Bahkan membuang
+   `classes`+`functions` sekaligus cuma turun ke **97%** — terlalu mepet, bukan
+   solusi. Jadi menyaring memang tidak akan menolong; masalahnya arsitektur
+   (SELURUH Contract A dikirim dalam SATU panggilan). Arah: pecah
+   per-workspace-package, atau ringkas dulu pakai model murah.
+3. **Job hilang kalau proses mati** — sisa nyata dari async. `BackgroundTasks`
    jalan in-process: restart/crash/deploy saat job jalan → job berhenti selamanya
    di `running` dan klien polling tanpa akhir. Belum ada reaper untuk job
    `running` yang basi. Catatan: **multi-worker BUKAN masalah** (sudah diukur,
    jalan); **serverless masih masalah** (relevan: esteler ada di Vercel).
-3. **Endpoint Django** — sengaja belum: satu-satunya kasus Django (saleor)
+4. **Endpoint Django** — sengaja belum: satu-satunya kasus Django (saleor)
    terhalang guard context window, jadi perbaikannya tidak bisa dibuktikan
    end-to-end. Butuh aplikasi Django kecil di `repos.json` dulu.
-4. **`url_prefix` Blueprint Flask** — path tercatat `/login`, aslinya
+5. **`url_prefix` Blueprint Flask** — path tercatat `/login`, aslinya
    `/auth/login`. Gejalanya: `routes/admin.py` dan `routes/customer.py` sama-sama
    melaporkan `GET /`. Butuh analisis lintas-file (`register_blueprint`).
-5. **Tabel Revision History** masih baris kosong — butuh keputusan produk dulu
+6. **Tabel Revision History** masih baris kosong — butuh keputusan produk dulu
    (kolom `Summary of Changes` tidak punya jawaban jujur untuk dokumen baru).
-6. **Bandingkan Sonnet 5 vs Opus** (~$0,30) — default pindah ke Sonnet 5 atas
+7. **Bandingkan Sonnet 5 vs Opus** (~$0,30) — default pindah ke Sonnet 5 atas
    dasar reputasi, bukan pengukuran. Sekarang ada kasus uji yang layak: esteler
    murah (~$0,24) dan hasilnya bagus, jadi pembandingnya jelas.
-7. **Bersihkan `data/documents/`** — tumbuh selamanya, ~400 KB per dokumen.
+8. **Bersihkan `data/documents/`** — tumbuh selamanya, ~400 KB per dokumen.
    Belum ada TTL. Belum masalah sekarang, jadi masalah begitu dipakai rutin.
 
 ---
