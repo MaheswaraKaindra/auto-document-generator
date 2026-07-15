@@ -20,3 +20,6 @@ scripts/validation/out/
 
 # Database SQLite (status job + dokumen hasil) — dibuat otomatis saat runtime.
 data/
+
+# Catatan belajar pribadi + bekal presentasi — bukan dokumentasi produk.
+PELAJARAN.md
