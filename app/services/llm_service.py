@@ -1,4 +1,5 @@
 import json
+import logging
 from typing import List
 
 import anthropic
@@ -8,6 +9,8 @@ from pydantic import BaseModel, Field
 from app.core import config
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 # Dibaca dari .env (LLM_MODEL) supaya ganti model tidak perlu menyentuh kode.
 # Ini model yang dipakai APLIKASI untuk menulis dokumen — terpisah dari model
@@ -153,19 +156,52 @@ class LLMService:
         """
         Menerima Contract A (parsed_repo_context) dan mengembalikan Contract B.
         """
-        human_prompt = f"""
-        Jenis dokumen yang diminta saat ini (target_doc_type): {target_doc_type}
-
-        Berikut adalah metadata repositori (Contract A):
-        {json.dumps(parsed_repo_context, indent=2)}
-        """
+        # Contract A ditaruh DULUAN, target_doc_type BELAKANGAN. Ini bukan soal
+        # gaya penulisan — prompt caching itu cocok-dari-depan (prefix match):
+        # begitu ada satu byte berbeda, semua yang sesudahnya batal. Versi
+        # sebelumnya menaruh target_doc_type di depan, sehingga Contract A yang
+        # puluhan ribu token itu dibayar PENUH dua kali ketika repo yang sama
+        # diminta SDD lalu UAT — padahal isinya identik.
+        #
+        # cache_control ditaruh di akhir blok Contract A, jadi yang ter-cache
+        # adalah SYSTEM_PROMPT + Contract A (system dirender sebelum messages).
+        # Panggilan kedua untuk repo yang sama cuma bayar ~10% untuk bagian itu.
+        context_block = {
+            "type": "text",
+            "text": (
+                "Berikut adalah metadata repositori (Contract A):\n"
+                f"{json.dumps(parsed_repo_context, indent=2)}"
+            ),
+            "cache_control": {"type": "ephemeral"},
+        }
+        # Satu-satunya bagian yang berubah antara SDD dan UAT. Ditaruh sesudah
+        # breakpoint supaya tidak merusak cache — dan kebetulan ini juga posisi
+        # terbaik untuk instruksi tugas: paling dekat dengan titik generation.
+        task_block = {
+            "type": "text",
+            "text": f"Jenis dokumen yang diminta saat ini (target_doc_type): {target_doc_type}",
+        }
 
         response = self.client.messages.parse(
             model=MODEL,
             max_tokens=16000,
             system=SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": human_prompt}],
+            messages=[{"role": "user", "content": [context_block, task_block]}],
             output_format=DocumentContent,
+        )
+
+        usage = response.usage
+        # Tanpa log ini, cache yang diam-diam tidak pernah aktif mustahil
+        # ketahuan — gejalanya cuma tagihan yang lebih mahal dari perkiraan.
+        # cache_read 0 terus-menerus untuk repo yang sama = ada yang merusak
+        # prefix (lihat catatan prefix match di atas).
+        logger.info(
+            "LLM %s: input=%s cache_write=%s cache_read=%s output=%s",
+            target_doc_type,
+            usage.input_tokens,
+            usage.cache_creation_input_tokens,
+            usage.cache_read_input_tokens,
+            usage.output_tokens,
         )
 
         return response.parsed_output.model_dump()
