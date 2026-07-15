@@ -74,35 +74,45 @@ def _github_quota() -> tuple[int, int, str]:
     return core.remaining, core.limit, str(core.reset)
 
 
-def _preflight() -> bool:
+# Per repo: get_repo + get_archive_link, plus margin. Unduhan tarball-nya sendiri
+# lewat codeload dan TIDAK memotong jatah — itulah sebabnya angkanya sekecil ini.
+_API_REQUESTS_PER_REPO = 3
+
+
+def _preflight(cases: list[dict]) -> bool:
     """Cek jatah API SEBELUM mulai.
 
     Tanpa ini, jatah yang habis tidak muncul sebagai error jelas — ingestion
-    cuma menggantung bermenit-menit lalu gagal dengan sebab yang tidak
-    kelihatan. Lebih baik menolak jalan dalam sedetik.
+    cuma menggantung lalu gagal dengan sebab yang tidak kelihatan. Lebih baik
+    menolak jalan dalam sedetik.
 
-    Ingestion memakai SATU request GitHub PER FILE (github_provider.py
-    memanggil get_git_blob per blob), jadi satu repo ukuran wajar gampang
-    menghabiskan ratusan request. Batas anonim 60/jam tidak akan cukup untuk
-    repo apa pun yang realistis.
+    Ambangnya dihitung dari jumlah repo yang akan diproses, bukan angka mati.
+    Versi pertama harness ini memakai ambang mati 50 — warisan dari zaman
+    ingestion masih 1 request per file — dan langsung basi begitu ingestion
+    pindah ke tarball: sisa 45 ditolak padahal cukup untuk 20-an repo.
     """
+    repo_count = sum(len(c["repos"]) for c in cases)
+    needed = repo_count * _API_REQUESTS_PER_REPO
     remaining, limit, reset = _github_quota()
-    print(f"Jatah GitHub API: {remaining}/{limit} (reset {reset})")
 
-    if not config.GITHUB_TOKEN:
-        print(
-            "\nGITHUB_TOKEN kosong -> batas anonim cuma 60 request/jam.\n"
-            "Ingestion memakai 1 request PER FILE, jadi repo dengan >60 file relevan\n"
-            "tidak akan selesai. Isi GITHUB_TOKEN di .env (batas naik jadi 5.000/jam).\n"
-        )
+    print(f"Jatah GitHub API: {remaining}/{limit} (butuh ~{needed}, reset {reset})")
 
-    if remaining < 50:
+    if remaining < needed:
         print(
-            f"BERHENTI: sisa jatah {remaining} terlalu sedikit untuk ingest repo apa pun.\n"
-            f"          Tunggu sampai {reset}, atau isi GITHUB_TOKEN di .env.",
+            f"BERHENTI: sisa jatah {remaining} tidak cukup untuk {repo_count} repo "
+            f"(butuh ~{needed}).\n"
+            f"          Tunggu sampai {reset}, isi GITHUB_TOKEN di .env, atau "
+            f"persempit dengan --only.",
             file=sys.stderr,
         )
         return False
+
+    if not config.GITHUB_TOKEN:
+        print(
+            "GITHUB_TOKEN kosong -> batas anonim 60 request/jam. Cukup untuk daftar\n"
+            "ini karena tarball cuma makan ~3 request/repo, tapi isi token kalau mau\n"
+            "sering menjalankannya (batas naik jadi 5.000/jam).\n"
+        )
     return True
 
 
@@ -270,7 +280,7 @@ def main() -> int:
             return 2
         cases = [c for c in cases if c["name"] in args.only]
 
-    if not _preflight():
+    if not _preflight(cases):
         return 2
 
     if args.with_llm:
