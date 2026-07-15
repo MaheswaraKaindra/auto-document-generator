@@ -4,6 +4,9 @@ Tidak mengubah kode Peran 1 (parser_service.py, ingestion_service.py) atau
 Peran 2 (llm_service.py) — hanya mengimpor & memanggil apa yang sudah
 mereka sediakan."""
 
+import logging
+
+import requests
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 
@@ -14,6 +17,8 @@ from app.services.compiler_service import generate_docx
 from app.services.ingestion_service import IngestionService
 from app.services.llm_service import DocumentContent, LLMService
 from app.services.parser_service import build_parsed_repo_context
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -27,19 +32,37 @@ _FILENAME_BY_TYPE = {
 }
 
 
+def _render_docx_or_502(doc_type: str, content: dict, project_name: str = "") -> str:
+    """Bungkus generate_docx() supaya kegagalan pihak ketiga (render diagram,
+    pandoc) tidak bocor sebagai HTTP 500 mentah ke klien."""
+    try:
+        return generate_docx(doc_type, content, project_name=project_name)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except requests.RequestException as e:
+        logger.exception("Gagal merender diagram Mermaid (mermaid.ink)")
+        raise HTTPException(
+            status_code=502,
+            detail="Gagal merender diagram (layanan render Mermaid tidak merespons). Coba lagi beberapa saat.",
+        ) from e
+    except RuntimeError as e:
+        logger.exception("Pandoc tidak tersedia saat export docx")
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
 @router.post("/sdd")
 def generate_sdd_from_content(body: DocumentContent):
     """Endpoint testing: terima DocumentContent.json (Contract B) langsung,
     tanpa lewat ingestion/LLM. Dipakai untuk mengembangkan & menguji
     template dengan data dummy sebelum pipeline penuh siap."""
-    output_path = generate_docx("SDD", body.model_dump())
+    output_path = _render_docx_or_502("SDD", body.model_dump())
     return FileResponse(output_path, media_type=_DOCX_MEDIA_TYPE, filename=_FILENAME_BY_TYPE["SDD"])
 
 
 @router.post("/uat")
 def generate_uat_from_content(body: DocumentContent):
     """Sama seperti /documents/sdd, untuk dokumen UAT."""
-    output_path = generate_docx("UAT", body.model_dump())
+    output_path = _render_docx_or_502("UAT", body.model_dump())
     return FileResponse(output_path, media_type=_DOCX_MEDIA_TYPE, filename=_FILENAME_BY_TYPE["UAT"])
 
 
@@ -72,11 +95,18 @@ def generate_document_full_pipeline(body: GenerateDocumentRequest):
         workspaces=workspaces,
     )
 
-    document_content = _llm_service.generate_document_content(
-        parsed_repo_context=parsed_repo_context,
-        target_doc_type=doc_type,
-    )
+    try:
+        document_content = _llm_service.generate_document_content(
+            parsed_repo_context=parsed_repo_context,
+            target_doc_type=doc_type,
+        )
+    except Exception as e:
+        logger.exception("Pemanggilan LLM (Gemini) gagal")
+        raise HTTPException(
+            status_code=502,
+            detail="Gagal menghasilkan konten dokumen dari AI. Coba lagi beberapa saat.",
+        ) from e
 
-    output_path = generate_docx(doc_type, document_content, project_name=body.project_name or "")
+    output_path = _render_docx_or_502(doc_type, document_content, project_name=body.project_name or "")
 
     return FileResponse(output_path, media_type=_DOCX_MEDIA_TYPE, filename=_FILENAME_BY_TYPE[doc_type])
