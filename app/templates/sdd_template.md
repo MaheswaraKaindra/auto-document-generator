@@ -80,7 +80,11 @@
 
 ## 9. Application Features Requirement
 
-*(diisi manual — daftar fitur aplikasi beserta deskripsinya)*
+| No. | Fitur Aplikasi | Deskripsi Fitur |
+| --- | --- | --- |
+{% for feature in feature_requirements -%}
+| {{ loop.index }} | {{ feature.feature_name }} | {{ feature.description }} |
+{% endfor %}
 
 ## 10. Flow Proses Bisnis
 
@@ -90,7 +94,21 @@
 
 ![Use Case Diagram]({{ diagrams.use_case_diagram_image }})
 
-*(diisi manual — tabel detail use case per aktor: Pre-Condition, Description, Acceptance Criteria)*
+{% for uc in use_cases %}
+### 11.{{ loop.index }} Use Case {{ uc.use_case_id }} — {{ uc.actor }}
+
+| Field | Isi |
+| --- | --- |
+| No. Use Case | {{ uc.use_case_id }} |
+| Actor | {{ uc.actor }} |
+| Pre-Condition | {{ uc.pre_condition }} |
+| Description | {{ uc.description }} |
+
+Acceptance Criteria:
+{% for criterion in uc.acceptance_criteria %}
+{{ loop.index }}. {{ criterion }}
+{% endfor %}
+{% endfor %}
 
 ## 12. Activity Diagram
 

@@ -7,6 +7,12 @@
     "PostgreSQL 14",
     "React 18 (Frontend)"
   ],
+  "feature_requirements": [
+    {
+      "feature_name": "Manajemen Inventaris",
+      "description": "Admin dapat menambah, melihat, dan mengubah data item inventaris beserta jumlah stoknya."
+    }
+  ],
   "diagrams": {
     "system_architecture": "graph LR\nUser((\"User\"))\nFrontend[\"Frontend Web\"]\nBackend[\"Backend API\"]\nDatabase[(\"Database\")]\nUser --> Frontend\nFrontend --> Backend\nBackend --> Database",
     "component_integration": "graph TD\nInventoryPage[\"InventoryListPage\"] --> GetItems[\"GET /api/inventory\"]\nAddItemForm[\"AddItemForm\"] --> PostItem[\"POST /api/inventory/add\"]",
@@ -19,6 +25,19 @@
       }
     ]
   },
+  "use_cases": [
+    {
+      "use_case_id": "UC-01",
+      "actor": "Admin",
+      "pre_condition": "Admin telah login ke sistem.",
+      "description": "Admin dapat mengelola seluruh data inventaris: menambah item baru, melihat daftar item, dan mengubah data item yang sudah ada.",
+      "acceptance_criteria": [
+        "Admin dapat menambah item inventaris baru melalui form Tambah Item.",
+        "Admin dapat melihat daftar seluruh item inventaris beserta jumlah stoknya.",
+        "Perubahan data item tersimpan ke database dan langsung terlihat di dashboard."
+      ]
+    }
+  ],
   "business_flow_description": "Admin login ke sistem, membuka halaman inventaris, lalu menambah/mengubah data item. Setiap perubahan langsung tersinkron ke database dan tercermin di dashboard secara real-time.",
   "uat_test_cases": [
     {

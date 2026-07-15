@@ -7,12 +7,30 @@
     "PostgreSQL 14",
     "React 18 (Frontend)"
   ],
+  "feature_requirements": [
+    {
+      "feature_name": "Manajemen Inventaris",
+      "description": "Admin dapat menambah, melihat, dan mengubah data item inventaris beserta jumlah stoknya."
+    }
+  ],
   "diagrams": {
     "system_architecture": "graph LR\nUser((\"User\")) --> Frontend[\"Frontend Web\"]",
     "component_integration": "graph TD\nA[\"A\"] --> B[\"B\"]",
     "use_case_diagram": "flowchart LR\nAdmin((\"Admin\")) --> UC1([\"Login\"])",
     "activity_diagrams": []
   },
+  "use_cases": [
+    {
+      "use_case_id": "UC-01",
+      "actor": "Admin",
+      "pre_condition": "Admin telah login ke sistem.",
+      "description": "Admin dapat login dan mengelola data inventaris.",
+      "acceptance_criteria": [
+        "Admin dapat login menggunakan email & password.",
+        "Admin dapat menambah item inventaris baru."
+      ]
+    }
+  ],
   "business_flow_description": "Admin login ke sistem, membuka halaman inventaris, lalu menambah/mengubah data item.",
   "uat_test_cases": [
     {

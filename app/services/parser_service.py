@@ -5,7 +5,6 @@ from typing import Optional
 
 import tree_sitter_language_pack as tslp
 from dotenv import load_dotenv
-from langchain_google_genai import ChatGoogleGenerativeAI
 
 # Load environment variables dari file .env
 load_dotenv()
@@ -57,51 +56,6 @@ def generate_file_metadata_prompt(file_name: str, file_content: str) -> str:
     }}
     """
     return prompt
-
-# if __name__ == "__main__":
-#     dummy_file_name = "InventoryController.py"
-#     dummy_file_content = """
-#     from fastapi import APIRouter, Depends
-#     from services import InventoryService
-
-#     router = APIRouter(prefix="/api/inventory")
-
-#     @router.post("/add")
-#     def add_item(item_data: dict, service: InventoryService = Depends()):
-#         '''Menambahkan item baru ke database inventory SPBU'''
-#         return service.insert_item(item_data)
-#     """
-
-#     isolated_prompt = generate_file_metadata_prompt(dummy_file_name, dummy_file_content)
-#     print("--- PROMPT YANG AKAN DIKIRIM KE LLM ---")
-#     print(isolated_prompt)
-
-#     print("\n--- MENGIRIM REQUEST KE API GEMINI (Mohon Tunggu) ---")
-
-#     try:
-#         # Inisialisasi LLM dengan Gemini (Otomatis membaca GOOGLE_API_KEY dari .env)
-#         # temperature=0 memastikan respons kaku, konsisten, dan mematuhi skema JSON
-#         llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0)
-
-#         # Eksekusi prompt
-#         response = llm.invoke(isolated_prompt)
-#         llm_response = response.content
-
-#         # Membersihkan tag markdown ```json ... ``` jika ditambahkan oleh Gemini
-#         if llm_response.startswith("```json"):
-#             llm_response = llm_response.replace("```json\n", "").replace("\n```", "").strip()
-#         elif llm_response.startswith("```"):
-#             llm_response = llm_response.replace("```\n", "").replace("\n```", "").strip()
-
-#         # Parse teks string dari Gemini menjadi dictionary Python
-#         metadata = json.loads(llm_response)
-
-#         print("\n--- HASIL PARSING JSON ---")
-#         print(json.dumps(metadata, indent=4))
-
-#     except Exception as e:
-#         print(f"\n[ERROR] Terjadi kesalahan saat memanggil Gemini atau mem-parsing JSON: {e}")
-
 
 # ==========================================================================
 # STRUCTURAL EXTRACTION (Tree-sitter) - deterministic, no LLM call.
