@@ -1,5 +1,11 @@
 # auto-document-generator
 
+> **Baru bergabung / melanjutkan kerja orang lain?** Baca `SESSION.md` dulu — isinya
+> apa yang dikerjakan sesi terakhir dan dari mana sebaiknya melanjutkan. File ini
+> (CLAUDE.md) adalah pengetahuan permanen tentang produk; `SESSION.md` adalah foto
+> sesaat yang **ditimpa habis tiap sesi baru**. Kalau keduanya bertentangan,
+> **CLAUDE.md yang benar**.
+
 ## Ringkasan
 
 **auto-document-generator** adalah produk **SaaS generik** yang membaca source code dari repo mana pun (GitHub OAuth/PAT, atau ZIP upload — bukan tool internal satu perusahaan) dan otomatis membuat draf dua dokumen yang biasanya ditulis manual oleh developer/QA: **Solution Design Document (SDD)** dan **User Acceptance Test (UAT) Document**, keduanya dalam format `.docx` siap pakai.
@@ -18,6 +24,10 @@ Source Provider (GitHub OAuth / GitHub PAT / ZIP upload)
         v
 Repository Normalizer  ->  Workspace (format seragam, titik ini Parser
         |                   tidak tahu/peduli asal source-nya)
+        v
+narrow_to_product()  ->  buang yang bukan produk, berdasarkan manifest repo
+        |                (pyproject.toml / package.json). Gagal-membuka:
+        |                tidak ketahuan = simpan semua.
         v
 Parser (Tree-sitter, deterministik, TANPA LLM)
         |
@@ -139,11 +149,13 @@ app/
   domain/            # data murni + interface (SourceProvider), tanpa dependency framework
     models.py, ports.py, exceptions.py
   ingestion/         # implementasi SourceProvider
-    filters.py               # daftar ekstensi/dir yang di-skip (node_modules, venv, dll)
+    filters.py               # file mana yang relevan: ekstensi, dir yang di-skip
+                             #   (node_modules, venv), dir test/contoh, pola nama file test
+    manifest.py              # tanya pyproject.toml/package.json: mana yang produk?
     provider_factory.py      # pilih provider (GitHub / ZIP) berdasarkan SourceType
     providers/github_provider.py, providers/zip_provider.py
   services/
-    ingestion_service.py     # orkestrasi ingest -> Workspace (Peran 1)
+    ingestion_service.py     # orkestrasi ingest -> narrow_to_product -> Workspace (Peran 1)
     parser_service.py        # Tree-sitter structural extraction, Contract A (Peran 1)
     github_oauth_service.py  # OAuth GitHub scaffold (Peran 1)
     llm_service.py           # LLMService, Contract A -> Contract B via Claude (Peran 2)
@@ -161,10 +173,15 @@ app/
 frontend/                    # React + Vite, form sederhana yang hit POST /documents/generate
   src/App.jsx, src/main.jsx
 
-tests/                       # pytest — lihat bagian Testing
+tests/                       # pytest (82 test) — lihat bagian Testing
 dummy_data/                  # fixture JSON — dipakai test otomatis DAN testing manual
-scripts/                     # utilitas dev sekali-pakai, bukan bagian dari aplikasi
+scripts/                     # utilitas dev, bukan bagian dari aplikasi
   model_getter.py            # cetak daftar model yang tersedia untuk API key kamu
+  validation/                # kerangka validasi ke repo publik nyata — lihat Testing
+    README.md                #   cara pakai + kenapa ini bukan pengganti pytest
+    repos.json               #   7 kasus uji, tiap kasus menguji satu asumsi produk
+    run_validation.py        #   harness 2 tahap (gratis / berbayar)
+    out/                     #   hasil run (di-gitignore)
 ```
 
 Root sengaja dijaga cuma berisi file konfigurasi/dokumen (`.env.example`, `.gitignore`, `CLAUDE.md`, `README.md`, `requirements.txt`) — kode dan aset selalu masuk folder. Kalau menambah script utilitas, taruh di `scripts/`, jangan di root.
@@ -254,7 +271,37 @@ Frontend hardcode `API_BASE_URL = http://localhost:8000` (lihat `frontend/src/Ap
 pytest
 ```
 
-Semua test yang ada (`tests/test_compiler_service.py`, `tests/test_routes_document.py`) **selalu mock** pemanggilan LLM (Claude) dan Mermaid.ink — supaya test tidak bergantung pada koneksi internet, API key, atau kuota, dan tidak pernah mengeluarkan biaya API secara tidak sengaja. **Belum ada unit test untuk `parser_service.py` maupun `ingestion_service.py`** (Peran 1) — lihat Keterbatasan.
+82 test, **selalu mock** pemanggilan LLM (Claude), Mermaid.ink, dan GitHub — supaya test tidak bergantung pada koneksi internet, API key, atau kuota, dan tidak pernah mengeluarkan biaya API secara tidak sengaja.
+
+| File | Meng-cover |
+|---|---|
+| `tests/test_compiler_service.py` | Render Mermaid (encoding pako, batas URL), Jinja2, export docx (Peran 3) |
+| `tests/test_routes_document.py` | Endpoint `/documents/*` (Peran 3) |
+| `tests/test_github_provider.py` | Ingest lewat tarball, pakai tarball sintetis di memori (Peran 1) |
+| `tests/test_filters.py` | File mana yang relevan; termasuk penjaga anti-rakus (Peran 1) |
+| `tests/test_manifest.py` | Deteksi produk, pakai manifest asli fastapi/flask/requests/express (Peran 1) |
+
+**`parser_service.py` masih belum punya test sama sekali** — lihat Keterbatasan.
+
+### Validasi ke repo publik (`scripts/validation/`)
+
+Ini **bukan pengganti `pytest`** dan menjawab pertanyaan yang berbeda:
+
+| | `pytest` | `scripts/validation/` |
+|---|---|---|
+| Menjawab | "kode sesuai rancangan?" | "rancangan bertahan di repo asing?" |
+| LLM & Mermaid | di-mock | sungguhan |
+| Biaya | gratis | GitHub API + (opsional) Claude berbayar |
+
+Buktinya keduanya perlu: bug `414` mermaid.ink lolos dari 11 test yang semuanya hijau, justru karena mermaid.ink di-mock.
+
+```bash
+python scripts/validation/run_validation.py --list        # daftar kasus
+python scripts/validation/run_validation.py               # Tahap 1: ingest+parse, GRATIS
+python scripts/validation/run_validation.py --only flask --with-llm   # Tahap 2: BERBAYAR
+```
+
+**Tahap 1 gratis** (tanpa LLM) sudah cukup menjawab "parser paham repo ini?" — Contract A-nya disimpan ke `out/` supaya Tahap 2 tidak perlu ingest ulang. **Tahap 2 berbayar**: satu kasus = satu panggilan Claude, wajib opt-in. Baca `scripts/validation/README.md` sebelum menjalankan yang berbayar.
 
 Untuk testing manual end-to-end (hit API sungguhan, termasuk panggilan LLM yang sesungguhnya) — **lakukan ini hanya saat memang sedang sengaja menguji**, jangan jadikan kebiasaan default karena memakai kuota API berbayar:
 - `dummy_data/document_content_sdd.json` / `document_content_uat.json` — contoh `DocumentContent` (Contract B) siap pakai untuk `POST /documents/sdd` / `/documents/uat` langsung (tanpa LLM).
@@ -267,10 +314,10 @@ Untuk testing manual end-to-end (hit API sungguhan, termasuk panggilan LLM yang 
 - **Kualitas `claude-sonnet-5` vs `claude-opus-4-8` untuk tugas ini BELUM diuji.** Default dipindah ke Sonnet 5 pada 2026-07-15 atas keputusan pemilik project, alasannya biaya (Opus ~$1,36/dokumen untuk repo sebesar fastapi; tim menganggap $0,50 sudah mahal). Dasarnya reputasi umum Sonnet 5 yang mendekati Opus, **bukan** perbandingan langsung pada repo nyata — jadi ini asumsi, bukan temuan. Menguji ini murah dan berdampak lama: satu repo × dua model (~$1 sekali bayar) lalu **baca kedua dokumennya**. Kalau kualitasnya turun, ganti balik lewat `LLM_MODEL=claude-opus-4-8` di `.env` (tanpa sentuh kode). Ingat produk ini menjual kualitas dokumen — itu satu-satunya nilainya, jadi jangan biarkan asumsi ini menggantung terlalu lama.
 - **Kontaminasi input jauh lebih berbahaya daripada label yang salah** (ditemukan 2026-07-15 lewat Tahap 2; **sudah diperbaiki** lewat deteksi manifest — lihat Riwayat Perubahan. Dicatat di sini karena pelajarannya masih berlaku untuk perubahan berikutnya). Terbukti lewat perbandingan langsung: **flask** (coverage 0%, semua file `"other"`) menghasilkan SDD yang **akurat** — "Flask adalah kerangka kerja pengembangan aplikasi web" dengan fitur Routing/Request-Response/Session/Template yang semuanya benar. Sebaliknya **fastapi** (coverage 63%) menghasilkan SDD yang **percaya diri tapi salah**: "Sistem ini adalah kumpulan aplikasi backend... mengelola data, otentikasi, unggah berkas", dengan fitur "Manajemen Item" dan "Manajemen Hero". FastAPI itu *framework*, dan "Hero" itu contoh dari tutorial SQLModel. Sebabnya: **456 dari 530 file (86%) berasal dari `docs_src/`** — folder tutorial dokumentasi — dan **seluruh 432 endpoint** berasal dari sana, sementara package `fastapi/` yang asli menyumbang **0 endpoint**. Ini kelas bug yang sama dengan `test/` pada express, tapi lewat pintu berbeda: `docs_src` tidak ada di blocklist. Menambahkan `docs_src` cuma menunda masalah — tiap repo mengarang konvensinya sendiri (`test/`, `examples/`, `docs_src/`, `website/`, `playground/`), jadi daftar nama tidak akan pernah lengkap. Arah yang lebih menjanjikan: **tanya repo-nya sendiri apa yang dia kirim** — `pyproject.toml`/`package.json` mendeklarasikan nama package-nya (fastapi menyatakan package-nya `fastapi`), jadi prioritaskan file di bawah situ alih-alih menebak-nebak folder mana yang bukan produk.
 - **Heuristik `type` menebak dari nama file, dan gagal pada penamaan idiomatik Python/Go** (ditemukan 2026-07-15 lewat validasi, belum diperbaiki — tapi **prioritasnya rendah**, lihat butir di atas: flask dengan coverage 0% tetap menghasilkan dokumen akurat, jadi label ternyata bukan bottleneck-nya. LLM sanggup menyimpulkan peran file dari nama class, nama function, dan `dependencies` yang tetap dikirim di Contract A). `_guess_file_type()` di `parser_service.py:144` mencocokkan substring nama file (`"controller"`, `"service"`, `"model"`, ...) plus satu sinyal isi (`has_endpoints`). Konsekuensinya diukur pada repo **flask**: coverage **0%** — 25 file semuanya `"other"` — padahal parser sukses menarik 52 class dan 72 function dari repo yang sama. Jadi parsing-nya jalan, **pelabelannya** yang gagal: flask menamai file secara idiomatik (`app.py`, `helpers.py`, `wrappers.py`), bukan bergaya MVC Java/Spring (`UserController.java`). Artinya `coverage` tinggi selama ini menandakan "repo ini kebetulan pakai konvensi penamaan Java", bukan "parser paham repo ini". Diperparah karena yang dibaca cuma `file_name`, bukan path — file di `app/controllers/user.py` tetap `"other"` sebab nama filenya cuma `user.py`. Perbaikan yang mungkin (termurah dulu): (1) ikut membaca path, bukan cuma nama file; (2) tambah sinyal berbasis isi (ada import ORM? ada query SQL? ada render komponen?) seperti `has_endpoints` yang sudah terbukti jalan.
-- **Belum divalidasi ke variasi repo publik yang luas** — untuk produk SaaS generik, ini prioritas validasi berikutnya (bukan menunggu akses ke satu repo tertentu).
+- **Validasi repo publik baru menyentuh 7 repo, dan cuma 3 yang pernah dibuatkan dokumen.** Tahap 1 (parse, gratis) sudah jalan ke semuanya; Tahap 2 (dokumen, berbayar) baru ke flask, fastapi, dan realworld. **Yang belum tersentuh sama sekali dan paling penting: aplikasi bisnis di luar realworld.** `spring-petclinic` ada di daftar tapi Java tidak didukung parser, jadi belum berguna. Untuk produk SaaS generik, menambah 2-3 aplikasi bisnis nyata berbahasa Python/TS ke `repos.json` adalah langkah validasi paling berdampak berikutnya — sekarang murah (~$0,15-0,30 per repo) dan tidak lagi terhalang apa pun.
 - **OAuth GitHub baru scaffold** — endpoint-nya ada tapi belum bisa dipakai sungguhan sampai ada GitHub OAuth App terdaftar (`GITHUB_CLIENT_ID`/`SECRET` belum diisi).
 - **Belum ada unit test otomatis untuk `parser_service.py`** (Peran 1). Ingestion sudah sebagian ter-cover: `tests/test_github_provider.py` menguji jalur tarball (GitHub di-mock lewat tarball sintetis di memori, tanpa jaringan/token/kuota), tapi `parser_service.py` dan `ingestion_service.py` sendiri masih kosong.
-- **Cross-repo dependency resolution (FE fetch call <-> BE endpoint) sepenuhnya didelegasikan ke instruksi prompt LLM**, bukan langkah pencocokan deterministik terpisah seperti di diagram arsitektur target (`Cross Repository Mapping` -> `Unified Context` sebelum masuk LLM). Bisa jadi cukup untuk MVP, tapi tidak 100% deterministik.
+- **Cross-repo dependency resolution (FE fetch call <-> BE endpoint) sepenuhnya didelegasikan ke instruksi prompt LLM**, bukan langkah pencocokan deterministik terpisah seperti di diagram arsitektur target (`Cross Repository Mapping` -> `Unified Context` sebelum masuk LLM). **Terbukti jalan** pada `realworld-fullstack` (2026-07-15 — lihat Riwayat Perubahan), jadi cukup untuk MVP. Tapi karena bersandar pada LLM, hasilnya **tidak dijamin deterministik**: belum diuji pada repo dengan pola pemanggilan API yang tidak lazim (mis. URL dirakit dinamis, atau lewat wrapper client berlapis), dan belum pernah dijalankan dua kali pada repo yang sama untuk melihat apakah pemetaannya konsisten.
 - **Render diagram Mermaid lewat layanan hosted pihak ketiga (`mermaid.ink`)** — ini mengirim ISI diagram (bisa memuat nama endpoint, struktur komponen internal) ke internet. Untuk data confidential (repo perusahaan) di produksi, sebaiknya diganti rendering lokal (mis. `mermaid-cli`). Ini satu-satunya keterbatasan mermaid.ink yang tersisa; bug 502 untuk repo besar sudah selesai (lihat Riwayat Perubahan 2026-07-15).
 - **Ceiling diagram masih ada, cuma jauh lebih tinggi.** `mermaid.ink` ada di balik reverse proxy dengan batas URL ~8KB (diukur: 7.720 karakter masih `200`, 9.376 karakter sudah `414`). Encoding `pako:` memberi kompresi ~7x, jadi diagram realistis aman — tapi diagram yang sangat ekstrem tetap bisa menembusnya. `_render_mermaid_to_image` sudah memeriksa panjang URL sebelum request dan gagal dengan pesan jelas (`DiagramRenderError`), bukan menghabiskan request percuma.
 - **`LLMService` memakai timeout client 1500 detik (25 menit)** untuk mengantisipasi generation yang lama pada repo besar/kompleks (default SDK 10 menit terbukti kurang untuk repo nyata yang cukup besar saat diuji). Kalau generation tetap sering lambat di masa depan, pertimbangkan pindah ke `.stream()` daripada menaikkan timeout terus-menerus.
