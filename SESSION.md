@@ -84,25 +84,53 @@ gagal untuk tiap repo nyata — karena mermaid.ink di-mock. Itu alasan
 
 ---
 
+## Perbandingan dengan dokumen acuan (dilakukan di akhir sesi)
+
+Dokumen Solution Design enterprise sungguhan (87 halaman, PDF di root,
+di-gitignore) dibaca dan dibandingkan bab per bab dengan `sdd_template.md`.
+Hasilnya mengubah prioritas:
+
+**Strukturnya sudah cocok hampir seluruhnya.** Template kita jelas dimodelkan
+dari dokumen itu — Revision History, Persetujuan, Deskripsi, Dev System Type,
+Demografi, System Requirement, How to Access, Infrastructure, Architecture,
+Security, Features Requirement, Flow Proses Bisnis, Use Case, Activity Diagram
+semuanya ada. **Jadi jaraknya bukan soal struktur.**
+
+Yang belum ada: Daftar Gambar + Daftar Tabel (mekanis), Mockup Website + Mockup
+Aplikasi (mustahil dari kode — kandidat slot upload).
+
+Jaraknya ada di **kedalaman** (87 halaman vs ~25) dan **16 placeholder yang
+dibiarkan kosong**. Tapi jangan kejar 87 halaman: dokumen acuan panjang sebagian
+besar karena mockup, timeline, dan tanda tangan.
+
 ## Kalau melanjutkan besok, mulai dari sini
 
-Urut menurut dampak. Semua sudah tercatat lengkap di **Keterbatasan** CLAUDE.md.
+Urut menurut dampak-per-usaha. Semua sudah tercatat lengkap di **Keterbatasan**
+CLAUDE.md.
 
-1. **Tambah 2-3 aplikasi bisnis ke `repos.json`** — ini celah terbesar yang
-   tersisa. Dari 7 repo, cuma `realworld` yang aplikasi bisnis berbahasa
-   didukung, padahal itu justru target produk. Tahap 1 gratis; Tahap 2 ~$0,15-0,30
-   per repo.
-2. **Bandingkan Sonnet 5 vs Opus** (~$0,30 sekali bayar) — default sudah pindah ke
-   Sonnet 5 atas dasar **reputasi umum, bukan pengukuran**. Produk ini menjual
-   kualitas dokumen; asumsi ini jangan digantung lama. Sekarang waktu yang tepat
-   karena input sudah bersih, jadi perbandingannya adil.
-3. **Larang diagram menggambar komponen tanpa bukti** — fastapi punya **nol**
-   dependency database tapi diagramnya tetap menggambar `Backend → Database`.
-   (Catatan: LLM **memang** membaca kode — realworld menghasilkan
-   `Database (PostgreSQL via Prisma)` dan `prisma` memang ada 4x. Masalahnya cuma
-   dia tidak berhenti saat buktinya kosong.)
-4. **Heuristik `type`** — prioritas **rendah**, sudah terbukti bukan bottleneck.
-   Jangan kerjakan ini sebelum tiga di atas.
+1. **Isi 16 placeholder lewat form** — rasio dampak-per-usaha tertinggi yang
+   diketahui. Isinya (RFC #, No. Solution Design, Document Classification, baris
+   approval, checklist security) memang tidak bisa datang dari kode — tapi
+   **manusia tahu**. Sekarang produk menyerahkan docx berisi 16 lubang dan
+   pengguna berburu di Word. Seharusnya: tanyakan di form, dokumen keluar utuh.
+   Sentuh `frontend/src/App.jsx` + `GenerateDocumentRequest` + template.
+2. **Async + database** — penghalang produksi paling diremehkan. Generation ~100-125
+   detik ditahan di satu request HTTP sinkron; proxy/load balancer umumnya memutus
+   di 30-60 detik, jadi ini patah begitu di-deploy walau di localhost aman. Plus:
+   tidak ada DB sama sekali, dokumen hilang setelah response terkirim.
+3. **Tambah 2-3 aplikasi bisnis ke `repos.json`** — celah validasi terbesar. Dari 7
+   repo, cuma `realworld` yang aplikasi bisnis berbahasa didukung, dan itu pun
+   aplikasi contoh yang sengaja rapi. Kode perusahaan sungguhan jauh lebih
+   berantakan. Tahap 1 gratis; Tahap 2 ~$0,15-0,30 per repo.
+4. **Bandingkan Sonnet 5 vs Opus** (~$0,30 sekali bayar) — default pindah ke Sonnet
+   5 atas dasar **reputasi umum, bukan pengukuran**. Produk ini menjual kualitas
+   dokumen; jangan gantung lama. Sekarang waktunya tepat karena input sudah bersih.
+5. **Larang diagram menggambar komponen tanpa bukti** — fastapi punya nol dependency
+   database tapi diagramnya tetap menggambar `Backend → Database`. (LLM **memang**
+   baca kode — realworld menghasilkan `Database (PostgreSQL via Prisma)` dan prisma
+   memang ada 4x. Masalahnya cuma dia tidak berhenti saat buktinya kosong.)
+6. **Heuristik `type`** — prioritas **rendah**, terbukti bukan bottleneck. Jangan
+   kerjakan sebelum lima di atas.
 
 Belum dikerjakan dan bukan bug, cuma memang belum: parser di luar Python/TS-JS,
 test untuk `parser_service.py`, OAuth GitHub (masih scaffold), frontend masih
