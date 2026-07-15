@@ -180,24 +180,83 @@ def _python_parameters(params_node) -> list[str]:
     ]
 
 
-def _python_endpoint_from_decorator(decorator_node) -> Optional[EndpointInfo]:
+def _python_keyword_argument(args, name: str):
+    """Ambil node nilai dari keyword argument tertentu, mis. methods=[...]."""
+    if args is None:
+        return None
+    for child in args.named_children:
+        if child.type != "keyword_argument":
+            continue
+        key = child.child_by_field_name("name")
+        if key is not None and key.text.decode() == name:
+            return child.child_by_field_name("value")
+    return None
+
+
+def _string_list_values(node) -> list[str]:
+    """Isi list/tuple literal berisi string: ["GET", "POST"] -> ["GET", "POST"]."""
+    if node is None or node.type not in ("list", "tuple"):
+        return []
+    return [value for value in (_string_literal_value(c) for c in node.named_children) if value]
+
+
+def _python_endpoints_from_decorator(decorator_node) -> list[EndpointInfo]:
+    """Endpoint dari satu decorator Python.
+
+    Mengembalikan LIST, bukan satu: `@bp.route("/x", methods=["GET", "POST"])`
+    itu DUA endpoint. Versi sebelumnya mengembalikan satu, dan itu memang cukup
+    selama yang dikenali cuma FastAPI (satu decorator = satu method).
+
+    Dua bentuk dikenali, keduanya `<apa_saja>.<attr>("path")`:
+      FastAPI  @app.get("/x") / @router.post("/x")  -> attr adalah HTTP method-nya
+      Flask    @app.route("/x", methods=["POST"])   -> attr == "route", method
+               @auth_bp.route("/logout")               dibaca dari methods=
+
+    Flask sebelumnya menghasilkan NOL endpoint karena "route" bukan anggota
+    HTTP_METHODS — terukur pada esteler-app: routes/ berisi 32 view, terdeteksi 0.
+    Untuk aplikasi bisnis itu fatal: endpoint adalah bahan baku pemetaan FE<->BE.
+
+    CATATAN KETIDAKTEPATAN: path yang dikembalikan adalah path yang DITULIS di
+    decorator. Blueprint biasanya didaftarkan dengan url_prefix di file lain
+    (`app.register_blueprint(auth_bp, url_prefix="/auth")`), jadi URL sebenarnya
+    bisa `/auth/login` sementara di sini tercatat `/login`. Menyelesaikannya butuh
+    analisis lintas-file; belum dilakukan.
+    """
     call = next((c for c in decorator_node.named_children if c.type == "call"), None)
     if call is None:
-        return None
+        return []
     fn = call.child_by_field_name("function")
     if fn is None or fn.type != "attribute":
-        return None
-    attr = fn.child_by_field_name("attribute")
-    if attr is None or attr.text.decode().lower() not in HTTP_METHODS:
-        return None
+        return []
+    attr_node = fn.child_by_field_name("attribute")
+    if attr_node is None:
+        return []
+    attr = attr_node.text.decode().lower()
+
     args = call.child_by_field_name("arguments")
     path = _string_literal_value(args.named_children[0]) if args and args.named_children else None
     if not path:
-        return None
-    return EndpointInfo(method=attr.text.decode().upper(), path=path)
+        return []
+
+    if attr in HTTP_METHODS:
+        return [EndpointInfo(method=attr.upper(), path=path)]
+
+    if attr == "route":
+        # methods= dihilangkan berarti GET saja. Ini bukan tebakan — itu default
+        # Flask, dan bentuk paling umum (@bp.route("/menu") tanpa methods).
+        declared = _string_list_values(_python_keyword_argument(args, "methods"))
+        return [
+            EndpointInfo(method=method.upper(), path=path)
+            for method in (declared or ["GET"])
+            # HEAD/OPTIONS ditambahkan Flask sendiri secara otomatis dan bukan
+            # fitur yang perlu didokumentasikan — buang, jangan jadi noise.
+            if method.lower() in HTTP_METHODS
+        ]
+
+    return []
 
 
-def _python_function_info(fn_node, decorators: list) -> tuple[FunctionInfo, Optional[EndpointInfo]]:
+def _python_function_info(fn_node, decorators: list) -> tuple[FunctionInfo, list[EndpointInfo]]:
     name_node = fn_node.child_by_field_name("name")
     return_type_node = fn_node.child_by_field_name("return_type")
     info = FunctionInfo(
@@ -206,14 +265,13 @@ def _python_function_info(fn_node, decorators: list) -> tuple[FunctionInfo, Opti
         return_type=return_type_node.text.decode() if return_type_node else None,
         description=_docstring_from_body(fn_node.child_by_field_name("body")),
     )
-    endpoint = None
-    for dec in decorators:
-        endpoint = _python_endpoint_from_decorator(dec)
-        if endpoint:
-            if info.parameters:
-                endpoint.payload = ", ".join(info.parameters)
-            break
-    return info, endpoint
+    # Semua decorator diperiksa, tidak berhenti di yang pertama: menumpuk route
+    # pada satu view itu lazim di Flask (@app.route("/") + @app.route("/home")).
+    endpoints = [ep for dec in decorators for ep in _python_endpoints_from_decorator(dec)]
+    if info.parameters:
+        for endpoint in endpoints:
+            endpoint.payload = ", ".join(info.parameters)
+    return info, endpoints
 
 
 def _parse_python(root) -> tuple[list[str], list[ClassInfo], list[FunctionInfo], list[EndpointInfo]]:
@@ -245,7 +303,7 @@ def _parse_python(root) -> tuple[list[str], list[ClassInfo], list[FunctionInfo],
                 decorators = [c for c in member.children if c.type == "decorator"]
                 fn_node = member.child_by_field_name("definition")
             if fn_node is not None and fn_node.type == "function_definition":
-                method_info, endpoint = _python_function_info(fn_node, decorators)
+                method_info, found = _python_function_info(fn_node, decorators)
                 class_info.methods.append(
                     MethodInfo(
                         method_name=method_info.function_name,
@@ -254,8 +312,7 @@ def _parse_python(root) -> tuple[list[str], list[ClassInfo], list[FunctionInfo],
                         description=method_info.description,
                     )
                 )
-                if endpoint:
-                    endpoints.append(endpoint)
+                endpoints.extend(found)
         classes.append(class_info)
 
     def visit(node):
@@ -270,10 +327,9 @@ def _parse_python(root) -> tuple[list[str], list[ClassInfo], list[FunctionInfo],
                 decorators = [c for c in child.children if c.type == "decorator"]
                 inner = child.child_by_field_name("definition")
                 if inner is not None and inner.type == "function_definition":
-                    fn_info, endpoint = _python_function_info(inner, decorators)
+                    fn_info, found = _python_function_info(inner, decorators)
                     functions.append(fn_info)
-                    if endpoint:
-                        endpoints.append(endpoint)
+                    endpoints.extend(found)
                 elif inner is not None and inner.type == "class_definition":
                     visit_class(inner)
             elif child.type == "function_definition":

@@ -18,6 +18,17 @@ class DiagramRenderError(Exception):
     """
 
 
+class DocumentTruncatedError(Exception):
+    """The model hit max_tokens before finishing the JSON document.
+
+    Exists purely so the real cause survives. Pydantic reports truncated JSON as
+    "Invalid JSON: EOF while parsing a string", which reads like the model
+    emitted garbage — the next person to hit it will go hunting for a prompt bug
+    that isn't there. The cause is our own output budget, so the message must say
+    so. Same reasoning as ContextWindowExceededError and DiagramRenderError.
+    """
+
+
 class ContextWindowExceededError(Exception):
     """Contract A does not fit in the configured model's context window.
 

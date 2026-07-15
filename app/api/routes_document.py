@@ -13,6 +13,7 @@ from app.api.schemas_document import GenerateDocumentRequest
 from app.domain.exceptions import (
     ContextWindowExceededError,
     DiagramRenderError,
+    DocumentTruncatedError,
     SourceProviderError,
 )
 from app.domain.models import GithubIngestRequest, SourceType
@@ -121,6 +122,15 @@ def generate_document_full_pipeline(body: GenerateDocumentRequest):
         # yang terlalu besar untuk diproses.
         logger.warning("Contract A melebihi context window: %s", e)
         raise HTTPException(status_code=413, detail=str(e)) from e
+    except DocumentTruncatedError as e:
+        # 500, bukan 502 "coba lagi": ini salah konfigurasi KITA (jatah keluaran
+        # kurang), bukan layanan AI yang sedang bermasalah. Penggunanya tidak bisa
+        # berbuat apa-apa selain melapor — jadi jangan suruh dia mengulang.
+        logger.error("Dokumen terpotong karena max_tokens: %s", e)
+        raise HTTPException(
+            status_code=500,
+            detail=f"{e} Laporkan ke tim pengembang — ini batas di sisi sistem, bukan di repo Anda.",
+        ) from e
     except Exception as e:
         logger.exception("Pemanggilan LLM gagal")
         raise HTTPException(

@@ -4,10 +4,10 @@ from typing import List, Optional
 
 import anthropic
 from dotenv import load_dotenv
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from app.core import config
-from app.domain.exceptions import ContextWindowExceededError
+from app.domain.exceptions import ContextWindowExceededError, DocumentTruncatedError
 
 load_dotenv()
 
@@ -17,6 +17,18 @@ logger = logging.getLogger(__name__)
 # Ini model yang dipakai APLIKASI untuk menulis dokumen — terpisah dari model
 # yang dipakai Claude Code saat mengerjakan project ini.
 MODEL = config.LLM_MODEL
+
+# max_tokens itu batas TOTAL: thinking + teks jawaban berbagi jatah yang sama.
+# Ini yang bikin 16.000 patah pada esteler-app (2026-07-15): claude-sonnet-5
+# menjalankan adaptive thinking secara DEFAULT kalau field `thinking` tidak
+# diisi — beda dari Sonnet 4.6 yang default-nya mati. Thinking memakan ~11K,
+# menyisakan ~5K untuk JSON, dan dokumennya terpotong di tengah string.
+#
+# Thinking sengaja TIDAK dimatikan: tugas ini justru sintesis (baca puluhan
+# endpoint, rancang fitur/use case/diagram), persis jenis kerja yang diuntungkan
+# thinking. Yang dinaikkan jatahnya. 32.000 = ruang untuk ~15K thinking + ~15K
+# dokumen, masih jauh di bawah batas keluaran model (128K).
+MAX_OUTPUT_TOKENS = 32_000
 
 
 class UATTestCase(BaseModel):
@@ -255,13 +267,37 @@ class LLMService:
 
         self._guard_context_window(messages)
 
-        response = self.client.messages.parse(
+        # .stream() bukan .parse(): dengan max_tokens sebesar ini, request
+        # non-streaming beresiko putus di tengah karena koneksi menganggur.
+        # CLAUDE.md sudah menyarankan arah ini sejak timeout dinaikkan jadi 1500
+        # detik — "pertimbangkan pindah ke .stream() daripada menaikkan timeout
+        # terus-menerus". get_final_message() tetap mengembalikan ParsedMessage,
+        # jadi structured output tidak berubah sama sekali.
+        with self.client.messages.stream(
             model=MODEL,
-            max_tokens=16000,
+            max_tokens=MAX_OUTPUT_TOKENS,
             system=SYSTEM_PROMPT,
             messages=messages,
             output_format=DocumentContent,
-        )
+        ) as stream:
+            try:
+                response = stream.get_final_message()
+            except ValidationError as e:
+                # JSON terpotong itu GEJALA; sebabnya max_tokens. Tanpa
+                # pemeriksaan ini yang sampai ke pengembang cuma "Invalid JSON:
+                # EOF while parsing a string" dari Pydantic — terbaca seperti LLM
+                # mengeluarkan sampah, padahal jatah keluaran kita sendiri yang
+                # kurang. Persis kelas kesalahan yang sama dengan 502 yang dulu
+                # menelan 414 mermaid.ink.
+                snapshot = stream.current_message_snapshot
+                if snapshot is not None and snapshot.stop_reason == "max_tokens":
+                    raise DocumentTruncatedError(
+                        f"Dokumen terpotong: model berhenti karena menabrak batas keluaran "
+                        f"{MAX_OUTPUT_TOKENS:,} token (max_tokens), bukan karena selesai. "
+                        f"Repo ini menghasilkan dokumen yang lebih besar dari jatah tersebut. "
+                        f"Naikkan MAX_OUTPUT_TOKENS di llm_service.py."
+                    ) from e
+                raise
 
         usage = response.usage
         # Tanpa log ini, cache yang diam-diam tidak pernah aktif mustahil

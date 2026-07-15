@@ -5,15 +5,34 @@ kuota. Yang diuji di sini bukan kualitas dokumen (itu tugas scripts/validation/)
 tapi apakah repo yang kebesaran ditolak SEBELUM panggilan berbayar terjadi.
 """
 
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, Mock
 
 import pytest
+from pydantic import ValidationError
 
-from app.domain.exceptions import ContextWindowExceededError
+from app.domain.exceptions import ContextWindowExceededError, DocumentTruncatedError
 from app.services import llm_service
 from app.services.llm_service import LLMService
 
 _CONTEXT_A = {"project_name": "x", "repositories": []}
+
+
+def _fake_stream(final_message=None, error=None, stop_reason="end_turn"):
+    """Tiru context manager client.messages.stream(...).
+
+    MagicMock, bukan Mock: `with ... as stream` butuh protokol context manager.
+    """
+    stream = MagicMock()
+    if error is not None:
+        stream.get_final_message.side_effect = error
+    else:
+        stream.get_final_message.return_value = final_message
+    stream.current_message_snapshot = Mock(stop_reason=stop_reason)
+
+    manager = MagicMock()
+    manager.__enter__.return_value = stream
+    manager.__exit__.return_value = False
+    return manager, stream
 
 
 @pytest.fixture(autouse=True)
@@ -36,7 +55,7 @@ def _service(window: int | None, counted: int) -> LLMService:
     else:
         client.models.retrieve.return_value = Mock(max_input_tokens=window)
     client.messages.count_tokens.return_value = Mock(input_tokens=counted)
-    client.messages.parse.return_value = Mock(
+    final = Mock(
         parsed_output=Mock(model_dump=Mock(return_value={"document_type": "SDD"})),
         usage=Mock(
             input_tokens=1,
@@ -45,6 +64,7 @@ def _service(window: int | None, counted: int) -> LLMService:
             output_tokens=1,
         ),
     )
+    client.messages.stream.return_value, _ = _fake_stream(final_message=final)
     service.client = client
     return service
 
@@ -61,7 +81,7 @@ def test_oversized_context_fails_before_paying(clear_context_window_cache):
     with pytest.raises(ContextWindowExceededError):
         service.generate_document_content(parsed_repo_context=_CONTEXT_A, target_doc_type="SDD")
 
-    service.client.messages.parse.assert_not_called()
+    service.client.messages.stream.assert_not_called()
 
 
 def test_error_message_names_the_real_numbers_and_forbids_retry():
@@ -87,7 +107,7 @@ def test_context_that_fits_is_generated_normally():
         parsed_repo_context=_CONTEXT_A, target_doc_type="SDD"
     )
 
-    service.client.messages.parse.assert_called_once()
+    service.client.messages.stream.assert_called_once()
     assert result == {"document_type": "SDD"}
 
 
@@ -101,8 +121,53 @@ def test_guard_fails_open_when_models_api_unreachable():
         parsed_repo_context=_CONTEXT_A, target_doc_type="SDD"
     )
 
-    service.client.messages.parse.assert_called_once()
+    service.client.messages.stream.assert_called_once()
     assert result == {"document_type": "SDD"}
+
+
+def _truncation_error() -> ValidationError:
+    """ValidationError persis seperti yang dilempar Pydantic saat JSON terpotong."""
+    from pydantic import BaseModel
+
+    class _M(BaseModel):
+        x: int
+
+    try:
+        _M.model_validate_json('{"x": 1')  # JSON sengaja dipotong
+    except ValidationError as e:
+        return e
+    raise AssertionError("harusnya melempar")
+
+
+def test_truncated_document_blames_max_tokens_not_the_model():
+    """Terjadi sungguhan pada esteler-app: Pydantic melapor 'Invalid JSON: EOF
+    while parsing a string', yang terbaca seperti LLM mengeluarkan sampah —
+    padahal jatah keluaran KITA yang kurang. Kelas kesalahan yang sama dengan 502
+    yang dulu menelan 414 mermaid.ink: sebab asli tertelan gejala."""
+    service = _service(window=1_000_000, counted=100)
+    service.client.messages.stream.return_value, _ = _fake_stream(
+        error=_truncation_error(), stop_reason="max_tokens"
+    )
+
+    with pytest.raises(DocumentTruncatedError) as excinfo:
+        service.generate_document_content(parsed_repo_context=_CONTEXT_A, target_doc_type="SDD")
+
+    message = str(excinfo.value)
+    assert "max_tokens" in message
+    assert "MAX_OUTPUT_TOKENS" in message  # tempat memperbaikinya disebut
+
+
+def test_json_error_not_caused_by_truncation_is_not_disguised():
+    """Kebalikannya sama pentingnya: JSON rusak karena sebab LAIN tidak boleh
+    dilabeli 'kepotong'. Guard yang terlalu bersemangat cuma memindahkan
+    penyamaran ke arah sebaliknya."""
+    service = _service(window=1_000_000, counted=100)
+    service.client.messages.stream.return_value, _ = _fake_stream(
+        error=_truncation_error(), stop_reason="end_turn"  # selesai normal
+    )
+
+    with pytest.raises(ValidationError):
+        service.generate_document_content(parsed_repo_context=_CONTEXT_A, target_doc_type="SDD")
 
 
 def test_context_window_asked_once_then_cached():
