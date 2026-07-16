@@ -34,3 +34,10 @@ data/
 
 # Catatan belajar pribadi + bekal presentasi — bukan dokumentasi produk.
 PELAJARAN.md
+
+# Gambar nyasar di root (screenshot yang ditaruh untuk didiskusikan, dsb.) —
+# `git add -A` pernah menyapu satu screenshot browser ke repo publik. Root-only
+# (pola berawalan /): aset gambar frontend di frontend/public/ tidak kena.
+/*.png
+/*.jpg
+/*.jpeg
