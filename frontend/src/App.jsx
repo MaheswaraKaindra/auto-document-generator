@@ -131,7 +131,10 @@ async function pollJob(jobId, onTick) {
     const job = await response.json()
     if (job.status === 'done' || job.status === 'failed') return job
 
-    onTick(Math.round((Date.now() - startedAt) / 1000))
+    // job.progress = kalimat dari server ("Membaca kode: 22 file, 38 endpoint").
+    // Detiknya tetap ditampilkan di sebelahnya: tahap AI makan ~2 menit, dan
+    // tanpa angka yang bergerak, satu kalimat diam selama itu tetap terbaca hang.
+    onTick(Math.round((Date.now() - startedAt) / 1000), job.progress)
     await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS))
   }
   throw new Error(
@@ -211,8 +214,12 @@ function App() {
       const { job_id: jobId } = await response.json()
       setStatus('Diantrikan. Sistem sedang membaca repo & memanggil AI...')
 
-      const job = await pollJob(jobId, (seconds) =>
-        setStatus(`Sedang diproses... (${seconds} detik) — biasanya 2-3 menit.`),
+      const job = await pollJob(jobId, (seconds, progress) =>
+        setStatus(
+          progress
+            ? `${progress} (${seconds} detik)`
+            : `Sedang diproses... (${seconds} detik) — biasanya 2-3 menit.`,
+        ),
       )
       if (job.status === 'failed') {
         // Pesan dari server diteruskan apa adanya: dia sudah menjelaskan sebab

@@ -117,6 +117,24 @@ def _render_mermaid_to_image(mermaid_script: str, images_dir: Path) -> str:
     Untuk data yang confidential (repo perusahaan), ganti fungsi ini
     dengan rendering lokal (mis. mermaid-cli) sebelum dipakai di
     lingkungan produksi.
+
+    JANGAN DIPARALELKAN — sudah dicoba 2026-07-16 dan mermaid.ink MENOLAK.
+    Pemanggilnya merender diagram satu per satu, berurutan, dan itu memang
+    terlihat seperti target optimisasi yang jelas: terukur ~2,9 detik per diagram,
+    jadi 11 diagram = ~31 detik dari total ~2-3 menit (20%) yang habis untuk
+    perjalanan bolak-balik yang tidak saling bergantung.
+
+    Tapi diuji ke layanan sungguhan: **2 request bersamaan sudah cukup untuk
+    dapat HTTP 503**, diukur tepat sesudah satu request tunggal berhasil (jadi
+    bukan layanannya yang mati). 4 worker juga 503. Batas rate-nya tidak
+    terdokumentasi — mermaid.ink layanan gratis milik orang lain.
+    Konsekuensinya kalau tetap dipaksa: satu 503 menggagalkan SELURUH dokumen,
+    jadi pertukarannya adalah hemat ~25 detik ditukar dengan dokumen yang selalu
+    gagal. Test tidak akan menangkapnya — mermaid.ink di-mock di semua test.
+
+    Paralelisme baru mungkin kalau render pindah ke lokal (mermaid-cli), dan itu
+    memang sudah jadi arah yang disarankan di paragraf pertama untuk alasan
+    privasi. Dua alasan, satu perbaikan.
     """
     images_dir.mkdir(parents=True, exist_ok=True)
 

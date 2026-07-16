@@ -5,6 +5,7 @@ Peran 2 (llm_service.py) — hanya mengimpor & memanggil apa yang sudah
 mereka sediakan."""
 
 import logging
+from typing import Callable
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from fastapi.responses import FileResponse
@@ -98,7 +99,9 @@ def _run_generation(job_id: str, body: GenerateDocumentRequest) -> None:
     doc_type = body.document_type.upper()
     job_store.mark_running(job_id)
     try:
-        output_path = _generate_document(doc_type, body)
+        output_path = _generate_document(
+            doc_type, body, on_progress=lambda text: job_store.set_progress(job_id, text)
+        )
     except SourceProviderError as e:
         job_store.mark_failed(job_id, str(e), 422)
     except ContextWindowExceededError as e:
@@ -172,6 +175,11 @@ def get_job_status(job_id: str):
         "job_id": job["id"],
         "status": job["status"],
         "document_type": job["document_type"],
+        # Tahap yang sedang dikerjakan, kalimat siap tampil. `status` cuma punya
+        # empat nilai dan tidak bisa membedakan "sedang mengunduh repo" dari
+        # "sedang menunggu AI dua menit" — padahal itu yang ingin diketahui orang
+        # yang sedang menatap layar.
+        "progress": job["progress"],
         "created_at": job["created_at"],
         "updated_at": job["updated_at"],
     }
@@ -202,12 +210,35 @@ def download_job_document(job_id: str):
     )
 
 
-def _generate_document(doc_type: str, body: GenerateDocumentRequest) -> str:
+def _describe_parsed(parsed_repo_context: dict) -> str:
+    """Ringkasan Contract A dalam kalimat untuk pengguna.
+
+    Angkanya diambil dari repo PENGGUNA, dan itu intinya: muncul di detik ke-5,
+    dan jadi bukti pertama bahwa sistem benar-benar membaca kodenya — sebelum
+    LLM menulis sebaris pun. Tanpa ini, dua menit pertama cuma angka berjalan
+    yang tidak bisa dibedakan dari hang.
+    """
+    files = [f for repo in parsed_repo_context["repositories"] for f in repo["files"]]
+    endpoints = sum(len(f["api_endpoints"]) for f in files)
+    classes = sum(len(f["classes"]) for f in files)
+    return f"Membaca kode: {len(files)} file, {endpoints} endpoint, {classes} class."
+
+
+def _generate_document(
+    doc_type: str,
+    body: GenerateDocumentRequest,
+    on_progress: Callable[[str], None] = lambda _: None,
+) -> str:
     """Pipeline murni: tidak tahu-menahu soal job maupun HTTP.
 
     Dipisah dari _run_generation supaya yang satu mengurus PEKERJAAN dan yang
     lain mengurus KEGAGALAN — tanpa ini, tujuh blok except membungkus tiga puluh
     baris orkestrasi dan keduanya jadi sulit dibaca.
+
+    `on_progress` sengaja callback, bukan `job_store` yang diimpor langsung:
+    fungsi ini tidak boleh tahu job disimpan di mana, sama seperti dia tidak tahu
+    soal HTTP. Default no-op supaya pemanggil yang tidak peduli (mis. test) tidak
+    perlu menyediakan apa pun.
     """
     ingest_requests = [
         GithubIngestRequest(
@@ -221,16 +252,26 @@ def _generate_document(doc_type: str, body: GenerateDocumentRequest) -> str:
 
     # Exception dibiarkan naik apa adanya — _run_generation yang memetakannya ke
     # kode HTTP dan menyimpannya ke job. Fungsi ini sengaja tidak tahu HTTP.
+    on_progress(f"Mengunduh {len(ingest_requests)} repo dari GitHub...")
     workspaces = _ingestion_service.ingest(SourceType.GITHUB, ingest_requests)
 
     parsed_repo_context = build_parsed_repo_context(
         project_name=body.project_name or "generated-project",
         workspaces=workspaces,
     )
+    on_progress(_describe_parsed(parsed_repo_context))
+
+    # Tahap terlama: ~72% dari total. Sebutkan perkiraannya — menunggu dua menit
+    # itu wajar kalau tahu itu dua menit, dan menyiksa kalau tidak tahu.
+    on_progress("Menganalisis dengan AI dan menyusun isi dokumen... (~2 menit)")
     document_content = _llm_service.generate_document_content(
         parsed_repo_context=parsed_repo_context,
         target_doc_type=doc_type,
     )
+
+    diagrams = document_content.get("diagrams") or {}
+    n_diagrams = len(diagrams.get("activity_diagrams") or []) + 3
+    on_progress(f"Menggambar {n_diagrams} diagram lalu menyusun .docx...")
     try:
         return generate_docx(
             doc_type,

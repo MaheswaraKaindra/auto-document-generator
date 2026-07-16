@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     status        TEXT NOT NULL,
     document_type TEXT NOT NULL,
     project_name  TEXT,
+    progress      TEXT,
     docx_path     TEXT,
     error         TEXT,
     error_status  INTEGER,
@@ -49,6 +50,15 @@ CREATE TABLE IF NOT EXISTS jobs (
     updated_at    TEXT NOT NULL
 );
 """
+
+# Kolom yang ditambahkan SESUDAH ada DB di alam liar. `CREATE TABLE IF NOT EXISTS`
+# tidak menyentuh tabel yang sudah ada, jadi tanpa ini DB lama akan meledak dengan
+# "no such column: progress" — dan cuma di mesin yang sudah pernah menjalankan
+# versi sebelumnya, bukan di test yang selalu mulai dari DB kosong. Bug yang tidak
+# akan pernah terlihat di CI.
+_MIGRATIONS = [
+    ("progress", "ALTER TABLE jobs ADD COLUMN progress TEXT"),
+]
 
 
 def _documents_dir() -> Path:
@@ -79,9 +89,14 @@ def _connect():
 
 
 def init_db() -> None:
-    """Bikin tabel kalau belum ada. Aman dipanggil berkali-kali."""
+    """Bikin tabel kalau belum ada, lalu tambal kolom yang kurang. Aman dipanggil
+    berkali-kali — dan wajib begitu, karena dipanggil tiap startup."""
     with _connect() as conn:
         conn.executescript(_SCHEMA)
+        existing = {row["name"] for row in conn.execute("PRAGMA table_info(jobs)")}
+        for column, statement in _MIGRATIONS:
+            if column not in existing:
+                conn.execute(statement)
 
 
 def create_job(document_type: str, project_name: Optional[str]) -> str:
@@ -98,6 +113,22 @@ def create_job(document_type: str, project_name: Optional[str]) -> str:
 
 def mark_running(job_id: str) -> None:
     _update(job_id, status=STATUS_RUNNING)
+
+
+def set_progress(job_id: str, progress: str) -> None:
+    """Catat tahap yang sedang dikerjakan, dalam kalimat yang dibaca PENGGUNA.
+
+    Bukan untuk mempercepat apa pun — generation tetap ~2-3 menit, dan 72%-nya
+    ada di panggilan LLM yang memang tidak bisa dipercepat tanpa menukar kualitas
+    (yaitu satu-satunya nilai produk ini). Yang diperbaiki: sebelumnya status cuma
+    "running", jadi frontend cuma bisa menghitung detik — angka berjalan yang
+    tidak memberi tahu apa pun, dan tidak bisa dibedakan dari hang.
+
+    Isinya sengaja menyertakan ANGKA NYATA dari repo pengguna ("22 file, 38
+    endpoint"). Itu bukan hiasan: di detik ke-5 dia jadi bukti pertama bahwa
+    sistem benar-benar membaca kode mereka, bukan mengarang.
+    """
+    _update(job_id, progress=progress)
 
 
 def mark_done(job_id: str, docx_path: str) -> None:

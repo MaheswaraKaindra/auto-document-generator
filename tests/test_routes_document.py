@@ -292,3 +292,108 @@ def test_cors_exposes_content_disposition():
     assert cors is not None, "CORS middleware hilang"
     exposed = cors.kwargs.get("expose_headers", [])
     assert "Content-Disposition" in exposed
+
+
+# --- Progress per tahap -------------------------------------------------------
+#
+# Generation ~2-3 menit, dan 72%-nya ada di panggilan LLM yang tidak bisa
+# dipercepat tanpa menukar kualitas dokumen — satu-satunya nilai produk ini.
+# Jadi yang diperbaiki bukan durasinya, tapi keterbacaannya: `status` cuma punya
+# empat nilai dan tidak bisa membedakan "sedang mengunduh repo" dari "sedang
+# menunggu AI dua menit".
+
+
+def test_progress_reports_each_stage_in_order(mock_mermaid_ok):
+    """Urutan tahapnya = urutan pipeline. Kalau ada yang menyisipkan tahap baru
+    di tempat yang salah, pengguna melihat kebohongan tentang apa yang terjadi."""
+    from app.api.schemas_document import GenerateDocumentRequest
+
+    content = _load_fixture("document_content_sdd.json")
+    body = GenerateDocumentRequest(document_type="SDD", repositories=[])
+    seen = []
+
+    with patch.object(
+        routes_document._llm_service, "generate_document_content", return_value=content
+    ):
+        routes_document._generate_document("SDD", body, on_progress=seen.append)
+
+    assert len(seen) == 4
+    assert "Mengunduh" in seen[0]
+    assert seen[1].startswith("Membaca kode:")
+    assert "AI" in seen[2]
+    assert "diagram" in seen[3]
+
+
+def test_progress_after_parse_carries_real_numbers_from_the_repo():
+    """Kalimat ini muncul di detik ke-5 dan jadi bukti pertama bahwa sistem
+    benar-benar membaca kode PENGGUNA — bukan mengarang. Angkanya harus nyata,
+    bukan teks tetap."""
+    from app.api.routes_document import _describe_parsed
+
+    ctx = {
+        "project_name": "x",
+        "repositories": [
+            {
+                "repo_tag": "Backend",
+                "files": [
+                    {"api_endpoints": [1, 2, 3], "classes": [1]},
+                    {"api_endpoints": [], "classes": [1, 2]},
+                ],
+            }
+        ],
+    }
+
+    assert _describe_parsed(ctx) == "Membaca kode: 2 file, 3 endpoint, 3 class."
+
+
+def test_progress_reaches_the_client_through_job_status(client):
+    """Penjaga rantai: progress harus benar-benar sampai ke payload GET, bukan
+    cuma tersimpan di DB."""
+    job_id = job_store.create_job(document_type="SDD", project_name="x")
+    job_store.mark_running(job_id)
+    job_store.set_progress(job_id, "Membaca kode: 22 file, 38 endpoint, 16 class.")
+
+    payload = client.get(f"/documents/jobs/{job_id}").json()
+
+    assert payload["progress"] == "Membaca kode: 22 file, 38 endpoint, 16 class."
+
+
+def test_init_db_adds_progress_column_to_an_existing_old_database(tmp_path, monkeypatch):
+    """DB yang dibuat versi SEBELUM kolom progress ada harus ikut ditambal.
+
+    `CREATE TABLE IF NOT EXISTS` tidak menyentuh tabel yang sudah ada, jadi tanpa
+    migrasi ini DB lama meledak dengan "no such column: progress" — dan HANYA di
+    mesin yang sudah pernah menjalankan versi sebelumnya, tidak pernah di test
+    yang selalu mulai dari DB kosong. Bug yang tak akan terlihat di CI."""
+    import sqlite3
+
+    db = tmp_path / "lama.db"
+    monkeypatch.setattr(job_store, "DB_PATH", db)
+    # Skema versi lama: persis seperti sebelumnya, tanpa kolom progress.
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "CREATE TABLE jobs (id TEXT PRIMARY KEY, status TEXT NOT NULL,"
+        " document_type TEXT NOT NULL, project_name TEXT, docx_path TEXT,"
+        " error TEXT, error_status INTEGER, created_at TEXT NOT NULL,"
+        " updated_at TEXT NOT NULL)"
+    )
+    conn.commit()
+    conn.close()
+
+    job_store.init_db()
+
+    job_id = job_store.create_job(document_type="SDD", project_name="x")
+    job_store.set_progress(job_id, "tahap satu")
+    assert job_store.get_job(job_id)["progress"] == "tahap satu"
+
+
+def test_init_db_is_safe_to_run_twice(tmp_path, monkeypatch):
+    """Dipanggil tiap startup, jadi migrasi yang jalan dua kali harus tidak
+    apa-apa — ALTER TABLE yang diulang akan error kalau tidak dijaga."""
+    monkeypatch.setattr(job_store, "DB_PATH", tmp_path / "dua.db")
+
+    job_store.init_db()
+    job_store.init_db()
+
+    job_id = job_store.create_job(document_type="SDD", project_name="x")
+    assert job_store.get_job(job_id)["progress"] is None
