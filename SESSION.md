@@ -113,6 +113,16 @@ mendarat di folder unduhan. Semua butuh manusia, browser, dan mata.
 repo kedua) dan **isi Nama Project dengan benar** — dia jadi nama aplikasi di
 seluruh prosa dokumen, bukan cuma judul.
 
+**Satu hal BELUM dilihat mata manusia: frontend hasil redesign.** Jalankan
+`npm run dev`, lihat, dan nilai — dibangun tanpa pernah dilihat, dan sesi ini
+sudah membuktikan berkali-kali apa akibatnya kalau itu dianggap cukup.
+
+**Satu keputusan produk menggantung dari audit: ZIP → dokumen mau disambungkan
+tidak?** Kalau target tetap demo magang: tidak usah, biarkan jujur di
+Keterbatasan. Kalau produk mau dipakai orang yang kodenya bukan di GitHub
+(GitLab/Bitbucket internal): jalur ZIP justru pintu masuknya (~setengah hari;
+butuh keputusan API — multipart di /documents/generate vs endpoint terpisah).
+
 Sisanya, semuanya menunggu pengguna yang belum ada:
 
 1. **Ablasi endpoint esteler (~$0,15)** — uji berbayar dengan nilai/biaya
@@ -131,7 +141,8 @@ Sisanya, semuanya menunggu pengguna yang belum ada:
    `POST /documents/generate` + `allow_origins=["*"]` → siapa pun bisa
    menghabiskan `ANTHROPIC_API_KEY`. $0,23/dokumen, $2,27 untuk repo besar, tanpa
    rate limit. Auth wajib duluan. Ditambah: Vercel membekukan `BackgroundTasks`,
-   SQLite butuh volume, pandoc butuh image, frontend hardcode `localhost:8000`.
+   SQLite butuh volume, pandoc butuh image. (URL frontend sudah bisa dioverride
+   lewat `VITE_API_BASE_URL` sejak audit.)
 4. **Repo Java enterprise BESAR** — petclinic cuma 33 file. Densitas 0,64 KB/file
    → ekstrapolasi ~2.500 file = ~677K token (muat), tapi petclinic nyaris tanpa
    Javadoc. **Ekstrapolasi, bukan bukti.**
@@ -153,3 +164,10 @@ Sisanya, semuanya menunggu pengguna yang belum ada:
   audit isinya lewat Contract B dan keduanya berjejak, tapi **apakah layak dikirim
   ke klien itu penilaian manusia.**
 - **Isi `GITHUB_TOKEN`** sebelum demo.
+- **Putuskan soal jejak screenshot di riwayat git.** Screenshot browser sempat
+  tersapu `git add -A` ke repo publik (commit `abf0a94`). Sudah DICABUT dari
+  HEAD + `/*.png` di-ignore, tapi file & URL repo privat tugas kuliah masih ada
+  di RIWAYAT (termasuk di pesan commit `abf0a94`). Tidak ada kredensial di
+  dalamnya (field token kosong, terverifikasi), jadi purge penuh (rewrite
+  riwayat + force-push, mengganggu yang sudah pull) kemungkinan tidak sepadan —
+  tapi itu keputusan pemilik repo, bukan saya.
