@@ -144,8 +144,15 @@ esteler, dan kini petclinic 33% dengan `Owner.java`/`Pet.java` berlabel `other`
 6. **Job hilang kalau proses mati** — `BackgroundTasks` in-process: restart/crash
    saat job jalan → berhenti selamanya di `running`, klien polling tanpa akhir.
    Multi-worker BUKAN masalah (sudah diukur); serverless masih (esteler di Vercel).
-7. **Tabel Revision History** masih baris kosong — butuh keputusan produk dulu
-   (`Summary of Changes` tak punya jawaban jujur untuk dokumen baru).
+7. **Bangkitkan Daftar Gambar & Daftar Tabel** — naik prioritas drastis setelah
+   dokumen acuan **dibaca** (bukan diasumsikan). Dulu dicatat *"mekanis, tinggal
+   dibangkitkan"*; ternyata **di acuan, dua bagian itulah yang RUSAK**: seluruh
+   entri Daftar Gambar-nya menyebut aplikasi yang sama sekali lain (copy-paste
+   dari dokumen sebelumnya), Daftar Tabel-nya bernomor lompat & dobel. Di sini
+   produk kita akan **lebih baik daripada acuannya**, bukan sekadar setara.
+   Sekaligus argumen jualan terkuat yang kita punya (sudah masuk README).
+   ~~**Tabel Revision History**~~ — **dicoret: bukan cacat.** Acuan pun kosong;
+   output kita sudah identik. Lihat Keterbatasan di CLAUDE.md.
 8. **Sonnet 5 vs Opus** (~$0,50) — default pindah atas dasar reputasi, bukan
    pengukuran. Sekarang ada DUA pembanding murah & bagus: esteler + petclinic.
 9. **Chunking monorepo raksasa** — medusa 1.253.878 token = 125%, tetap ditolak.
