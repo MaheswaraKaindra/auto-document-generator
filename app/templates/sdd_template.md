@@ -32,6 +32,34 @@
 | Versi | {{ meta.version }} |
 | Document Classification | {{ meta.document_classification }} |
 
+{# Tiga tabel di bawah meniru halaman muka dokumen acuan (Fungsi/Kodifikasi,
+   Katalog Proses Bisnis, tabel tim). Sel-selnya sengaja KOSONG — bukan penanda
+   "(diisi manual)" — karena nilainya tidak ditanyakan di form; konvensinya sama
+   dengan Revision History yang di dokumen acuan pun berupa baris kosong.
+   Menambahkan penanda di sini akan menggagalkan
+   test_sdd_metadata_leaves_no_manual_placeholder. #}
+| Fungsi | No Kodifikasi |
+| --- | --- |
+| Business Relationship | |
+| Business IT Solution | |
+
+| Katalog Proses Bisnis | Kategori |
+| --- | --- |
+| Proses Value Chain | |
+| Application Landscape | |
+
+**Tim & Peran**
+
+| Jabatan / Peran | Nama |
+| --- | --- |
+| Application Requestor | |
+| Business Process Owner | |
+| PIC | |
+| Lead Coordinator | |
+| IT Solution Analyst | |
+| Developer | |
+| Design UI/UX | |
+
 ## Document Revision History
 
 | No. | Version | Revision Date | Changed By | Summary of Changes |
@@ -46,7 +74,42 @@
 
 ## Persetujuan Dokumen
 
-Timeline aktivitas, cost estimation, serta tanda tangan perwakilan user dan pengembang dilengkapi pada dokumen cetak setelah dokumen ini disetujui. Bagian ini memang dikosongkan — tanda tangan tidak dapat dihasilkan oleh sistem.
+Dokumen ini dibuat sebagai dasar pengembangan {{ project_name }}. Jika ada perubahan dari kesepakatan waktu yang telah disetujui sebelumnya, maka lingkup perubahan dan tata waktu pekerjaan tersebut akan ditinjau kembali antara tim pengembang dengan customer aplikasi.
+
+{# Timeline & Cost Estimation berupa KERANGKA baris kosong: sistem tidak boleh
+   mengarang tanggal atau biaya. Label kelima aktivitasnya diambil dari dokumen
+   acuan — itu tahapan proyek generik, bukan spesifik satu aplikasi. #}
+**Timeline:**
+
+| No. | Aktivitas | Mulai | Selesai | Deliverable |
+| --- | --- | --- | --- | --- |
+| 1 | Gathering Requirement | | | |
+| 2 | Development | | | |
+| 3 | Testing | | | |
+| 4 | Security Test (Penetration Test) | | | |
+| 5 | Closing | | | |
+
+**Cost Estimation:**
+
+| Project Code | Amount (IDR) |
+| --- | --- |
+| | |
+
+**Perwakilan User**
+
+| Nama | Jabatan | Tanda Tangan |
+| --- | --- | --- |
+| | | |
+| | | |
+
+**Perwakilan Pengembang**
+
+| Nama | Jabatan | Tanda Tangan |
+| --- | --- | --- |
+| | | |
+| | | |
+
+Tanda tangan dibubuhkan pada dokumen cetak setelah dokumen ini disetujui — bagian ini tidak dapat dihasilkan oleh sistem.
 
 {# Pemisah halaman muka (identitas, riwayat revisi, persetujuan) dari isi
    dokumen. Pandoc tidak punya sintaks page break lintas-format, jadi dipakai
@@ -172,3 +235,14 @@ Timeline aktivitas, cost estimation, serta tanda tangan perwakilan user dan peng
 ![Gambar {{ loop.index + 3 }} Activity Diagram {{ activity.activity_name }}]({{ activity.image_path }}){{ activity.image_attr }}
 
 {% endfor %}
+
+{# Dokumen acuan menutup dengan dua bab mockup (Website & Aplikasi) — 43% dari
+   87 halamannya. Mockup mustahil diturunkan dari kode, tapi BAB-nya tetap
+   dipasang sebagai placeholder supaya struktur setara dengan acuan dan pembaca
+   tahu bagian itu memang menunggu isian, bukan terlupakan. Sengaja SATU bab,
+   bukan dua seperti acuan: template generik tidak tahu aplikasinya punya
+   platform apa saja, dan bab kosong yang tidak relevan lebih buruk daripada
+   tidak ada (pelajaran yang sama dengan Daftar Gambar UAT). #}
+## 13. Mockup Antarmuka
+
+*Tampilan antarmuka (mockup UI) tidak dapat diturunkan dari source code. Bagian ini dilengkapi manual oleh tim desain — lampirkan mockup atau tangkapan layar tiap halaman aplikasi di sini.*

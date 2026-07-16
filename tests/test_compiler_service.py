@@ -292,6 +292,43 @@ def test_blank_metadata_fields_treated_as_unfilled(mock_mermaid_ok):
     assert _PLACEHOLDER_IN_DOCX in _docx_text(output_path)
 
 
+def test_sdd_carries_acuan_skeleton_sections(mock_mermaid_ok):
+    """Kerangka bagian manual yang meniru dokumen acuan (halaman muka, Timeline,
+    Cost Estimation, blok tanda tangan, bab Mockup) harus ada di SDD sebagai
+    kerangka KOSONG — bukan penanda (diisi manual), karena tidak dipetakan ke
+    form; konvensinya sama dengan Revision History yang di acuan pun kosong.
+    Dipanggil dengan metadata LENGKAP supaya sekalian membuktikan kerangka ini
+    tidak menabrak test "tidak ada penanda tersisa"."""
+    data = _load_fixture("document_content_sdd.json")
+
+    output_path = compiler_service.generate_docx(
+        "SDD", data, document_metadata=_FULL_SDD_METADATA
+    )
+
+    text = _docx_text(output_path)
+    for anchor in [
+        "Katalog Proses Bisnis",
+        "Business Process Owner",
+        "Gathering Requirement",
+        "Cost Estimation",
+        "Perwakilan User",
+        "Perwakilan Pengembang",
+        "Mockup Antarmuka",
+    ]:
+        assert anchor in text, f"kerangka acuan {anchor!r} hilang dari SDD"
+    assert _PLACEHOLDER_IN_DOCX not in text
+
+
+def test_uat_has_no_mockup_section(mock_mermaid_ok):
+    """Bab Mockup cuma milik SDD — dokumen acuan UAT tidak punya, dan bab
+    placeholder yang tidak relevan itu halaman hampa (pelajaran Daftar Gambar)."""
+    data = _load_fixture("document_content_uat.json")
+
+    output_path = compiler_service.generate_docx("UAT", data)
+
+    assert "Mockup" not in _docx_text(output_path)
+
+
 def test_signature_blocks_survive_full_metadata(mock_mermaid_ok):
     """Blok tanda tangan & sertifikasi hasil sengaja TIDAK ditanyakan di form:
     tanda tangan bukan data yang diketik, dan hasil Lolos/Gagal belum ada saat
