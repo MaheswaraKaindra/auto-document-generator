@@ -3,8 +3,9 @@
 **Baca source code sebuah repo, keluarkan draf Solution Design Document (SDD) dan
 User Acceptance Test (UAT) dalam `.docx` yang siap diedit.**
 
-Tunjuk ke repo GitHub (atau upload ZIP), pilih SDD atau UAT, tunggu ~2-3 menit,
-unduh dokumennya.
+Tunjuk ke repo GitHub, pilih SDD atau UAT, tunggu ~2-3 menit, unduh dokumennya.
+(Upload ZIP baru sampai tahap analisis kode — belum tersambung ke pembuatan
+dokumen; lihat *Batas yang diketahui*.)
 
 ---
 
@@ -135,7 +136,7 @@ dalam ~50ms, pipeline jalan di latar belakang, klien polling
 ## Testing
 
 ```bash
-pytest                                       # 183 test; LLM/Mermaid/GitHub di-mock, $0
+pytest                                       # 186 test; LLM/Mermaid/GitHub di-mock, $0
 python scripts/validation/run_validation.py  # ingest+parse ke 10 repo publik nyata, gratis
 ```
 
@@ -154,9 +155,14 @@ Ditulis terbuka, karena produk ini menjual kejujuran isinya:
   LLM; repo ~7.000 file menembus context window.
 - **Diagram dirender lewat layanan hosted** (`mermaid.ink`) — isi diagram keluar
   ke internet. Untuk repo confidential, ganti ke rendering lokal dulu.
+- **Upload ZIP belum tersambung ke pembuatan dokumen** — `POST /ingest/zip`
+  menganalisis kodenya, tapi `POST /documents/generate` baru menerima repo
+  GitHub. Untuk kode yang tidak di GitHub, hasil analisis ZIP harus dikirim
+  manual ke `POST /documents/sdd` / `/uat`.
 - **OAuth GitHub baru scaffold** — pakai Personal Access Token untuk sekarang.
 - **Job hilang kalau prosesnya mati** di tengah jalan; belum aman di serverless.
-- **Frontend masih form dasar**, belum ramah untuk pengguna non-teknis.
+- **Belum ada autentikasi** — endpoint-nya terbuka. Aman untuk localhost;
+  penghalang pertama sebelum deploy ke publik.
 
 Daftar lengkapnya, dengan angka dan alasan tiap butirnya, ada di
 [`CLAUDE.md`](CLAUDE.md).

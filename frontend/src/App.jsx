@@ -1,7 +1,10 @@
 import { useState } from 'react'
 import './App.css'
 
-const API_BASE_URL = 'http://localhost:8000'
+// Bisa dioverride tanpa menyentuh kode: taruh VITE_API_BASE_URL di
+// frontend/.env.local (atau environment saat build). Fallback-nya localhost
+// karena itu satu-satunya lingkungan yang produk ini jalani hari ini.
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
 
 const emptyRepo = () => ({ repo_tag: '', repo_url: '', branch: '' })
 
@@ -110,10 +113,12 @@ function extractFilename(response, fallback) {
 }
 
 const POLL_INTERVAL_MS = 2000
-// Generation terukur ~100-190 detik pada repo nyata. 10 menit memberi ruang
-// untuk repo yang jauh lebih besar tanpa menggantung tab selamanya kalau
-// server-nya mati diam-diam.
-const POLL_TIMEOUT_MS = 10 * 60 * 1000
+// Generation terukur ~100-190 detik pada repo nyata, TAPI batas atasnya bukan
+// itu: client LLM di backend diberi timeout 25 menit (llm_service.py) untuk
+// repo besar. Poll timeout harus LEBIH LAMA dari itu — kalau lebih pendek,
+// frontend memvonis gagal job yang sebenarnya masih jalan dan akan berhasil.
+// 10 menit yang lama persis bug itu.
+const POLL_TIMEOUT_MS = 30 * 60 * 1000
 
 /** Tanya status job sampai selesai.
  *
@@ -138,7 +143,7 @@ async function pollJob(jobId, onTick) {
     await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS))
   }
   throw new Error(
-    'Job belum selesai setelah 10 menit. Prosesnya mungkin masih jalan di server — ' +
+    'Job belum selesai setelah 30 menit. Prosesnya mungkin masih jalan di server — ' +
       `cek /documents/jobs/${jobId} secara manual.`,
   )
 }

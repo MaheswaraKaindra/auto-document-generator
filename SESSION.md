@@ -19,7 +19,10 @@ dukungan **Java + Spring MVC** (bahasa enterprise pertama), `url_prefix` Flask,
 **Daftar Gambar & Daftar Tabel** (celah struktur terakhir yang bisa diselesaikan
 — sisa cuma Mockup), README, frontend yang menjelaskan dirinya, progress
 per-tahap, dan **kualitas visual dokumen** (yang menyingkap tiga cacat fungsional
-lagi). **Produk siap didemokan.** 183 test hijau, biaya ~$0,6.
+lagi). Ditutup dengan **redesign frontend** (bahasa visual dokumen + log tahapan
+bercentang) dan **audit menyeluruh** — yang menemukan bahwa **jalur ZIP → dokumen
+tidak pernah ada** padahal diklaim sejak hari pertama. **Produk siap didemokan.**
+186 test hijau, biaya ~$0,6.
 
 ---
 
@@ -40,6 +43,8 @@ lagi). **Produk siap didemokan.** 183 test hijau, biaya ~$0,6.
 | 11 | **"Diagram blur" ternyata JPEG** | mermaid.ink membalas JPEG (lossy, untuk foto) pada *line art*, 77 dpi. Disimpan berakhiran `.png` padahal isinya JPEG. → PNG lossless, 246 dpi. |
 | 12 | **Acceptance Criteria jadi paragraf gembung** | Markdown butuh baris kosong sebelum list. 8 use case × kriteria terlebur jadi blok tak terbaca. Terukur: paragraf **11 → 42**. |
 | 13 | **5 dari 11 gambar tumpah keluar halaman** | Setinggi 17,2 inci di halaman 11 inci. `_image_attr` membatasi sisi yang lebih dulu mentok → **11/11 muat**. |
+| 14 | **Frontend redesign** | Bahasa visual dokumen (kertas/tinta/biru-dokumen, section bernomor seperti bab SDD, judul serif); ungu template dibuang. Status jadi **log tahapan bercentang** — murni dari data server, tanpa mencocokkan string. **Belum dilihat mata manusia.** |
+| 15 | **Audit menyeluruh: 9 temuan, 7 dieksekusi** | Terbesar: **jalur ZIP → dokumen tidak pernah tersambung** — `/ingest/zip` berhenti di Contract A, `/documents/generate` cuma menerima GitHub; klaim "ZIP upload" sejak hari pertama ditulis dari desain, bukan dari memeriksa jalurnya. README dijujurkan. Sisanya: 47 baris kode mati + blok `__main__` dihapus, `/ingest/zip` nol test → 3 test, `.env.example` dilengkapi, `VITE_API_BASE_URL`, poll timeout 10→30 menit (**harus > timeout LLM 25 menit** — 10 menit memvonis gagal job besar yang masih jalan), klaim basi di README/CLAUDE.md dikoreksi. Rekomendasi tanpa eksekusi: pin versi requirements. |
 
 **Dibatalkan setelah diukur:** Tahap 2 saleor ($2,27, hasilnya ambigu — lihat #2
 di prioritas) dan render diagram paralel (503 — lihat pelajaran).

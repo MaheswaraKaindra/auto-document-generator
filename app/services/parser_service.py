@@ -9,54 +9,6 @@ from dotenv import load_dotenv
 # Load environment variables dari file .env
 load_dotenv()
 
-def generate_file_metadata_prompt(file_name: str, file_content: str) -> str:
-    prompt = f"""
-    Anda adalah asisten AI khusus rekayasa perangkat lunak. Tugas Anda adalah mengekstrak
-    struktur dan metadata dari source code secara objektif.
-
-    ATURAN KETAT:
-    1. JANGAN menjelaskan alur logika kode.
-    2. JANGAN menambahkan teks pembuka atau penutup.
-    3. Output HARUS berupa JSON murni yang bisa langsung di-parse oleh sistem.
-
-    Informasi Target:
-    - Nama File: {file_name}
-
-    Source Code:
-    ```
-    {file_content}
-    ```
-
-    Ekstrak data tersebut ke dalam skema JSON berikut:
-    {{
-        "file_name": "{file_name}",
-        "type": "controller|service|repository|ui_component|model|other",
-        "dependencies": ["daftar_import_atau_library_yang_dipakai"],
-        "classes": [
-            {{
-                "class_name": "NamaClass",
-                "methods": [
-                    {{
-                        "method_name": "namaFungsi",
-                        "parameters": ["param1", "param2"],
-                        "return_type": "tipe_data",
-                        "description": "Ringkasan 1 kalimat apa yang dilakukan fungsi ini"
-                    }}
-                ]
-            }}
-        ],
-        "api_endpoints": [
-            // ISI HANYA JIKA FILE INI ADALAH CONTROLLER/ROUTER
-            {{
-                "method": "GET/POST/PUT/DELETE",
-                "path": "/api/v1/contoh",
-                "payload": "Keterangan data yang diterima (jika ada)"
-            }}
-        ]
-    }}
-    """
-    return prompt
-
 # ==========================================================================
 # STRUCTURAL EXTRACTION (Tree-sitter) - deterministic, no LLM call.
 # Produces the per-file entries of Contract A (ParsedRepoContext.json).
@@ -823,7 +775,8 @@ def _parse_java(root) -> tuple[list[str], list[ClassInfo], list[FunctionInfo], l
 
 def parse_file(file_name: str, file_path: str, content: str) -> Optional[FileMetadata]:
     """Ekstraksi struktural deterministik (tanpa LLM) untuk satu file. Return None jika
-    bahasanya belum didukung oleh parser (caller bisa fallback ke generate_file_metadata_prompt)."""
+    bahasanya belum didukung oleh parser — caller memutuskan fallback-nya
+    (build_parsed_repo_context memakai entry type="other" minimal)."""
     language = detect_language(file_name)
     if language is None:
         return None
@@ -871,20 +824,3 @@ def build_parsed_repo_context(project_name: str, workspaces: list) -> dict:
         repositories.append({"repo_tag": workspace.repo_tag, "files": files})
     return {"project_name": project_name, "repositories": repositories}
 
-
-if __name__ == "__main__":
-    from app.domain.models import GithubIngestRequest, SourceType
-    from app.services.ingestion_service import IngestionService
-
-    workspaces = IngestionService().ingest(
-        SourceType.GITHUB,
-        [
-            GithubIngestRequest(
-                repo_tag="Backend",
-                repo_url="https://github.com/MaheswaraKaindra/auto-document-generator",
-                branch="develop",
-            )
-        ],
-    )
-    result = build_parsed_repo_context("auto-document-generator", workspaces)
-    print(json.dumps(result, indent=2, ensure_ascii=False))
