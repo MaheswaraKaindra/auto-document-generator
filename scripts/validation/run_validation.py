@@ -280,6 +280,14 @@ def main() -> int:
     )
     parser.add_argument("--doc-type", choices=["SDD", "UAT"], default="SDD")
     parser.add_argument("--list", action="store_true", help="Tampilkan daftar kasus lalu keluar.")
+    parser.add_argument(
+        "--yes",
+        action="store_true",
+        help="Lewati konfirmasi interaktif untuk --with-llm. WAJIB di shell "
+        "non-interaktif: tanpa ini input() menunggu jawaban yang tidak akan "
+        "pernah datang — terjadi betulan (proses idle 30+ menit, nol panggilan "
+        "API, disangka regen lambat).",
+    )
     args = parser.parse_args()
 
     cases = _load_cases()
@@ -306,7 +314,7 @@ def main() -> int:
             f"BERBAYAR: {len(cases)} kasus x 1 panggilan Claude ({args.doc_type}).\n"
             f"          Repo besar bisa makan waktu beberapa menit per kasus.\n"
         )
-        if input("Lanjut? [y/N] ").strip().lower() != "y":
+        if not args.yes and input("Lanjut? [y/N] ").strip().lower() != "y":
             print("Dibatalkan.")
             return 1
 
