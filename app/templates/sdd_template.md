@@ -48,6 +48,16 @@
 
 Timeline aktivitas, cost estimation, serta tanda tangan perwakilan user dan pengembang dilengkapi pada dokumen cetak setelah dokumen ini disetujui. Bagian ini memang dikosongkan — tanda tangan tidak dapat dihasilkan oleh sistem.
 
+{# Pemisah halaman muka (identitas, riwayat revisi, persetujuan) dari isi
+   dokumen. Pandoc tidak punya sintaks page break lintas-format, jadi dipakai
+   blok mentah OpenXML — diuji, dan memang diteruskan apa adanya ke docx.
+   SATU-SATUNYA page break yang dipasang: bagian lain dibiarkan mengalir. Page
+   break di tiap bab akan menyisakan halaman setengah kosong di mana-mana, dan
+   dokumen acuan pun tidak melakukannya. #}
+```{=openxml}
+<w:p><w:r><w:br w:type="page"/></w:r></w:p>
+```
+
 ## 1. Deskripsi Aplikasi
 
 {{ app_description }}
@@ -88,11 +98,11 @@ Timeline aktivitas, cost estimation, serta tanda tangan perwakilan user dan peng
 
 ### 7.1 System Architecture
 
-![Gambar 1 Arsitektur Sistem]({{ diagrams.system_architecture_image }})
+![Gambar 1 Arsitektur Sistem]({{ diagrams.system_architecture_image }}){{ diagrams.system_architecture_attr }}
 
 ### 7.2 Component Integration
 
-![Gambar 2 Integrasi Komponen]({{ diagrams.component_integration_image }})
+![Gambar 2 Integrasi Komponen]({{ diagrams.component_integration_image }}){{ diagrams.component_integration_attr }}
 
 ## 8. Application Security
 
@@ -120,7 +130,7 @@ Timeline aktivitas, cost estimation, serta tanda tangan perwakilan user dan peng
 
 ## 11. Use Case
 
-![Gambar 3 Use Case Diagram]({{ diagrams.use_case_diagram_image }})
+![Gambar 3 Use Case Diagram]({{ diagrams.use_case_diagram_image }}){{ diagrams.use_case_diagram_attr }}
 
 {% for uc in use_cases %}
 ### 11.{{ loop.index }} Use Case {{ uc.use_case_id }} — {{ uc.actor }}
@@ -134,7 +144,12 @@ Timeline aktivitas, cost estimation, serta tanda tangan perwakilan user dan peng
 
 : Tabel {{ loop.index + 3 }} Use Case {{ uc.use_case_id }} — {{ uc.actor }}
 
-Acceptance Criteria:
+{# Baris kosong di bawah WAJIB. Markdown mensyaratkan list didahului baris
+   kosong; tanpa itu "1." dianggap lanjutan paragraf "Acceptance Criteria:" dan
+   SELURUH kriteria dilebur jadi satu paragraf gembung — terjadi betulan, dan
+   cuma ketahuan dengan membaca dokumen jadinya, bukan template-nya. #}
+**Acceptance Criteria:**
+
 {% for criterion in uc.acceptance_criteria %}
 {{ loop.index }}. {{ criterion }}
 {% endfor %}
@@ -147,6 +162,6 @@ Acceptance Criteria:
 
 {{ activity.description }}
 
-![Gambar {{ loop.index + 3 }} Activity Diagram {{ activity.activity_name }}]({{ activity.image_path }})
+![Gambar {{ loop.index + 3 }} Activity Diagram {{ activity.activity_name }}]({{ activity.image_path }}){{ activity.image_attr }}
 
 {% endfor %}

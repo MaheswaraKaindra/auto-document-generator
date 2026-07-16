@@ -21,6 +21,7 @@ from typing import Any
 import pypandoc
 import requests
 from jinja2 import Environment, FileSystemLoader
+from PIL import Image
 
 from app.domain.exceptions import DiagramRenderError
 
@@ -58,6 +59,28 @@ REFERENCE_DOCX = TEMPLATES_DIR / "reference.docx"
 # mermaid.ink ada di balik reverse proxy dengan batas panjang URL ~8KB.
 # Diukur langsung: URL 7720 karakter masih 200, 9376 karakter sudah 414.
 _MERMAID_URL_LIMIT = 8000
+
+# `type=png` BUKAN kosmetik — ini akar "diagram blur". Endpoint /img/ mermaid.ink
+# mengembalikan **JPEG** secara default, dan JPEG itu lossy: dirancang untuk foto,
+# dan menghasilkan artefak di sekeliling tiap garis dan huruf. Diagram adalah line
+# art; JPEG adalah pilihan terburuk untuknya. (Filenya sempat disimpan berakhiran
+# .png padahal isinya JPEG — yang menyembunyikan masalahnya dari siapa pun yang
+# cuma melihat nama file.)
+#
+# `width=1600` mengurus separuh sisanya: ruang halaman 6,5 inci (8,5 dikurangi
+# margin), jadi 1600 px = ~246 dpi — di atas 150 dpi yang layak cetak. Diagram
+# bawaan mermaid.ink terukur serendah 381 px lebarnya = ~59 dpi saat direntangkan.
+# Tidak dinaikkan lagi: scale=3 memberi 4800 px (308 KB/diagram, 11 diagram = 3,4
+# MB) untuk ketajaman yang tidak akan terlihat mata di kertas.
+_MERMAID_IMAGE_PARAMS = "type=png&width=1600"
+
+# Ruang yang benar-benar tersedia di halaman, dipakai _image_attr untuk membatasi
+# ukuran tampil diagram. Lebar: 8,5 inci dikurangi margin 1 inci di dua sisi.
+# Tinggi: 11 dikurangi margin, dikurangi lagi ruang untuk judul sub-bab dan
+# caption di bawah gambar — 8 inci konservatif, dan lebih baik diagram sedikit
+# lebih kecil daripada tumpah ke halaman berikutnya.
+_PAGE_WIDTH_IN = 6.5
+_PAGE_HEIGHT_IN = 8.0
 
 _HTTP_HINTS = {
     400: "script Mermaid tidak valid (cek syntax-nya)",
@@ -152,7 +175,7 @@ def _render_mermaid_to_image(mermaid_script: str, images_dir: Path) -> str:
     images_dir.mkdir(parents=True, exist_ok=True)
 
     script = _strip_code_fence(mermaid_script)
-    url = f"https://mermaid.ink/img/{_encode_pako(script)}"
+    url = f"https://mermaid.ink/img/{_encode_pako(script)}?{_MERMAID_IMAGE_PARAMS}"
 
     if len(url) > _MERMAID_URL_LIMIT:
         raise DiagramRenderError(
@@ -179,6 +202,29 @@ def _render_mermaid_to_image(mermaid_script: str, images_dir: Path) -> str:
     return str(image_path)
 
 
+def _image_attr(image_path: str) -> str:
+    """Atribut ukuran Pandoc (`{width=...}` / `{height=...}`) untuk satu diagram.
+
+    Tanpa ini semua gambar direntangkan selebar halaman, dan activity diagram itu
+    TINGGI DAN SEMPIT — terukur pada esteler: 5 dari 11 diagram ditanam setinggi
+    9,7 sampai 17,2 inci di halaman yang ruang pakainya cuma ~9 inci. Tumpah
+    keluar halaman.
+
+    Aturannya satu kalimat: batasi sisi yang lebih dulu mentok. Diagram lebar
+    dibatasi LEBARNYA, diagram tinggi dibatasi TINGGINYA — sisi satunya ikut
+    proporsional, jadi tidak ada yang gepeng.
+
+    Pillow, bukan parsing header PNG manual: JPEG yang dibaca sebagai PNG
+    menghasilkan angka ngawur TANPA error (65536 x 4293001688 — betulan terjadi
+    di sesi ini). Pillow memvalidasi formatnya dan gagal berisik.
+    """
+    with Image.open(image_path) as image:
+        width, height = image.size
+    if height / width > _PAGE_HEIGHT_IN / _PAGE_WIDTH_IN:
+        return f"{{height={_PAGE_HEIGHT_IN}in}}"
+    return f"{{width={_PAGE_WIDTH_IN}in}}"
+
+
 def _build_sdd_context(data: dict[str, Any]) -> dict[str, Any]:
     diagrams = data["diagrams"]
 
@@ -199,29 +245,32 @@ def _build_sdd_context(data: dict[str, Any]) -> dict[str, Any]:
         for uc in data.get("use_cases", [])
     ]
 
+    architecture = _render_mermaid_to_image(diagrams["system_architecture"], IMAGES_DIR)
+    integration = _render_mermaid_to_image(diagrams["component_integration"], IMAGES_DIR)
+    use_case = _render_mermaid_to_image(diagrams["use_case_diagram"], IMAGES_DIR)
+
     return {
         **data,
         "feature_requirements": cleaned_features,
         "use_cases": cleaned_use_cases,
         "diagrams": {
-            "system_architecture_image": _render_mermaid_to_image(
-                diagrams["system_architecture"], IMAGES_DIR
-            ),
-            "component_integration_image": _render_mermaid_to_image(
-                diagrams["component_integration"], IMAGES_DIR
-            ),
-            "use_case_diagram_image": _render_mermaid_to_image(
-                diagrams["use_case_diagram"], IMAGES_DIR
-            ),
+            "system_architecture_image": architecture,
+            "system_architecture_attr": _image_attr(architecture),
+            "component_integration_image": integration,
+            "component_integration_attr": _image_attr(integration),
+            "use_case_diagram_image": use_case,
+            "use_case_diagram_attr": _image_attr(use_case),
             "activity_diagrams": [
                 {
                     "activity_name": activity["activity_name"],
                     "description": activity["description"],
-                    "image_path": _render_mermaid_to_image(
-                        activity["mermaid_script"], IMAGES_DIR
-                    ),
+                    "image_path": path,
+                    "image_attr": _image_attr(path),
                 }
-                for activity in diagrams.get("activity_diagrams", [])
+                for activity, path in (
+                    (a, _render_mermaid_to_image(a["mermaid_script"], IMAGES_DIR))
+                    for a in diagrams.get("activity_diagrams", [])
+                )
             ],
         },
     }

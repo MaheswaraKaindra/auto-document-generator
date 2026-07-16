@@ -15,6 +15,7 @@ from unittest.mock import Mock, patch
 import pytest
 import requests
 from docx import Document
+from docx.oxml.ns import qn
 
 from app.domain.exceptions import DiagramRenderError
 from app.services import compiler_service
@@ -547,3 +548,158 @@ def test_pandoc_styles_survive_the_reference_doc(mock_mermaid_ok):
 
     assert len(_captions(output_path, "Image Caption")) == 4
     assert len(_captions(output_path, "Table Caption")) == 4
+
+
+# --- Kualitas visual ----------------------------------------------------------
+#
+# Semua di bawah ini gagal SUNYI: dokumennya tetap jadi, tetap lengkap, tetap
+# lolos setiap test lain — cuma jelek atau tak terbaca. Tidak ada satu pun yang
+# bisa ditemukan tanpa membuka dokumennya.
+
+
+def _images(output_path: str):
+    import io
+    import zipfile
+
+    from PIL import Image
+
+    package = zipfile.ZipFile(output_path)
+    return [
+        Image.open(io.BytesIO(package.read(n)))
+        for n in sorted(package.namelist())
+        if "media" in n
+    ]
+
+
+def test_diagrams_are_lossless_not_jpeg(mock_mermaid_ok):
+    """Akar "diagram blur": endpoint /img/ mermaid.ink membalas **JPEG** secara
+    default. JPEG itu lossy dan dirancang untuk foto — dipakai untuk line art, dia
+    menaruh artefak di sekeliling tiap garis dan huruf. Filenya bahkan sempat
+    disimpan berakhiran .png padahal isinya JPEG, yang menyembunyikan masalahnya
+    dari siapa pun yang cuma melihat nama file."""
+    compiler_service._render_mermaid_to_image("graph LR\n A-->B", compiler_service.IMAGES_DIR)
+
+    url = mock_mermaid_ok.call_args_list[0].args[0]
+    assert "type=png" in url
+
+
+def test_diagrams_are_rendered_large_enough_to_print(mock_mermaid_ok):
+    """Diagram bawaan mermaid.ink terukur serendah 381 px lebarnya; direntangkan
+    ke ruang halaman 6,5 inci itu ~59 dpi. Cetak layak butuh ~150."""
+    compiler_service._render_mermaid_to_image("graph LR\n A-->B", compiler_service.IMAGES_DIR)
+
+    url = mock_mermaid_ok.call_args_list[0].args[0]
+    assert "width=1600" in url  # 1600 / 6.5 inci = ~246 dpi
+
+
+def test_tall_diagram_is_capped_by_height_not_width(tmp_path):
+    """Activity diagram itu TINGGI DAN SEMPIT. Kalau semua gambar direntangkan
+    selebar halaman, yang tinggi jadi setinggi 17 inci di halaman 11 inci —
+    terukur pada esteler: 5 dari 11 diagram tumpah keluar halaman."""
+    from PIL import Image
+
+    tall = tmp_path / "tall.png"
+    Image.new("RGB", (400, 2000), "white").save(tall)
+
+    assert compiler_service._image_attr(str(tall)) == "{height=8.0in}"
+
+
+def test_wide_diagram_is_capped_by_width(tmp_path):
+    from PIL import Image
+
+    wide = tmp_path / "wide.png"
+    Image.new("RGB", (1600, 500), "white").save(wide)
+
+    assert compiler_service._image_attr(str(wide)) == "{width=6.5in}"
+
+
+def test_every_diagram_fits_on_the_page(mock_mermaid_ok):
+    """Penjaga rantai: atribut ukuran harus benar-benar sampai ke docx, bukan cuma
+    benar di dalam fungsinya sendiri."""
+    import re
+    import zipfile
+
+    data = _load_fixture("document_content_sdd.json")
+
+    output_path = compiler_service.generate_docx("SDD", data)
+
+    xml = zipfile.ZipFile(output_path).read("word/document.xml").decode("utf-8", "ignore")
+    emu_per_inch = 914400
+    sizes = [
+        (int(w) / emu_per_inch, int(h) / emu_per_inch)
+        for w, h in re.findall(r'<wp:extent cx="(\d+)" cy="(\d+)"', xml)
+    ]
+    assert sizes, "tidak ada gambar di dokumen"
+    for width, height in sizes:
+        assert width <= compiler_service._PAGE_WIDTH_IN + 0.1
+        assert height <= compiler_service._PAGE_HEIGHT_IN + 0.1
+
+
+def test_acceptance_criteria_render_as_a_real_numbered_list(mock_mermaid_ok):
+    """Markdown mensyaratkan list didahului BARIS KOSONG. Tanpa itu "1." dianggap
+    lanjutan paragraf "Acceptance Criteria:" dan seluruh kriteria dilebur jadi
+    satu paragraf gembung — terjadi betulan, dan lolos semua test karena teksnya
+    memang ada, cuma tidak terbaca."""
+    from docx import Document
+
+    data = _load_fixture("document_content_sdd.json")
+
+    output_path = compiler_service.generate_docx("SDD", data)
+
+    paragraphs = list(Document(output_path).paragraphs)
+    label = next(i for i, p in enumerate(paragraphs) if p.text.strip() == "Acceptance Criteria:")
+    first_item = paragraphs[label + 1]
+    ppr = first_item._p.find(qn("w:pPr"))
+    assert ppr is not None and ppr.find(qn("w:numPr")) is not None, (
+        "kriteria pertama bukan item list bernomor — kemungkinan terlebur ke paragraf"
+    )
+
+
+def test_front_matter_is_separated_from_the_body(mock_mermaid_ok):
+    """Halaman muka (identitas, riwayat revisi, persetujuan) harus berhenti di
+    halamannya sendiri, tidak menyambung ke Deskripsi Aplikasi."""
+    import zipfile
+
+    data = _load_fixture("document_content_sdd.json")
+
+    output_path = compiler_service.generate_docx("SDD", data)
+
+    xml = zipfile.ZipFile(output_path).read("word/document.xml").decode("utf-8", "ignore")
+    assert 'w:type="page"' in xml
+
+
+def test_table_header_is_black_with_white_text():
+    """Dipasang lewat conditional formatting `firstRow` di style Table — BUKAN
+    dengan memformat sel langsung. Pandoc menghasilkan sel ber-`<w:tcPr/>` KOSONG
+    dan menyalakan `<w:tblLook w:firstRow="1">`, jadi Word sendiri yang menerapkan
+    format baris pertama dari style. Artinya seluruh rupa tabel diatur dari satu
+    tempat, dan template Jinja2 tidak perlu tahu apa-apa soal warna."""
+    import re
+    import zipfile
+
+    styles = (
+        zipfile.ZipFile(compiler_service.REFERENCE_DOCX)
+        .read("word/styles.xml")
+        .decode("utf-8", "ignore")
+    )
+    table = re.search(r'<w:style w:type="table"[^>]*w:styleId="Table".*?</w:style>', styles, re.S)
+    first_row = re.search(r"<w:tblStylePr w:type=\"firstRow\">.*?</w:tblStylePr>", table.group(0), re.S)
+
+    assert 'w:fill="000000"' in first_row.group(0)
+    assert 'w:color w:val="FFFFFF"' in first_row.group(0)
+
+
+def test_typography_reaches_the_generated_document(mock_mermaid_ok):
+    """Diperiksa lewat python-docx, BUKAN cocok-cocokan string XML: Pandoc menulis
+    ulang XML-nya dengan gaya spasi berbeda (`<w:b />` bukan `<w:b/>`), dan
+    assertion berbasis string diam-diam gagal karena itu — betulan terjadi."""
+    from docx import Document
+
+    data = _load_fixture("document_content_sdd.json")
+
+    document = Document(compiler_service.generate_docx("SDD", data))
+
+    section = document.styles["Heading 2"].font
+    assert section.bold and section.all_caps, "judul bab harus tebal & huruf besar"
+    caption = document.styles["Image Caption"].font
+    assert caption.italic and caption.size.pt <= 10, "caption harus kecil & miring"

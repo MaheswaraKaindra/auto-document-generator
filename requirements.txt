@@ -16,6 +16,12 @@ anthropic
 # --- Templating & Document Generation ---
 Jinja2
 python-docx
+
+# Baca dimensi PNG diagram untuk membatasi ukuran tampilnya (compiler_service).
+# Ditulis eksplisit walau selama ini sudah ikut terpasang lewat python-docx:
+# nebeng dependency transitif itu rapuh — python-docx boleh saja melepasnya, dan
+# aplikasi ini akan rusak karena alasan yang tidak masuk akal.
+Pillow
 pypandoc
 
 # --- Code Parsing (generic, multi-language) ---
