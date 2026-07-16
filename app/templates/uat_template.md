@@ -1,5 +1,3 @@
-# Dokumen User Acceptance Testing (UAT)
-
 ## Informasi Dokumen
 
 | Field | Isi |

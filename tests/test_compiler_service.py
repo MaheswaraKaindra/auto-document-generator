@@ -450,3 +450,100 @@ def test_docx_embeds_word_field_codes_for_the_lists(mock_mermaid_ok):
     # dari empat backslash berubah diam-diam dan assertion-nya tidak pernah cocok.
     assert r'TOC \h \z \t &quot;Image Caption&quot; \c' in xml
     assert r'TOC \h \z \t &quot;Table Caption&quot; \c' in xml
+
+
+# --- Tampilan dokumen (reference.docx) ----------------------------------------
+#
+# Kerangka bawaan Pandoc TIDAK punya header, footer, maupun nomor halaman
+# (diperiksa: `pandoc --print-default-data-file reference.docx` tak berisi footer).
+# Itu bukan cuma soal rupa: Daftar Gambar menulis "Gambar 4 ... 14" sementara
+# tidak ada halaman yang bertuliskan "14", jadi pembaca harus menghitung dari
+# depan. Indeks yang dibangun sesi ini tidak bisa dipakai tanpa ini.
+
+
+def test_reference_docx_ships_with_the_repo():
+    """Penjaga paling penting di blok ini, dan yang paling tidak terduga:
+    `.gitignore` punya pola lebar `*.docx` (untuk dokumen hasil generate yang
+    mendarat di folder unduhan). Tanpa pengecualian eksplisit, reference.docx
+    ikut tertelan — dan SETIAP generate gagal di mesin yang baru clone, sementara
+    di mesin yang sudah pernah menjalankan build_reference_docx.py semuanya
+    terlihat normal. Persis "works on my machine"."""
+    assert compiler_service.REFERENCE_DOCX.exists(), (
+        "app/templates/reference.docx hilang. Jalankan: "
+        "python scripts/build_reference_docx.py"
+    )
+
+
+def test_reference_docx_carries_a_page_number_footer():
+    import zipfile
+
+    package = zipfile.ZipFile(compiler_service.REFERENCE_DOCX)
+    footers = [n for n in package.namelist() if "footer" in n]
+
+    assert footers, "reference.docx tidak punya footer"
+    footer_xml = package.read(footers[0]).decode("utf-8", "ignore")
+    assert "PAGE" in footer_xml
+    assert "TITLE" in footer_xml
+
+
+def test_generated_docx_has_numbered_pages(mock_mermaid_ok):
+    """Rantai lengkap: footer di reference.docx harus benar-benar sampai ke
+    dokumen yang dihasilkan DAN terpasang ke halamannya (`footerReference`) —
+    bukan sekadar ikut menumpang di dalam paketnya."""
+    import zipfile
+
+    data = _load_fixture("document_content_sdd.json")
+
+    output_path = compiler_service.generate_docx("SDD", data)
+
+    package = zipfile.ZipFile(output_path)
+    assert [n for n in package.namelist() if "footer" in n]
+    assert "footerReference" in _document_xml(output_path)
+
+
+def test_document_title_lands_in_both_places(mock_mermaid_ok):
+    """Judul dipakai DUA kali: sebagai judul besar halaman pertama (style Title)
+    dan sebagai teks kaki tiap halaman (field TITLE membacanya dari docProps).
+    Satu sumber, dua tempat — kalau docProps kosong, kaki halaman ikut kosong."""
+    import re
+    import zipfile
+
+    from docx import Document
+
+    data = _load_fixture("document_content_sdd.json")
+
+    output_path = compiler_service.generate_docx("SDD", data, project_name="Esteler App")
+
+    core = zipfile.ZipFile(output_path).read("docProps/core.xml").decode("utf-8", "ignore")
+    assert re.search(r"<dc:title>Solution Design Document — Esteler App</dc:title>", core)
+    titles = [p.text for p in Document(output_path).paragraphs if p.style.name == "Title"]
+    assert titles == ["Solution Design Document — Esteler App"]
+
+
+def test_uat_gets_its_own_title(mock_mermaid_ok):
+    uat = _load_fixture("document_content_uat.json")
+
+    output_path = compiler_service.generate_docx("UAT", uat, project_name="Esteler App")
+
+    from docx import Document
+
+    titles = [p.text for p in Document(output_path).paragraphs if p.style.name == "Title"]
+    assert titles == ["Dokumen User Acceptance Testing (UAT) — Esteler App"]
+
+
+def test_title_without_project_name_stays_clean():
+    """project_name kosong -> jangan tinggalkan em-dash menggantung."""
+    assert compiler_service._document_title("SDD", "") == "Solution Design Document"
+    assert compiler_service._document_title("SDD", "   ") == "Solution Design Document"
+
+
+def test_pandoc_styles_survive_the_reference_doc(mock_mermaid_ok):
+    """reference.docx dibangun DARI kerangka bawaan Pandoc, bukan dari nol —
+    Pandoc mencari nama style tertentu, dan kerangka buatan sendiri yang
+    kehilangan salah satunya merusak Daftar Gambar/Tabel TANPA error apa pun."""
+    data = _load_fixture("document_content_sdd.json")
+
+    output_path = compiler_service.generate_docx("SDD", data)
+
+    assert len(_captions(output_path, "Image Caption")) == 4
+    assert len(_captions(output_path, "Table Caption")) == 4

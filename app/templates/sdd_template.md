@@ -22,8 +22,6 @@
   di-caption: dokumen acuan pun tidak menomorinya, dan penomoran isi dimulai
   dari Informasi Demografi.
 #}
-# Solution Design Document
-
 ## Informasi Dokumen
 
 | Field | Isi |

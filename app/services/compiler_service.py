@@ -42,6 +42,19 @@ _TEMPLATE_BY_DOC_TYPE = {
     "UAT": "uat_template.md",
 }
 
+# Judul dokumen — masuk ke halaman pertama DAN ke kaki tiap halaman. Sengaja di
+# sini, bukan sebagai `# Judul` di template: Pandoc merendernya dengan style
+# `Title` (yang memang untuk itu) dan sekaligus menyimpannya ke docProps, tempat
+# field TITLE di kaki halaman membacanya.
+_TITLE_BY_DOC_TYPE = {
+    "SDD": "Solution Design Document",
+    "UAT": "Dokumen User Acceptance Testing (UAT)",
+}
+
+# Kerangka tampilan: font, gaya heading, dan kaki halaman bernomor. Dibangun oleh
+# scripts/build_reference_docx.py — bukan file biner misterius.
+REFERENCE_DOCX = TEMPLATES_DIR / "reference.docx"
+
 # mermaid.ink ada di balik reverse proxy dengan batas panjang URL ~8KB.
 # Diukur langsung: URL 7720 karakter masih 200, 9376 karakter sudah 414.
 _MERMAID_URL_LIMIT = 8000
@@ -214,8 +227,25 @@ def _build_sdd_context(data: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _pandoc_args(normalized_type: str) -> list[str]:
+def _document_title(normalized_type: str, project_name: str) -> str:
+    """Judul dokumen: dipakai DUA kali oleh Word — sebagai judul besar di halaman
+    pertama (style `Title`), dan sebagai teks di kaki SETIAP halaman (field
+    `TITLE` di reference.docx membacanya dari docProps). Satu sumber, dua tempat.
+
+    Meniru acuan, yang menaruh judul yang sama di kedua tempat itu."""
+    label = _TITLE_BY_DOC_TYPE[normalized_type]
+    return f"{label} — {project_name}" if project_name.strip() else label
+
+
+def _pandoc_args(normalized_type: str, title: str) -> list[str]:
     """Argumen Pandoc per jenis dokumen.
+
+    `--reference-doc` membawa TAMPILAN: font, gaya heading, dan yang paling
+    penting **kaki halaman berisi nomor halaman**. Kerangka bawaan Pandoc tidak
+    punya footer sama sekali (diperiksa langsung), dan itu bukan cuma soal rupa:
+    Daftar Gambar menulis "Gambar 4 ... 14" sementara tidak ada halaman yang
+    bertuliskan "14", jadi pembaca harus menghitung dari depan. Indeksnya tidak
+    bisa dipakai. Lihat `scripts/build_reference_docx.py`.
 
     Judul daftar dibuat Indonesia lewat DUA mekanisme Pandoc yang BERBEDA — bukan
     gaya-gayaan, memang begitu writer docx-nya:
@@ -236,7 +266,17 @@ def _pandoc_args(normalized_type: str) -> list[str]:
     Word sungguhan (11 baris + nomor halaman, tanpa refresh manual); membaca
     XML-nya saja tidak akan pernah membuktikan itu.
     """
-    args = ["--standalone", "--toc", "-M", "lang=id", "-M", "toc-title=Daftar Isi"]
+    args = [
+        "--standalone",
+        "--toc",
+        "-M",
+        "lang=id",
+        "-M",
+        "toc-title=Daftar Isi",
+        "-M",
+        f"title={title}",
+        f"--reference-doc={REFERENCE_DOCX}",
+    ]
     if normalized_type == "SDD":
         args += ["--lof", "--lot"]
     return args
@@ -298,7 +338,9 @@ def generate_docx(
             to="docx",
             format="md",
             outputfile=str(output_path),
-            extra_args=_pandoc_args(normalized_type),
+            extra_args=_pandoc_args(
+                normalized_type, _document_title(normalized_type, project_name)
+            ),
         )
     except OSError as e:
         raise RuntimeError(

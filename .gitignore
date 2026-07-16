@@ -9,10 +9,17 @@ PERAN1_NOTES.md
 # Dokumen hasil generate + file lock Word. Pola lama `output_*.docx` cuma cocok
 # dengan nama yang DULU dipakai kode; dokumen yang diunduh lewat browser mendarat
 # dengan nama apa pun (mis. dokumen.docx, Solution_Design_Document.docx) di folder
-# unduhan — yang saat demo ternyata root project ini. Repo ini tidak punya satu
-# pun .docx yang memang perlu di-commit (template-nya .md), jadi pola lebar aman.
+# unduhan — yang saat demo ternyata root project ini.
 *.docx
 ~$*
+
+# ...KECUALI kerangka tampilan Pandoc, yang WAJIB ikut repo. Tanpa file ini,
+# --reference-doc menunjuk ke file yang tidak ada dan SETIAP generate gagal di
+# mesin yang baru clone — sementara di mesin yang sudah menjalankan
+# build_reference_docx.py semuanya terlihat normal. Persis "works on my machine".
+# (Pola `*.docx` di atas ditulis saat repo ini memang belum punya .docx yang perlu
+#  di-commit. Itu berubah beberapa jam kemudian.)
+!app/templates/reference.docx
 
 # Artefak run validasi (Contract A, docx, laporan) — hasil eksperimen, bukan
 # bagian dari repo. Yang di-commit cuma harness dan daftar kasusnya.
