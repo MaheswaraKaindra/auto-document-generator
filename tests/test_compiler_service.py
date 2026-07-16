@@ -655,6 +655,30 @@ def test_acceptance_criteria_render_as_a_real_numbered_list(mock_mermaid_ok):
     )
 
 
+def test_use_case_headings_survive_after_criteria_list(mock_mermaid_ok):
+    """Sisi SEBALIKNYA dari test di atas: Pandoc juga mensyaratkan baris kosong
+    SEBELUM heading (blank_before_header). Tanpa itu heading use case berikutnya
+    ("### 11.2 ...") menempel di baris kriteria terakhir dan keluar sebagai TEKS
+    LITERAL "### ..." di dalam list item — bukan heading, hilang dari Daftar Isi,
+    tanpa error. Terjadi betulan pada use case 11.2–11.8 dokumen esteler.
+
+    Fixture cuma punya 1 use case dan bug-nya baru muncul mulai use case KEDUA —
+    itu sebabnya dia lolos dari semua test lain. Test ini menumbuhkannya jadi 2."""
+    data = _load_fixture("document_content_sdd.json")
+    use_case = data["use_cases"][0]
+    data = {**data, "use_cases": [use_case, use_case]}
+
+    output_path = compiler_service.generate_docx("SDD", data)
+
+    doc = Document(output_path)
+    leaked = [p.text for p in doc.paragraphs if "###" in p.text]
+    assert not leaked, f"heading Markdown lolos sebagai teks literal: {leaked}"
+    headings = [p.text for p in doc.paragraphs if p.style.name.startswith("Heading")]
+    assert any(t.startswith("11.2 Use Case") for t in headings), (
+        "heading use case kedua tidak menjadi heading sungguhan"
+    )
+
+
 def test_front_matter_is_separated_from_the_body(mock_mermaid_ok):
     """Halaman muka (identitas, riwayat revisi, persetujuan) harus berhenti di
     halamannya sendiri, tidak menyambung ke Deskripsi Aplikasi."""

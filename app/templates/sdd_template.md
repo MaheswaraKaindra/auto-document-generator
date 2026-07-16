@@ -153,6 +153,13 @@ Timeline aktivitas, cost estimation, serta tanda tangan perwakilan user dan peng
 {% for criterion in uc.acceptance_criteria %}
 {{ loop.index }}. {{ criterion }}
 {% endfor %}
+{# Baris kosong di bawah juga WAJIB — sisi SEBALIKNYA dari aturan di atas.
+   Pandoc mensyaratkan baris kosong SEBELUM heading (blank_before_header);
+   tanpa ini "### 11.2 ..." use case berikutnya menempel di kriteria terakhir
+   dan keluar sebagai TEKS LITERAL "### ..." di dalam list item, bukan heading —
+   hilang dari Daftar Isi, tanpa gaya, tanpa error. Terjadi betulan pada
+   use case 11.2–11.8 dokumen esteler. #}
+
 {% endfor %}
 
 ## 12. Activity Diagram
