@@ -135,7 +135,7 @@ dalam ~50ms, pipeline jalan di latar belakang, klien polling
 ## Testing
 
 ```bash
-pytest                                       # 149 test; LLM/Mermaid/GitHub di-mock, $0
+pytest                                       # 156 test; LLM/Mermaid/GitHub di-mock, $0
 python scripts/validation/run_validation.py  # ingest+parse ke 10 repo publik nyata, gratis
 ```
 

@@ -196,6 +196,34 @@ def _build_sdd_context(data: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _pandoc_args(normalized_type: str) -> list[str]:
+    """Argumen Pandoc per jenis dokumen.
+
+    Judul daftar dibuat Indonesia lewat DUA mekanisme Pandoc yang BERBEDA — bukan
+    gaya-gayaan, memang begitu writer docx-nya:
+      `lang=id`   -> "Daftar Gambar" / "Daftar Tabel" (terjemahan bawaan;
+                     `lof-title`/`lot-title` DIABAIKAN oleh writer docx — diuji)
+      `toc-title` -> "Daftar Isi" (yang ini justru TIDAK ikut `lang`)
+
+    `--lof`/`--lot` (Daftar Gambar & Daftar Tabel) khusus SDD, dan itu bukan
+    kemalasan: UAT punya NOL gambar dan cuma satu tabel isi (Case Pengujian) —
+    sisanya front-matter yang memang tidak di-caption. Memasangnya di UAT
+    menghasilkan dua halaman indeks KOSONG di tiap dokumen. Halaman hampa lebih
+    buruk daripada tidak ada halamannya sama sekali.
+
+    Pandoc menulis kedua daftar itu sebagai FIELD CODE Word
+    (`TOC \\h \\z \\t "Image Caption" \\c`), bukan teks jadi — jadi WORD yang
+    menghitung nomor halamannya saat dokumen dibuka, dan kita tidak perlu tahu
+    pagination sama sekali dari sisi Markdown. Diverifikasi dengan MEMBUKA docx di
+    Word sungguhan (11 baris + nomor halaman, tanpa refresh manual); membaca
+    XML-nya saja tidak akan pernah membuktikan itu.
+    """
+    args = ["--standalone", "--toc", "-M", "lang=id", "-M", "toc-title=Daftar Isi"]
+    if normalized_type == "SDD":
+        args += ["--lof", "--lot"]
+    return args
+
+
 def _build_uat_context(data: dict[str, Any]) -> dict[str, Any]:
     # Ganti newline jadi "; " supaya tidak merusak baris tabel Markdown
     # (satu baris tabel Markdown wajib satu baris teks).
@@ -252,7 +280,7 @@ def generate_docx(
             to="docx",
             format="md",
             outputfile=str(output_path),
-            extra_args=["--standalone", "--toc"],
+            extra_args=_pandoc_args(normalized_type),
         )
     except OSError as e:
         raise RuntimeError(

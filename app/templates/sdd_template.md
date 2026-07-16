@@ -1,3 +1,27 @@
+{#
+  PENOMORAN GAMBAR & TABEL — baca ini sebelum menambah gambar/tabel.
+
+  Nomornya ditanam langsung di teks caption ("Gambar 4 ..."), bukan dihitung
+  Word. Word cuma mengumpulkan caption itu ke Daftar Gambar/Tabel dan menambahkan
+  nomor HALAMAN-nya. Jadi urutan di sini WAJIB urut dokumen, dan `+3` di bawah
+  adalah jumlah gambar/tabel tetap yang mendahului loop-nya:
+
+    Gambar 1-3 tetap : Arsitektur Sistem, Integrasi Komponen, Use Case Diagram
+    Gambar 4..N      : activity diagram      -> loop.index + 3
+    Tabel  1-3 tetap : Demografi, Security, Features Requirement
+    Tabel  4..N      : use case per aktor    -> loop.index + 3
+
+  Menambah gambar/tabel TETAP berarti offset `+3` ikut naik — di dua tempat.
+  Kalau lupa, penomorannya bentrok tanpa error apa pun.
+
+  Ketiga gambar tetap dijamin ada: compiler mengaksesnya dengan diagrams["..."]
+  (KeyError kalau hilang) dan render yang gagal melempar DiagramRenderError, jadi
+  dokumen yang jadi pasti punya ketiganya — tidak ada Gambar 2 tanpa Gambar 1.
+
+  Tabel front-matter (Informasi Dokumen, Revision History) sengaja TIDAK
+  di-caption: dokumen acuan pun tidak menomorinya, dan penomoran isi dimulai
+  dari Informasi Demografi.
+#}
 # Solution Design Document
 
 ## Informasi Dokumen
@@ -46,6 +70,8 @@ Timeline aktivitas, cost estimation, serta tanda tangan perwakilan user dan peng
 | 6 | Collaboration Profile | {{ meta.collaboration_profile }} | |
 | 7 | Technology Capability | {{ meta.technology_capability }} | |
 
+: Tabel 1 Informasi Demografi Aplikasi
+
 ## 4. System Requirement
 
 {% for requirement in system_requirements %}
@@ -64,11 +90,11 @@ Timeline aktivitas, cost estimation, serta tanda tangan perwakilan user dan peng
 
 ### 7.1 System Architecture
 
-![System Architecture Diagram]({{ diagrams.system_architecture_image }})
+![Gambar 1 Arsitektur Sistem]({{ diagrams.system_architecture_image }})
 
 ### 7.2 Component Integration
 
-![Component Integration Diagram]({{ diagrams.component_integration_image }})
+![Gambar 2 Integrasi Komponen]({{ diagrams.component_integration_image }})
 
 ## 8. Application Security
 
@@ -78,6 +104,8 @@ Timeline aktivitas, cost estimation, serta tanda tangan perwakilan user dan peng
 | 2 | Secure Coding Practice | {{ meta.security_secure_coding }} |
 | 3 | Reverse Proxy | {{ meta.security_reverse_proxy }} |
 
+: Tabel 2 Application Security
+
 ## 9. Application Features Requirement
 
 | No. | Fitur Aplikasi | Deskripsi Fitur |
@@ -86,13 +114,15 @@ Timeline aktivitas, cost estimation, serta tanda tangan perwakilan user dan peng
 | {{ loop.index }} | {{ feature.feature_name }} | {{ feature.description }} |
 {% endfor %}
 
+: Tabel 3 Application Features Requirement
+
 ## 10. Flow Proses Bisnis
 
 {{ business_flow_description }}
 
 ## 11. Use Case
 
-![Use Case Diagram]({{ diagrams.use_case_diagram_image }})
+![Gambar 3 Use Case Diagram]({{ diagrams.use_case_diagram_image }})
 
 {% for uc in use_cases %}
 ### 11.{{ loop.index }} Use Case {{ uc.use_case_id }} — {{ uc.actor }}
@@ -103,6 +133,8 @@ Timeline aktivitas, cost estimation, serta tanda tangan perwakilan user dan peng
 | Actor | {{ uc.actor }} |
 | Pre-Condition | {{ uc.pre_condition }} |
 | Description | {{ uc.description }} |
+
+: Tabel {{ loop.index + 3 }} Use Case {{ uc.use_case_id }} — {{ uc.actor }}
 
 Acceptance Criteria:
 {% for criterion in uc.acceptance_criteria %}
@@ -117,6 +149,6 @@ Acceptance Criteria:
 
 {{ activity.description }}
 
-![{{ activity.activity_name }}]({{ activity.image_path }})
+![Gambar {{ loop.index + 3 }} Activity Diagram {{ activity.activity_name }}]({{ activity.image_path }})
 
 {% endfor %}
