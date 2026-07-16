@@ -132,8 +132,8 @@ async function pollJob(jobId, onTick) {
     if (job.status === 'done' || job.status === 'failed') return job
 
     // job.progress = kalimat dari server ("Membaca kode: 22 file, 38 endpoint").
-    // Detiknya tetap ditampilkan di sebelahnya: tahap AI makan ~2 menit, dan
-    // tanpa angka yang bergerak, satu kalimat diam selama itu tetap terbaca hang.
+    // Detiknya tetap ditampilkan terpisah: tahap AI makan ~2 menit, dan tanpa
+    // angka yang bergerak, satu kalimat diam selama itu tetap terbaca hang.
     onTick(Math.round((Date.now() - startedAt) / 1000), job.progress)
     await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS))
   }
@@ -164,8 +164,23 @@ function App() {
   const [githubToken, setGithubToken] = useState('')
   const [repositories, setRepositories] = useState([emptyRepo()])
   const [metadata, setMetadata] = useState({})
-  const [status, setStatus] = useState('')
-  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  // Satu run = satu mesin status kecil, BUKAN satu string:
+  //   phase   : idle | running | done | failed
+  //   stages  : pesan progress dari server, berurutan — dirender sebagai log
+  //             bertahap (yang lewat dicentang, yang berjalan dapat spinner).
+  //             Murni dari data yang diterima, tanpa mencocokkan string, jadi
+  //             mengubah tahapan di backend tidak pernah merusak tampilan ini.
+  //   download: { filename, url } sesudah selesai — url-nya dipakai tombol
+  //             "unduh ulang" kalau browser memblokir unduhan otomatis.
+  const [phase, setPhase] = useState('idle')
+  const [stages, setStages] = useState([])
+  const [seconds, setSeconds] = useState(0)
+  const [errorMessage, setErrorMessage] = useState('')
+  const [download, setDownload] = useState(null)
+
+  const pushStage = (message) =>
+    setStages((prev) => (prev[prev.length - 1] === message ? prev : [...prev, message]))
 
   const updateRepo = (index, field, value) => {
     setRepositories((prev) =>
@@ -183,8 +198,11 @@ function App() {
 
   const handleSubmit = async (event) => {
     event.preventDefault()
-    setIsSubmitting(true)
-    setStatus('Mengirim permintaan...')
+    setPhase('running')
+    setStages(['Mengirim permintaan ke server…'])
+    setSeconds(0)
+    setErrorMessage('')
+    setDownload(null)
 
     const payload = {
       project_name: projectName || null,
@@ -212,42 +230,40 @@ function App() {
 
       // 202 Accepted: pekerjaannya BELUM jalan, baru diantrikan.
       const { job_id: jobId } = await response.json()
-      setStatus('Diantrikan. Sistem sedang membaca repo & memanggil AI...')
+      pushStage('Diantrikan — menunggu giliran…')
 
-      const job = await pollJob(jobId, (seconds, progress) =>
-        setStatus(
-          progress
-            ? `${progress} (${seconds} detik)`
-            : `Sedang diproses... (${seconds} detik) — biasanya 2-3 menit.`,
-        ),
-      )
+      const job = await pollJob(jobId, (elapsed, progress) => {
+        setSeconds(elapsed)
+        if (progress) pushStage(progress)
+      })
       if (job.status === 'failed') {
         // Pesan dari server diteruskan apa adanya: dia sudah menjelaskan sebab
-        // aslinya (repo kebesaran, diagram gagal, dst) dan cuma menyarankan
+        // aslinya (repo kebesaran, token kurang, dst) dan cuma menyarankan
         // "coba lagi" kalau mengulang memang masuk akal.
         throw new Error(job.error)
       }
 
-      setStatus('Dokumen siap, mengunduh...')
-      const download = await fetch(`${API_BASE_URL}${job.download_url}`)
-      if (!download.ok) {
-        throw new Error(`Gagal mengunduh dokumen (${download.status})`)
+      pushStage('Dokumen siap — mengunduh…')
+      const downloadUrl = `${API_BASE_URL}${job.download_url}`
+      const fileResponse = await fetch(downloadUrl)
+      if (!fileResponse.ok) {
+        throw new Error(`Gagal mengunduh dokumen (${fileResponse.status})`)
       }
 
-      const blob = await download.blob()
-      const filename = extractFilename(download, 'dokumen.docx')
-      const url = URL.createObjectURL(blob)
+      const blob = await fileResponse.blob()
+      const filename = extractFilename(fileResponse, 'dokumen.docx')
+      const objectUrl = URL.createObjectURL(blob)
       const link = document.createElement('a')
-      link.href = url
+      link.href = objectUrl
       link.download = filename
       link.click()
-      URL.revokeObjectURL(url)
+      URL.revokeObjectURL(objectUrl)
 
-      setStatus('Dokumen berhasil dibuat dan diunduh.')
+      setDownload({ filename, url: downloadUrl })
+      setPhase('done')
     } catch (error) {
-      setStatus(`Gagal: ${error.message}`)
-    } finally {
-      setIsSubmitting(false)
+      setErrorMessage(error.message)
+      setPhase('failed')
     }
   }
 
@@ -284,153 +300,215 @@ function App() {
     </label>
   )
 
+  const isSubmitting = phase === 'running'
+
   return (
     <main>
-      <h1>Auto Document Generator</h1>
-      <p className="subtitle">
-        Tunjuk ke repo GitHub, dan sistem membaca source code-nya lalu menyusun draf dokumen{' '}
-        <strong>.docx</strong> — deskripsi aplikasi, daftar fitur, use case, diagram, dan test
-        case. Sekitar 2-3 menit. Hasilnya draf untuk diedit, bukan dokumen final.
-      </p>
+      <header className="masthead">
+        <p className="kicker">Solution Design · User Acceptance Test</p>
+        <h1>Auto Document Generator</h1>
+        <p className="subtitle">
+          Tunjuk ke repo GitHub, dan sistem membaca source code-nya lalu menyusun draf dokumen{' '}
+          <strong>.docx</strong> — deskripsi aplikasi, daftar fitur, use case, diagram, dan test
+          case. Sekitar 2-3 menit. Hasilnya draf untuk diedit, bukan dokumen final.
+        </p>
+      </header>
 
       <form onSubmit={handleSubmit}>
-        <div className="field">
-          <label>
-            Nama Project
-            <input
-              type="text"
-              value={projectName}
-              onChange={(e) => setProjectName(e.target.value)}
-              placeholder="Contoh: Sistem Inventaris SPBU"
-            />
-          </label>
-          <p className="hint">
-            Ini <strong>nama aplikasinya di seluruh dokumen</strong>, bukan cuma judul —
-            AI memakainya saat menulis deskripsi dan use case, karena nama asli aplikasi
-            tidak selalu bisa ditebak dari kodenya. Tulis nama yang Anda ingin dibaca
-            orang. Kalau dikosongkan, dokumennya tertulis “generated-project”.
-          </p>
-        </div>
+        <section className="panel">
+          <h2 className="panel-title">
+            <span className="panel-num">1</span> Dokumen
+          </h2>
 
-        <div className="field">
-          <label>
-            Tipe Dokumen
-            <select value={documentType} onChange={(e) => setDocumentType(e.target.value)}>
-              <option value="SDD">Solution Design Document (SDD)</option>
-              <option value="UAT">User Acceptance Test (UAT)</option>
-            </select>
-          </label>
-          <p className="hint">
-            {documentType === 'SDD' ? (
-              <>
-                <strong>SDD</strong> menjelaskan aplikasinya <em>seperti apa</em>: fitur, use case
-                per aktor, arsitektur, dan activity diagram. Dibaca developer, product owner, dan
-                reviewer.
-              </>
-            ) : (
-              <>
-                <strong>UAT</strong> berisi <em>langkah pengujiannya</em>: siapa menguji apa,
-                dengan langkah dan hasil yang diharapkan. Dibaca QA dan user bisnis saat serah
-                terima.
-              </>
-            )}{' '}
-            Keduanya dibaca dari repo yang sama — pilih salah satu, jalankan lagi untuk yang lain.
-          </p>
-        </div>
-
-        <div className="field">
-          <label>
-            GitHub Token (Personal Access Token)
-            <input
-              type="password"
-              value={githubToken}
-              onChange={(e) => setGithubToken(e.target.value)}
-              placeholder="ghp_xxxxxxxxxxxx (kosongkan untuk repo publik)"
-            />
-          </label>
-          <p className="hint">
-            Perlu hanya untuk <strong>repo privat</strong>; repo publik jalan tanpa token. Token
-            dipakai sekali untuk mengunduh repo — tidak ikut disimpan bersama job dan tidak
-            ditulis ke log.
-          </p>
-        </div>
-
-        <fieldset>
-          <legend>Repositori</legend>
-          <p className="hint">
-            <strong>Tag</strong> menyatakan peran repo — <em>Backend</em>, <em>FE-Web</em>,{' '}
-            <em>FE-CMS</em>. Bukan sekadar label: kalau frontend dan backend dimasukkan sebagai
-            repo terpisah, tag inilah yang dipakai untuk memetakan pemanggilan API di frontend ke
-            endpoint backend-nya, sehingga diagram integrasi komponennya benar. Satu repo saja
-            juga tidak masalah.
-          </p>
-
-          {repositories.map((repo, index) => (
-            <div className="repo-row" key={index}>
+          <div className="field">
+            <label>
+              Nama Project
               <input
                 type="text"
-                value={repo.repo_tag}
-                onChange={(e) => updateRepo(index, 'repo_tag', e.target.value)}
-                placeholder="Tag (Backend / FE-Web / FE-CMS)"
-                required
+                value={projectName}
+                onChange={(e) => setProjectName(e.target.value)}
+                placeholder="Contoh: Sistem Inventaris SPBU"
               />
-              <input
-                type="text"
-                value={repo.repo_url}
-                onChange={(e) => updateRepo(index, 'repo_url', e.target.value)}
-                placeholder="https://github.com/org/repo"
-                required
-              />
-              <input
-                type="text"
-                value={repo.branch}
-                onChange={(e) => updateRepo(index, 'branch', e.target.value)}
-                placeholder="Branch (opsional)"
-              />
-              <button
-                type="button"
-                className="remove-repo-btn"
-                onClick={() => removeRepo(index)}
-                disabled={repositories.length === 1}
-                aria-label="Hapus repositori ini"
-              >
-                ✕
-              </button>
-            </div>
-          ))}
+            </label>
+            <p className="hint">
+              Ini <strong>nama aplikasinya di seluruh dokumen</strong>, bukan cuma judul —
+              AI memakainya saat menulis deskripsi dan use case, karena nama asli aplikasi
+              tidak selalu bisa ditebak dari kodenya. Tulis nama yang Anda ingin dibaca
+              orang. Kalau dikosongkan, dokumennya tertulis “generated-project”.
+            </p>
+          </div>
 
-          <button type="button" onClick={addRepo}>
-            + Tambah Repositori
-          </button>
-        </fieldset>
+          <div className="field">
+            <label>
+              Tipe Dokumen
+              <select value={documentType} onChange={(e) => setDocumentType(e.target.value)}>
+                <option value="SDD">Solution Design Document (SDD)</option>
+                <option value="UAT">User Acceptance Test (UAT)</option>
+              </select>
+            </label>
+            <p className="hint">
+              {documentType === 'SDD' ? (
+                <>
+                  <strong>SDD</strong> menjelaskan aplikasinya <em>seperti apa</em>: fitur, use
+                  case per aktor, arsitektur, dan activity diagram. Dibaca developer, product
+                  owner, dan reviewer.
+                </>
+              ) : (
+                <>
+                  <strong>UAT</strong> berisi <em>langkah pengujiannya</em>: siapa menguji apa,
+                  dengan langkah dan hasil yang diharapkan. Dibaca QA dan user bisnis saat serah
+                  terima.
+                </>
+              )}{' '}
+              Keduanya dibaca dari repo yang sama — pilih salah satu, jalankan lagi untuk yang
+              lain.
+            </p>
+          </div>
+        </section>
+
+        <section className="panel">
+          <h2 className="panel-title">
+            <span className="panel-num">2</span> Sumber Kode
+          </h2>
+
+          <div className="field">
+            <label>
+              GitHub Token (Personal Access Token)
+              <input
+                type="password"
+                value={githubToken}
+                onChange={(e) => setGithubToken(e.target.value)}
+                placeholder="ghp_xxxxxxxxxxxx (kosongkan untuk repo publik)"
+              />
+            </label>
+            <p className="hint">
+              Perlu hanya untuk <strong>repo privat</strong>; repo publik jalan tanpa token. Token
+              dipakai sekali untuk mengunduh repo — tidak ikut disimpan bersama job dan tidak
+              ditulis ke log.
+            </p>
+          </div>
+
+          <fieldset className="repo-group">
+            <legend>Repositori</legend>
+            <p className="hint">
+              <strong>Tag</strong> menyatakan peran repo — <em>Backend</em>, <em>FE-Web</em>,{' '}
+              <em>FE-CMS</em>. Bukan sekadar label: kalau frontend dan backend dimasukkan sebagai
+              repo terpisah, tag inilah yang dipakai untuk memetakan pemanggilan API di frontend
+              ke endpoint backend-nya, sehingga diagram integrasi komponennya benar. Satu repo
+              saja juga tidak masalah.
+            </p>
+
+            {repositories.map((repo, index) => (
+              <div className="repo-row" key={index}>
+                <input
+                  type="text"
+                  value={repo.repo_tag}
+                  onChange={(e) => updateRepo(index, 'repo_tag', e.target.value)}
+                  placeholder="Tag (Backend / FE-Web)"
+                  aria-label="Tag peran repositori"
+                  required
+                />
+                <input
+                  type="text"
+                  value={repo.repo_url}
+                  onChange={(e) => updateRepo(index, 'repo_url', e.target.value)}
+                  placeholder="https://github.com/org/repo"
+                  aria-label="URL repositori GitHub"
+                  required
+                />
+                <input
+                  type="text"
+                  value={repo.branch}
+                  onChange={(e) => updateRepo(index, 'branch', e.target.value)}
+                  placeholder="Branch (opsional)"
+                  aria-label="Branch (opsional)"
+                />
+                <button
+                  type="button"
+                  className="remove-repo-btn"
+                  onClick={() => removeRepo(index)}
+                  disabled={repositories.length === 1}
+                  aria-label="Hapus repositori ini"
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+
+            <button type="button" onClick={addRepo}>
+              + Tambah Repositori
+            </button>
+          </fieldset>
+        </section>
 
         {/* Tertutup default: yang cuma ingin mencoba tidak dihadang tembok input,
             yang butuh dokumen siap kirim tinggal membukanya sekali. */}
-        <details className="metadata-details">
+        <details className="panel metadata-details">
           <summary>
-            Informasi Dokumen <span className="optional-tag">opsional</span>
+            <span className="panel-title">
+              <span className="panel-num">3</span> Informasi Dokumen
+            </span>
+            <span className="optional-tag">opsional</span>
           </summary>
-          <p className="hint">
-            Bagian ini tidak bisa dibaca dari source code — nomor RFC, data demografi, dan
-            sejenisnya cuma diketahui manusia. Yang diisi di sini langsung masuk ke dokumen;
-            yang dibiarkan kosong muncul sebagai <em>(diisi manual)</em> dan bisa dilengkapi
-            belakangan di Word.
-          </p>
 
-          {fieldGroupsFor(documentType).map((group) => (
-            <fieldset key={group.legend}>
-              <legend>{group.legend}</legend>
-              {group.fields.map(renderField)}
-            </fieldset>
-          ))}
+          <div className="metadata-body">
+            <p className="hint">
+              Bagian ini tidak bisa dibaca dari source code — nomor RFC, data demografi, dan
+              sejenisnya cuma diketahui manusia. Yang diisi di sini langsung masuk ke dokumen;
+              yang dibiarkan kosong muncul sebagai <em>(diisi manual)</em> dan bisa dilengkapi
+              belakangan di Word.
+            </p>
+
+            {fieldGroupsFor(documentType).map((group) => (
+              <fieldset key={group.legend}>
+                <legend>{group.legend}</legend>
+                {group.fields.map(renderField)}
+              </fieldset>
+            ))}
+          </div>
         </details>
 
-        <button type="submit" disabled={isSubmitting}>
-          {isSubmitting ? 'Memproses...' : 'Generate Dokumen'}
+        <button type="submit" className="submit-btn" disabled={isSubmitting}>
+          {isSubmitting ? 'Sedang memproses…' : 'Generate Dokumen'}
         </button>
       </form>
 
-      <p role="status">{status}</p>
+      {stages.length > 0 && (
+        <section className="run-panel" role="status" aria-live="polite">
+          <ol className="stage-list">
+            {stages.map((stage, index) => {
+              const isLast = index === stages.length - 1
+              const state = !isLast
+                ? 'done'
+                : phase === 'running'
+                  ? 'active'
+                  : phase === 'failed'
+                    ? 'failed'
+                    : 'done'
+              return (
+                <li key={index} className={`stage stage-${state}`}>
+                  <span className="stage-icon" aria-hidden="true">
+                    {state === 'done' ? '✓' : state === 'failed' ? '✕' : ''}
+                  </span>
+                  <span>{stage}</span>
+                </li>
+              )
+            })}
+          </ol>
+          {phase === 'running' && (
+            <p className="elapsed">{seconds} detik — biasanya selesai dalam 2-3 menit.</p>
+          )}
+        </section>
+      )}
+
+      {phase === 'failed' && <div className="alert alert-error">{errorMessage}</div>}
+
+      {phase === 'done' && download && (
+        <div className="alert alert-success">
+          <strong>{download.filename}</strong> berhasil dibuat dan diunduh otomatis.{' '}
+          <a href={download.url}>Unduh ulang</a> kalau file-nya tidak muncul di folder unduhan.
+        </div>
+      )}
     </main>
   )
 }
