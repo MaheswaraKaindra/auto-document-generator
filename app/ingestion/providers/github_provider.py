@@ -83,8 +83,43 @@ class GithubSourceProvider(SourceProvider):
     diteruskan lewat GithubIngestRequest.access_token.
     """
 
+    @staticmethod
+    def _not_found(request: GithubIngestRequest) -> str:
+        """Pesan untuk 404 GitHub.
+
+        GitHub membalas **404 untuk dua hal yang sangat berbeda**: repo yang memang
+        tidak ada, DAN repo privat yang tidak bisa diakses pemanggil. Itu disengaja
+        — 403 akan membocorkan bahwa repo privat itu ada. Jadi dari luar keduanya
+        MUSTAHIL dibedakan, dan pesan lama ("Repository/branch tidak ditemukan")
+        memilih salah satu lalu menyembunyikan yang lain.
+
+        Akibatnya bukan sekadar kurang informatif — dia mengarahkan ke perbaikan
+        yang SALAH: pengguna disuruh mencurigai URL-nya, padahal URL itu biasanya
+        disalin dari browser sendiri (jadi pasti ada) dan yang kurang cuma token.
+        Terjadi di gladi bersih pertama, pada percobaan pertama.
+
+        Yang tidak bisa kita ketahui: repo-nya ada atau tidak. Yang KITA TAHU:
+        token diberikan atau tidak — dan itu mengubah saran yang benar.
+        """
+        target = f"{request.repo_url} (branch: {request.branch})" if request.branch else request.repo_url
+        if not request.access_token:
+            return (
+                f"Tidak bisa mengakses {target}. GitHub membalas 404, dan itu berarti SALAH SATU "
+                f"dari dua hal: repo-nya memang tidak ada, ATAU repo-nya privat dan permintaan ini "
+                f"tanpa token. Keduanya terlihat sama dari luar — GitHub sengaja tidak "
+                f"membedakannya. Kalau repo ini privat, isi GitHub Token (Personal Access Token) "
+                f"dengan scope `repo`."
+            )
+        return (
+            f"Tidak bisa mengakses {target} walau token diberikan. Berarti SALAH SATU dari: "
+            f"URL/branch-nya salah ketik, atau token-nya tidak punya akses ke repo ini "
+            f"(repo privat butuh scope `repo`; token milik akun yang bukan anggota org juga "
+            f"akan ditolak)."
+        )
+
     def fetch(self, request: GithubIngestRequest) -> Workspace:
         client = Github(auth=Auth.Token(request.access_token)) if request.access_token else Github()
+
 
         try:
             repo = client.get_repo(_parse_repo_full_name(request.repo_url))
@@ -93,7 +128,7 @@ class GithubSourceProvider(SourceProvider):
         except BadCredentialsException as e:
             raise SourceAuthError(f"Token GitHub tidak valid untuk {request.repo_url}") from e
         except UnknownObjectException as e:
-            raise SourceNotFoundError(f"Repository/branch tidak ditemukan: {request.repo_url}") from e
+            raise SourceNotFoundError(self._not_found(request)) from e
         except GithubException as e:
             raise SourceProviderError(f"GitHub API error saat mengakses {request.repo_url}: {e}") from e
 

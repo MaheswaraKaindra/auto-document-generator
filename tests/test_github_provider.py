@@ -166,3 +166,78 @@ def test_fetch_wraps_download_failure_as_source_provider_error(fake_github):
     ):
         with pytest.raises(SourceProviderError, match="Gagal mengunduh arsip"):
             GithubSourceProvider().fetch(request)
+
+
+# --- Pesan 404: repo privat vs repo tidak ada ---------------------------------
+#
+# GitHub membalas 404 untuk DUA hal yang sangat berbeda — repo yang memang tidak
+# ada, dan repo privat yang tidak bisa diakses pemanggil — dan itu DISENGAJA (403
+# akan membocorkan bahwa repo privat itu ada). Diverifikasi langsung ke GitHub:
+# repo Labpro-22 yang privat -> 404, repo karangan -> 404. Identik.
+#
+# Pesan lama ("Repository/branch tidak ditemukan") memilih salah satu sebab lalu
+# menyembunyikan yang lain, sehingga pengguna disuruh mencurigai URL-nya —
+# padahal URL itu biasanya disalin dari browser sendiri (jadi pasti ada) dan yang
+# kurang cuma token. Ini menabrak pengguna pertama pada percobaan pertama, di
+# gladi bersih demo.
+#
+# Yang tidak bisa kita ketahui: repo-nya ada atau tidak. Yang KITA TAHU: token
+# diberikan atau tidak — dan itulah yang mengubah saran yang benar.
+
+
+def _not_found_message(**kwargs) -> str:
+    request = GithubIngestRequest(
+        repo_tag="Backend", repo_url="https://github.com/org/repo-privat", **kwargs
+    )
+    return GithubSourceProvider._not_found(request)
+
+
+def test_not_found_without_token_points_at_the_token():
+    """Tanpa token, sebab yang PALING MUNGKIN adalah repo privat — dan itu yang
+    bisa ditindaklanjuti pengguna. Pesannya harus menyebut token."""
+    message = _not_found_message()
+
+    assert "token" in message.lower()
+    assert "privat" in message.lower()
+
+
+def test_not_found_without_token_still_admits_it_may_not_exist():
+    """Tapi JANGAN berbohong ke arah sebaliknya: kita betul-betul tidak tahu
+    repo-nya ada atau tidak. Menyebut 'pasti privat' sama menyesatkannya dengan
+    'pasti tidak ada' — cuma ke arah yang berlawanan."""
+    message = _not_found_message()
+
+    assert "tidak ada" in message.lower()
+
+
+def test_not_found_with_token_stops_blaming_the_missing_token():
+    """Token sudah diberikan -> menyarankan 'isi token' jadi omong kosong.
+    Sarannya bergeser ke salah ketik atau scope token."""
+    message = _not_found_message(access_token="ghp_x")
+
+    assert "scope" in message.lower() or "salah ketik" in message.lower()
+    assert "isi GitHub Token" not in message
+
+
+def test_not_found_names_the_branch_when_one_was_given():
+    """Branch yang salah juga menghasilkan 404. Kalau pengguna mengisi branch,
+    itu tersangka yang nyata dan harus terlihat di pesannya."""
+    message = _not_found_message(branch="dev", access_token="ghp_x")
+
+    assert "dev" in message
+
+
+def test_not_found_message_reaches_the_caller(fake_github):
+    """Penjaga rantai: pesannya harus benar-benar sampai ke SourceNotFoundError,
+    bukan cuma benar di dalam fungsinya sendiri."""
+    from github import UnknownObjectException
+
+    from app.domain.exceptions import SourceNotFoundError
+
+    fake_github.get_archive_link.side_effect = UnknownObjectException(404, {}, {})
+    request = GithubIngestRequest(repo_tag="Backend", repo_url="https://github.com/org/x")
+
+    with pytest.raises(SourceNotFoundError) as excinfo:
+        GithubSourceProvider().fetch(request)
+
+    assert "token" in str(excinfo.value).lower()
