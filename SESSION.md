@@ -12,13 +12,14 @@
 
 ## Ringkasan satu paragraf
 
-Sesi ini menambah **dukungan parser Java + Spring MVC** — bahasa enterprise
-pertama, dan target pasar produk ini. spring-petclinic: **0 → 17 endpoint, 0 → 25
+Sesi ini menambah **dukungan parser Java + Spring MVC** (bahasa enterprise
+pertama, target pasar produk ini): spring-petclinic **0 → 17 endpoint, 0 → 25
 class**, lalu jadi **dokumen Java pertama** yang seluruh isinya berjejak (aktor
-`Staff Klinik`/`Pengunjung`, bukan Developer/API Client). Tapi temuan yang paling
-berharga bukan kodenya: **prioritas #1 yang saya warisi sendiri ternyata mengukur
-benda yang salah**, dan itu ketahuan sebelum sepeser pun keluar. 138 test hijau.
-Biaya: **$0,23**.
+`Staff Klinik`/`Pengunjung`, bukan Developer/API Client). Lalu memperbaiki
+**`url_prefix` Blueprint Flask** — bug nyata di dokumen esteler yang sudah
+dikirim: bentrokan endpoint **2 → 0**. Tapi temuan paling berharga bukan kodenya:
+**dua rencana kerja yang saya warisi ternyata bersandar pada benda yang salah**,
+dan dua-duanya ketahuan sebelum uang keluar. 149 test hijau. Biaya: **$0,23**.
 
 ---
 
@@ -31,9 +32,10 @@ Biaya: **$0,23**.
 | 3 | **`type` semua "other" walau `OwnerController.java`** | `build_parsed_repo_context` meng-hardcode `type="other"` di fallback, **tak pernah** memanggil `_guess_file_type`. Begitu Java diparse: controller 6, repository 3, model 2 — **tanpa menyentuh heuristiknya**. |
 | 4 | **`@GetMapping({"/vets"})` → path jatuh ke `/`** | Array posisional tak cocok cabang mana pun. VetController & WelcomeController sama-sama lapor `GET /`. **Lolos dari angka "17 endpoint"**; ketahuan cuma karena path diperiksa satu-satu. |
 | 5 | **Prefix class tidak tersambung** | `@RequestMapping("/owners/{ownerId}")` + `@GetMapping("/pets/new")` = `/owners/{ownerId}/pets/new`. Sama dengan url_prefix Flask, tapi di Java **sefile** → deterministik. |
+| 6 | **Dua controller klaim endpoint yang sama** (bug NYATA di dokumen esteler yang sudah dikirim) | `url_prefix` Blueprint diabaikan. **18 dari 38 endpoint jadi `/admin/...`, bentrok 2 → 0**, total tetap 38. Diagnosis lama ("butuh analisis lintas-file") **salah** — prefixnya di konstruktor, sefile. |
 
-Ditambah: `tests/test_parser_java.py` (19 test), `repos.json` petclinic berpindah
-peran (dulu mengukur lubang → sekarang penjaga regresi Java).
+Ditambah: `tests/test_parser_java.py` (19 test), `test_parser_endpoints.py` +11,
+`repos.json` petclinic & esteler berpindah peran jadi penjaga regresi.
 
 ---
 
@@ -47,9 +49,14 @@ peran (dulu mengukur lubang → sekarang penjaga regresi Java).
   `Backend --> Database` ← `JpaRepository`/`Entity`×18/`Table`/`ManyToOne`;
   "pergantian bahasa" (yang sempat saya curigai karangan) ← `LocaleResolver`,
   `LocaleChangeInterceptor`; "Server-rendered Views" ← `ModelAndView`.
-- **Nol regresi ke repo nyata** (wajib: `_string_literal_value` dipakai bersama
-  Python/TS): fastapi 49 file, flask 25/52 class/72 function/154,9 KB, express 8,
-  realworld 69/27 endpoint — identik.
+- **esteler: bentrokan endpoint 2 → 0.** `routes/admin.py` kini `/admin/...` (18
+  dari 38 endpoint), `auth`/`customer` tidak berubah, total tetap **38** — tidak
+  ada endpoint hilang atau muncul, cuma path-nya benar. Memperbaiki dokumen yang
+  **sudah dikirim**, bukan menjawab hipotesis.
+- **Nol regresi dibuktikan ke repo nyata DUA KALI** — wajib, karena kedua
+  perubahan menyentuh kode yang dipakai bersama (`_string_literal_value` oleh
+  Java+Python+TS; jalur decorator oleh Flask+FastAPI): fastapi 49 file/0 endpoint,
+  flask 25/0/52 class/72 function, express 8/33, realworld 69/27 — identik.
 - **Densitas Java terukur 0,64 KB/file** — sebanding saleor (0,81), yang muat di
   85%. Jadi Java **tidak** lebih berat dari Python; klaim lama *"Java tak ada guna
   sebelum chunking beres"* gugur.
@@ -58,17 +65,27 @@ peran (dulu mengukur lubang → sekarang penjaga regresi Java).
 
 ## Pelajaran metodologis (yang paling mahal kalau dilupakan)
 
-**Pola "memeriksa PROKSI, bukan barangnya" muncul untuk KEEMPAT kalinya — dan kali
-ini proksinya ada di RENCANA KERJANYA.** Kalimat *"ukur dulu, gratis, hasilnya
-menentukan prioritas"* terdengar persis seperti pelajaran yang benar. Tapi yang
-akan terukur adalah bayangan, bukan bendanya:
+**Pola "memeriksa PROKSI, bukan barangnya" muncul TIGA kali lagi hari ini (total
+5×) — dan ketiganya bersembunyi di tempat yang tidak terlihat seperti tempat bug:
+rencana kerja, pengetahuan umum, dan aritmetika saya sendiri.** Tiap kali,
+barangnya ada dalam jangkauan dan saya memeriksa sesuatu yang mirip:
 
-| Yang mau diukur (proksi) | Barangnya | Akibatnya |
+| Yang saya periksa (proksi) | Barangnya | Akibatnya |
 |---|---|---|
 | Contract A petclinic **sebelum parser Java ada** (6,4 KB) | Contract A Java **sesungguhnya** (21 KB, 25 class) | Jawabannya salah ke arah **menyenangkan**: "Java cuma 6 KB, muat lega, gas!" — padahal 6 KB **karena kosong** |
+| **Idiom Flask yang lazim** (`register_blueprint(bp, url_prefix=...)` di file lain) | **Kode esteler yang benar-benar ada** (`Blueprint(..., url_prefix=...)` sefile) | Diagnosis `url_prefix` salah berbulan-bulan — dan bikin perbaikannya tampak **jauh lebih mahal** daripada aslinya |
+| **"saleor ≈ 4× esteler"** (tebakan skala) | **22 KB vs 2.075 KB = 94×** | Saya bilang \$0,60-0,80 ke pemilik project; aslinya **\$2,27**. Dua angka itu sudah ada di layar — saya tinggal membaginya |
 
 > **Urutannya terbalik secara logis:** ukuran Contract A Java adalah *konsekuensi*
 > dukungan Java, bukan *prasyaratnya*. Tak ada cara mengukur yang belum dibangun.
+
+**Yang paling licin: proksi berupa PENGETAHUAN UMUM.** Diagnosis `url_prefix`
+berbunyi *"blueprint **biasanya** didaftarkan di file lain"* — **benar tentang
+Flask pada umumnya**, dan itulah yang membuatnya lolos bertahun-tahun. Tentang
+esteler, salah. Kata "biasanya" itu sendiri pengakuan bahwa yang ditulis adalah
+distribusi, bukan repo ini. Cukup `grep Blueprint` sekali.
+
+> Pengetahuan umum tentang framework itu **prior**, bukan **bukti**.
 
 **"Ukur dulu" tidak melindungi apa pun kalau yang diukur bukan bendanya.** Ritual
 mengukur bisa jadi **pengganti** berpikir, bukan alat berpikir. Pertanyaan pertama
@@ -93,19 +110,24 @@ esteler, dan kini petclinic 33% dengan `Owner.java`/`Pet.java` berlabel `other`
 
 ## Kalau melanjutkan besok, mulai dari sini
 
-1. **Tahap 2 ke `saleor` (~$0,60-0,80, Django, 854K token = 85%)** — kasus paling
-   tajam yang tersedia sekarang, dan **belum pernah dijalankan**. Dia MUAT sejak
-   compact tapi punya **0 endpoint** (Django taruh route di `urls.py`, bukan
-   decorator). Pertanyaannya persis yang tertulis di `repos.json`: *dengan 0
-   endpoint, apakah LLM tetap menulis fitur dengan percaya diri? Kalau ya, itu
-   karangan.* Ini menguji batas kejujuran produk di titik terlemahnya — dan
-   hasilnya menentukan apakah **endpoint Django** (#4) layak dikerjakan.
-   Catatan biaya: ~4× esteler, jadi hitung ulang sebelum jalan.
-2. **`url_prefix` Blueprint Flask** — bug NYATA di dokumen esteler yang sudah jadi:
-   `routes/admin.py` & `routes/customer.py` sama-sama lapor `GET /`. Butuh analisis
-   lintas-file (`register_blueprint`). **Sesi ini menaikkan nilainya**: versi Java-nya
-   sudah selesai (prefix class), jadi bentuk solusinya sudah terbukti — yang beda
-   cuma Flask menaruh prefixnya di file lain.
+1. **Ablasi endpoint di esteler (~$0,15)** — uji berbayar dengan rasio nilai/biaya
+   terbaik yang tersedia, dan **menggantikan saleor** (lihat #2). Hapus
+   `api_endpoints` dari Contract A esteler, generate ulang, bandingkan dengan
+   dokumen yang ada. **Satu variabel berubah.** Kenapa esteler: dia **satu-satunya
+   repo yang tidak ada di ingatan model** (semua yang lain — flask, fastapi,
+   express, requests, medusa, petclinic, realworld, saleor — proyek terkenal), dan
+   satu-satunya yang punya ground truth (pemiliknya di tim). Hasilnya menentukan:
+   fitur tetap akurat → **endpoint Django turun prioritas jauh**; fitur ambruk →
+   endpoint menopang segalanya. Idealnya + baseline segar (~$0,30) supaya bedanya
+   tidak tertukar dengan non-determinisme LLM.
+2. **~~Tahap 2 saleor~~ — DIBATALKAN, jangan diulang tanpa alasan baru.** Dua
+   sebab: **(a) biayanya $2,27**, bukan $0,60-0,80 seperti sempat saya klaim (94×
+   esteler, bukan 4×); **(b) hasilnya tidak bisa ditafsirkan** — saleor proyek
+   open-source terkenal, jadi dokumen yang bagus tidak bisa membedakan "produk kita
+   membaca kode" dari "model ingat saleor dari training data". Hasil bagus =
+   ambigu, dan hasil bagus justru yang paling mungkin. **Satu-satunya hal yang
+   cuma bisa dijawab saleor**: apakah kualitas bertahan di 85% context window —
+   pertanyaan infrastruktur, tidak mendesak sampai ada yang butuh repo sebesar itu.
 3. **Repo Java enterprise BESAR** — petclinic cuma 33 file, terlalu kecil untuk
    menutup pertanyaan ukuran. Densitas 0,64 KB/file → ekstrapolasi ke ~2.500 file
    = ~677K token (68%, muat), **tapi petclinic nyaris tanpa Javadoc**; enterprise
@@ -113,18 +135,23 @@ esteler, dan kini petclinic 33% dengan `Owner.java`/`Pet.java` berlabel `other`
    ekstrapolasi, bukan bukti.** Sekalian menguji `@RequestMapping` tanpa `method=`
    (diaproksimasi GET) yang belum tersentuh repo nyata.
 4. **Endpoint Django** — penghalang lamanya (saleor tak muat) **sudah hilang**.
-   Urutkan sesudah #1: hasil Tahap 2 saleor menentukan apakah ini mendesak.
-5. **Job hilang kalau proses mati** — `BackgroundTasks` in-process: restart/crash
+   Urutkan sesudah #1: ablasi esteler menentukan apakah ini mendesak.
+5. **`register_blueprint(bp, url_prefix=)` lintas-file** — sisa dari perbaikan
+   url_prefix hari ini. Bentuk konstruktor sudah jalan; bentuk ini belum, dan
+   **sengaja**: esteler (satu-satunya app Flask nyata kita) pakai bentuk
+   konstruktor, jadi jalur lintas-file tak bisa dibuktikan end-to-end. Butuh app
+   Flask bergaya itu di `repos.json` dulu. Aturan yang sama yang menahan Django.
+6. **Job hilang kalau proses mati** — `BackgroundTasks` in-process: restart/crash
    saat job jalan → berhenti selamanya di `running`, klien polling tanpa akhir.
    Multi-worker BUKAN masalah (sudah diukur); serverless masih (esteler di Vercel).
-6. **Tabel Revision History** masih baris kosong — butuh keputusan produk dulu
+7. **Tabel Revision History** masih baris kosong — butuh keputusan produk dulu
    (`Summary of Changes` tak punya jawaban jujur untuk dokumen baru).
-7. **Sonnet 5 vs Opus** (~$0,50) — default pindah atas dasar reputasi, bukan
+8. **Sonnet 5 vs Opus** (~$0,50) — default pindah atas dasar reputasi, bukan
    pengukuran. Sekarang ada DUA pembanding murah & bagus: esteler + petclinic.
-8. **Chunking monorepo raksasa** — medusa 1.253.878 token = 125%, tetap ditolak.
+9. **Chunking monorepo raksasa** — medusa 1.253.878 token = 125%, tetap ditolak.
    Menyaring tak menolong (`classes` 21% & `dependencies` 23% = bahan baku
    dokumen). Masalahnya arsitektur: SELURUH Contract A dikirim dalam SATU panggilan.
-9. **Bersihkan `data/documents/`** — tumbuh selamanya, ~400 KB/dokumen, tanpa TTL.
+10. **Bersihkan `data/documents/`** — tumbuh selamanya, ~400 KB/dokumen, tanpa TTL.
 
 ---
 
