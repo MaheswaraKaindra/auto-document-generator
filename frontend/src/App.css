@@ -112,8 +112,17 @@ p[role='status'] {
   margin-left: 4px;
 }
 
-.metadata-hint {
+.hint {
   opacity: 0.75;
   font-size: 0.9em;
   margin: 0;
+}
+
+/* Mengikat hint ke field DI ATASNYA. Tanpa ini hint jadi anak langsung `form`
+   dan kena gap 16px — jaraknya ke label sendiri sama dengan ke field
+   berikutnya, jadi pembaca tidak tahu dia menjelaskan yang mana. */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }

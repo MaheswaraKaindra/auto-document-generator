@@ -280,39 +280,81 @@ function App() {
   return (
     <main>
       <h1>Auto Document Generator</h1>
-      <p className="subtitle">Kerangka dasar — belum final, silakan dikembangkan lebih lanjut.</p>
+      <p className="subtitle">
+        Tunjuk ke repo GitHub, dan sistem membaca source code-nya lalu menyusun draf dokumen{' '}
+        <strong>.docx</strong> — deskripsi aplikasi, daftar fitur, use case, diagram, dan test
+        case. Sekitar 2-3 menit. Hasilnya draf untuk diedit, bukan dokumen final.
+      </p>
 
       <form onSubmit={handleSubmit}>
-        <label>
-          Nama Project
-          <input
-            type="text"
-            value={projectName}
-            onChange={(e) => setProjectName(e.target.value)}
-            placeholder="Contoh: Sistem Inventaris SPBU"
-          />
-        </label>
+        <div className="field">
+          <label>
+            Nama Project
+            <input
+              type="text"
+              value={projectName}
+              onChange={(e) => setProjectName(e.target.value)}
+              placeholder="Contoh: Sistem Inventaris SPBU"
+            />
+          </label>
+          <p className="hint">
+            Muncul di halaman judul dokumen. Kalau dikosongkan, dokumennya tertulis
+            “generated-project”.
+          </p>
+        </div>
 
-        <label>
-          Tipe Dokumen
-          <select value={documentType} onChange={(e) => setDocumentType(e.target.value)}>
-            <option value="SDD">Solution Design Document (SDD)</option>
-            <option value="UAT">User Acceptance Test (UAT)</option>
-          </select>
-        </label>
+        <div className="field">
+          <label>
+            Tipe Dokumen
+            <select value={documentType} onChange={(e) => setDocumentType(e.target.value)}>
+              <option value="SDD">Solution Design Document (SDD)</option>
+              <option value="UAT">User Acceptance Test (UAT)</option>
+            </select>
+          </label>
+          <p className="hint">
+            {documentType === 'SDD' ? (
+              <>
+                <strong>SDD</strong> menjelaskan aplikasinya <em>seperti apa</em>: fitur, use case
+                per aktor, arsitektur, dan activity diagram. Dibaca developer, product owner, dan
+                reviewer.
+              </>
+            ) : (
+              <>
+                <strong>UAT</strong> berisi <em>langkah pengujiannya</em>: siapa menguji apa,
+                dengan langkah dan hasil yang diharapkan. Dibaca QA dan user bisnis saat serah
+                terima.
+              </>
+            )}{' '}
+            Keduanya dibaca dari repo yang sama — pilih salah satu, jalankan lagi untuk yang lain.
+          </p>
+        </div>
 
-        <label>
-          GitHub Token (Personal Access Token)
-          <input
-            type="password"
-            value={githubToken}
-            onChange={(e) => setGithubToken(e.target.value)}
-            placeholder="ghp_xxxxxxxxxxxx"
-          />
-        </label>
+        <div className="field">
+          <label>
+            GitHub Token (Personal Access Token)
+            <input
+              type="password"
+              value={githubToken}
+              onChange={(e) => setGithubToken(e.target.value)}
+              placeholder="ghp_xxxxxxxxxxxx (kosongkan untuk repo publik)"
+            />
+          </label>
+          <p className="hint">
+            Perlu hanya untuk <strong>repo privat</strong>; repo publik jalan tanpa token. Token
+            dipakai sekali untuk mengunduh repo — tidak ikut disimpan bersama job dan tidak
+            ditulis ke log.
+          </p>
+        </div>
 
         <fieldset>
           <legend>Repositori</legend>
+          <p className="hint">
+            <strong>Tag</strong> menyatakan peran repo — <em>Backend</em>, <em>FE-Web</em>,{' '}
+            <em>FE-CMS</em>. Bukan sekadar label: kalau frontend dan backend dimasukkan sebagai
+            repo terpisah, tag inilah yang dipakai untuk memetakan pemanggilan API di frontend ke
+            endpoint backend-nya, sehingga diagram integrasi komponennya benar. Satu repo saja
+            juga tidak masalah.
+          </p>
 
           {repositories.map((repo, index) => (
             <div className="repo-row" key={index}>
@@ -359,7 +401,7 @@ function App() {
           <summary>
             Informasi Dokumen <span className="optional-tag">opsional</span>
           </summary>
-          <p className="metadata-hint">
+          <p className="hint">
             Bagian ini tidak bisa dibaca dari source code — nomor RFC, data demografi, dan
             sejenisnya cuma diketahui manusia. Yang diisi di sini langsung masuk ke dokumen;
             yang dibiarkan kosong muncul sebagai <em>(diisi manual)</em> dan bisa dilengkapi
