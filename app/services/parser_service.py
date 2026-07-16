@@ -145,6 +145,23 @@ def _docstring_from_body(body_node) -> str:
     return value.strip() if value else ""
 
 
+def _join_url_path(prefix: str, path: Optional[str]) -> str:
+    """Sambung prefix ke path route. Dipakai Java (@RequestMapping di class) DAN
+    Python (url_prefix Blueprint) — semantiknya ternyata identik di kedua framework,
+    termasuk kasus `/admin` + `/` = `/admin/` (Flask mempertahankan slash itu).
+
+    Sengaja SATU fungsi: dua tempat yang menyambung path adalah dua jawaban yang
+    menunggu untuk berbeda diam-diam.
+    """
+    prefix = (prefix or "").strip()
+    path = (path or "").strip()
+    if not prefix:
+        return path or "/"
+    if not path:
+        return prefix
+    return prefix.rstrip("/") + "/" + path.lstrip("/")
+
+
 def _guess_file_type(file_name: str, has_endpoints: bool) -> str:
     lower = file_name.lower()
     if has_endpoints or "controller" in lower or "router" in lower or "route" in lower:
@@ -204,14 +221,49 @@ def _string_list_values(node) -> list[str]:
     return [value for value in (_string_literal_value(c) for c in node.named_children) if value]
 
 
-def _python_endpoints_from_decorator(decorator_node) -> list[EndpointInfo]:
+def _python_blueprint_prefix(assign_node) -> Optional[tuple[str, str]]:
+    """`admin_bp = Blueprint("admin", __name__, url_prefix="/admin")` -> ("admin_bp", "/admin").
+
+    Mengembalikan None kalau assignment ini bukan pembuatan Blueprint. Blueprint
+    TANPA `url_prefix` tetap dicatat dengan prefix "" — dia memang blueprint, cuma
+    tidak berprefix (`auth_bp` di esteler), dan membedakan "bukan blueprint" dari
+    "blueprint tanpa prefix" berguna kalau nanti ada resolusi lintas-file.
+
+    `flask.Blueprint(...)` ikut dikenali: yang diperiksa nama atribut terakhirnya,
+    bukan seluruh ekspresi.
+    """
+    right = assign_node.child_by_field_name("right")
+    if right is None or right.type != "call":
+        return None
+    fn = right.child_by_field_name("function")
+    if fn is None:
+        return None
+    if fn.type == "identifier":
+        callee = fn.text.decode()
+    elif fn.type == "attribute":
+        attr = fn.child_by_field_name("attribute")
+        callee = attr.text.decode() if attr else ""
+    else:
+        return None
+    if callee != "Blueprint":
+        return None
+    left = assign_node.child_by_field_name("left")
+    if left is None or left.type != "identifier":
+        return None
+    prefix = _string_literal_value(
+        _python_keyword_argument(right.child_by_field_name("arguments"), "url_prefix")
+    )
+    return left.text.decode(), (prefix or "")
+
+
+def _python_endpoints_from_decorator(decorator_node, blueprint_prefixes: dict) -> list[EndpointInfo]:
     """Endpoint dari satu decorator Python.
 
     Mengembalikan LIST, bukan satu: `@bp.route("/x", methods=["GET", "POST"])`
     itu DUA endpoint. Versi sebelumnya mengembalikan satu, dan itu memang cukup
     selama yang dikenali cuma FastAPI (satu decorator = satu method).
 
-    Dua bentuk dikenali, keduanya `<apa_saja>.<attr>("path")`:
+    Dua bentuk dikenali, keduanya `<obj>.<attr>("path")`:
       FastAPI  @app.get("/x") / @router.post("/x")  -> attr adalah HTTP method-nya
       Flask    @app.route("/x", methods=["POST"])   -> attr == "route", method
                @auth_bp.route("/logout")               dibaca dari methods=
@@ -220,11 +272,8 @@ def _python_endpoints_from_decorator(decorator_node) -> list[EndpointInfo]:
     HTTP_METHODS — terukur pada esteler-app: routes/ berisi 32 view, terdeteksi 0.
     Untuk aplikasi bisnis itu fatal: endpoint adalah bahan baku pemetaan FE<->BE.
 
-    CATATAN KETIDAKTEPATAN: path yang dikembalikan adalah path yang DITULIS di
-    decorator. Blueprint biasanya didaftarkan dengan url_prefix di file lain
-    (`app.register_blueprint(auth_bp, url_prefix="/auth")`), jadi URL sebenarnya
-    bisa `/auth/login` sementara di sini tercatat `/login`. Menyelesaikannya butuh
-    analisis lintas-file; belum dilakukan.
+    `<obj>` (nama variabel blueprint-nya) dulu dibuang; sekarang dipakai untuk
+    mencari url_prefix milik blueprint itu di `blueprint_prefixes`.
     """
     call = next((c for c in decorator_node.named_children if c.type == "call"), None)
     if call is None:
@@ -242,15 +291,22 @@ def _python_endpoints_from_decorator(decorator_node) -> list[EndpointInfo]:
     if not path:
         return []
 
+    # Blueprint yang tidak dikenal -> prefix "" -> path apa adanya (perilaku lama).
+    # Sengaja gagal-membuka: menebak prefix yang salah menaruh endpoint di URL yang
+    # tidak ada, dan itu lebih buruk daripada path yang kurang lengkap.
+    obj_node = fn.child_by_field_name("object")
+    obj = obj_node.text.decode() if obj_node is not None else ""
+    prefix = blueprint_prefixes.get(obj, "")
+
     if attr in HTTP_METHODS:
-        return [EndpointInfo(method=attr.upper(), path=path)]
+        return [EndpointInfo(method=attr.upper(), path=_join_url_path(prefix, path))]
 
     if attr == "route":
         # methods= dihilangkan berarti GET saja. Ini bukan tebakan — itu default
         # Flask, dan bentuk paling umum (@bp.route("/menu") tanpa methods).
         declared = _string_list_values(_python_keyword_argument(args, "methods"))
         return [
-            EndpointInfo(method=method.upper(), path=path)
+            EndpointInfo(method=method.upper(), path=_join_url_path(prefix, path))
             for method in (declared or ["GET"])
             # HEAD/OPTIONS ditambahkan Flask sendiri secara otomatis dan bukan
             # fitur yang perlu didokumentasikan — buang, jangan jadi noise.
@@ -260,7 +316,9 @@ def _python_endpoints_from_decorator(decorator_node) -> list[EndpointInfo]:
     return []
 
 
-def _python_function_info(fn_node, decorators: list) -> tuple[FunctionInfo, list[EndpointInfo]]:
+def _python_function_info(
+    fn_node, decorators: list, blueprint_prefixes: dict
+) -> tuple[FunctionInfo, list[EndpointInfo]]:
     name_node = fn_node.child_by_field_name("name")
     return_type_node = fn_node.child_by_field_name("return_type")
     info = FunctionInfo(
@@ -271,7 +329,9 @@ def _python_function_info(fn_node, decorators: list) -> tuple[FunctionInfo, list
     )
     # Semua decorator diperiksa, tidak berhenti di yang pertama: menumpuk route
     # pada satu view itu lazim di Flask (@app.route("/") + @app.route("/home")).
-    endpoints = [ep for dec in decorators for ep in _python_endpoints_from_decorator(dec)]
+    endpoints = [
+        ep for dec in decorators for ep in _python_endpoints_from_decorator(dec, blueprint_prefixes)
+    ]
     if info.parameters:
         for endpoint in endpoints:
             endpoint.payload = ", ".join(info.parameters)
@@ -283,6 +343,24 @@ def _parse_python(root) -> tuple[list[str], list[ClassInfo], list[FunctionInfo],
     classes: list[ClassInfo] = []
     functions: list[FunctionInfo] = []
     endpoints: list[EndpointInfo] = []
+    blueprint_prefixes: dict[str, str] = {}
+
+    def collect_blueprints(node):
+        """Pra-pass: kumpulkan url_prefix tiap Blueprint SEBELUM decorator dibaca.
+
+        Harus pra-pass tersendiri, bukan digabung ke `visit`: Flask tidak mewajibkan
+        Blueprint dibuat sebelum route-nya ditulis (mis. pola factory menaruhnya di
+        dalam fungsi), jadi menyandarkan urutan pada urutan file itu rapuh.
+
+        Seluruh pohon disisir, bukan cuma level modul — `create_app()` yang membuat
+        blueprint di dalam fungsi itu pola Flask yang lazim.
+        """
+        if node.type == "assignment":
+            found = _python_blueprint_prefix(node)
+            if found:
+                blueprint_prefixes[found[0]] = found[1]
+        for child in node.named_children:
+            collect_blueprints(child)
 
     def collect_import_names(node):
         for name_node in node.children_by_field_name("name"):
@@ -307,7 +385,7 @@ def _parse_python(root) -> tuple[list[str], list[ClassInfo], list[FunctionInfo],
                 decorators = [c for c in member.children if c.type == "decorator"]
                 fn_node = member.child_by_field_name("definition")
             if fn_node is not None and fn_node.type == "function_definition":
-                method_info, found = _python_function_info(fn_node, decorators)
+                method_info, found = _python_function_info(fn_node, decorators, blueprint_prefixes)
                 class_info.methods.append(
                     MethodInfo(
                         method_name=method_info.function_name,
@@ -331,19 +409,19 @@ def _parse_python(root) -> tuple[list[str], list[ClassInfo], list[FunctionInfo],
                 decorators = [c for c in child.children if c.type == "decorator"]
                 inner = child.child_by_field_name("definition")
                 if inner is not None and inner.type == "function_definition":
-                    fn_info, found = _python_function_info(inner, decorators)
+                    fn_info, found = _python_function_info(inner, decorators, blueprint_prefixes)
                     functions.append(fn_info)
                     endpoints.extend(found)
                 elif inner is not None and inner.type == "class_definition":
                     visit_class(inner)
             elif child.type == "function_definition":
-                fn_info, endpoint = _python_function_info(child, [])
+                fn_info, found = _python_function_info(child, [], blueprint_prefixes)
                 functions.append(fn_info)
-                if endpoint:
-                    endpoints.append(endpoint)
+                endpoints.extend(found)
             else:
                 visit(child)
 
+    collect_blueprints(root)
     visit(root)
     return dependencies, classes, functions, endpoints
 
@@ -592,22 +670,6 @@ def _java_annotation_methods(ann) -> list[str]:
     return []
 
 
-def _java_join_path(prefix: str, path: Optional[str]) -> str:
-    """@RequestMapping("/owners") di class + @GetMapping("/new") di method = /owners/new.
-
-    Ini masalah yang sama dengan url_prefix Blueprint Flask (path tercatat /login
-    padahal aslinya /auth/login) — bedanya di Java kedua bagiannya ada di FILE YANG
-    SAMA, jadi bisa disambung deterministik tanpa analisis lintas-file.
-    """
-    prefix = (prefix or "").strip()
-    path = (path or "").strip()
-    if not prefix:
-        return path or "/"
-    if not path:
-        return prefix
-    return prefix.rstrip("/") + "/" + path.lstrip("/")
-
-
 def _java_class_path_prefix(annotations: list) -> str:
     """@RequestMapping di level class adalah PREFIX, bukan endpoint. Memperlakukannya
     sebagai endpoint akan memunculkan `/owners` hantu yang tidak punya handler."""
@@ -625,7 +687,7 @@ def _java_endpoints_from_annotations(annotations: list, prefix: str) -> list[End
             endpoints.append(
                 EndpointInfo(
                     method=SPRING_METHOD_ANNOTATIONS[name],
-                    path=_java_join_path(prefix, _java_annotation_path(ann)),
+                    path=_join_url_path(prefix, _java_annotation_path(ann)),
                 )
             )
         elif name == "requestmapping":
@@ -639,7 +701,7 @@ def _java_endpoints_from_annotations(annotations: list, prefix: str) -> list[End
             # class (prefix). Butuh repo Spring bergaya lama untuk membuktikan ini.
             declared = _java_annotation_methods(ann) or ["GET"]
             endpoints.extend(
-                EndpointInfo(method=method, path=_java_join_path(prefix, _java_annotation_path(ann)))
+                EndpointInfo(method=method, path=_join_url_path(prefix, _java_annotation_path(ann)))
                 for method in declared
             )
     return endpoints
