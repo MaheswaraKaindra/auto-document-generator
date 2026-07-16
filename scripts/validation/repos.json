@@ -76,8 +76,8 @@
     },
     {
       "name": "spring-petclinic-java",
-      "asumsi_yang_diuji": "Sama seperti gin-go, untuk Java — bahasa enterprise yang justru paling mungkin dipakai calon pengguna SDD/UAT.",
-      "expect": "coverage ~0. Kalau Tahap 2 dijalankan di sini dan dokumennya tetap 'terlihat bagus', itu tanda bahaya: berarti LLM mengarang dari nama file.",
+      "asumsi_yang_diuji": "Java + Spring MVC, bahasa enterprise yang paling mungkin dipakai calon pengguna SDD/UAT. SEJAK 2026-07-16 parser Java didukung, jadi kasus ini berpindah peran: dulu mengukur seberapa besar lubangnya, sekarang penjaga regresi untuk dukungan Java.",
+      "expect": "33 file, 17 endpoint, 25 class, coverage 33%, tipe {controller: 6, repository: 3, model: 2}. Endpoint yang butuh penyambungan prefix class harus utuh: PetController @RequestMapping('/owners/{ownerId}') + @GetMapping('/pets/new') = /owners/{ownerId}/pets/new. Cuma SATU endpoint boleh berpath '/' (WelcomeController) — kalau muncul dua, bentuk array posisional @GetMapping({'/vets'}) pecah lagi dan path-nya diam-diam jatuh ke '/'. CATATAN UKURAN: 33 file terlalu kecil untuk menjawab 'apakah repo Java enterprise muat di context window'. Densitasnya terukur 0,64 KB/file (sebanding saleor 0,81), tapi petclinic nyaris tanpa Javadoc; repo enterprise ber-Javadoc padat bisa jauh lebih berat. Butuh aplikasi Java besar tersendiri untuk menutup pertanyaan itu.",
       "repos": [
         { "repo_tag": "Backend", "repo_url": "https://github.com/spring-projects/spring-petclinic" }
       ]

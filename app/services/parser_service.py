@@ -69,6 +69,7 @@ EXTENSION_TO_LANGUAGE = {
     ".mjs": "javascript",
     ".ts": "typescript",
     ".tsx": "tsx",
+    ".java": "java",
 }
 
 HTTP_METHODS = {"get", "post", "put", "patch", "delete"}
@@ -120,7 +121,10 @@ def detect_language(file_name: str) -> Optional[str]:
 
 
 def _string_literal_value(node) -> Optional[str]:
-    if node is None or node.type != "string":
+    # Java menamai node-nya `string_literal`, Python/TS `string`. Isinya sama-sama
+    # dibungkus `string_fragment`/`string_content`, jadi yang perlu dilonggarkan
+    # cuma nama pembungkusnya.
+    if node is None or node.type not in ("string", "string_literal"):
         return None
     for child in node.children:
         if child.type in ("string_content", "string_fragment"):
@@ -465,6 +469,294 @@ def _parse_ts_js(root) -> tuple[list[str], list[ClassInfo], list[FunctionInfo], 
     return dependencies, classes, functions, endpoints
 
 
+# --- Java ---------------------------------------------------------------------
+
+# Spring MVC. @RequestMapping ditangani terpisah: methodnya dibaca dari `method=`,
+# dan di level class dia bukan endpoint melainkan prefix.
+SPRING_METHOD_ANNOTATIONS = {
+    "getmapping": "GET",
+    "postmapping": "POST",
+    "putmapping": "PUT",
+    "deletemapping": "DELETE",
+    "patchmapping": "PATCH",
+}
+
+# Java tidak menaruh apa pun di top level: semua method ada di dalam salah satu
+# dari keempat ini. `interface` bukan pelengkap — Spring Data menulis SELURUH
+# repository sebagai interface (OwnerRepository, VetRepository, PetTypeRepository
+# di petclinic), jadi menangani class saja membuat lapisan data hilang total.
+JAVA_TYPE_DECLARATIONS = (
+    "class_declaration",
+    "interface_declaration",
+    "enum_declaration",
+    "record_declaration",
+)
+
+
+def _java_modifiers(node):
+    """`modifiers` BUKAN field di grammar Java — `child_by_field_name("modifiers")`
+    selalu None, beda dari `name`/`body`/`parameters` yang memang field. Menyalin
+    pola Python apa adanya di sini menghasilkan NOL endpoint tanpa error apa pun:
+    kelas kegagalan yang sama dengan `route` yang dulu bukan anggota HTTP_METHODS.
+    """
+    return next((c for c in node.named_children if c.type == "modifiers"), None)
+
+
+def _java_annotations(node) -> list:
+    mods = _java_modifiers(node)
+    if mods is None:
+        return []
+    # `marker_annotation` = tanpa argumen (@PostMapping), `annotation` = dengan
+    # argumen (@GetMapping("/list")). Dua node type berbeda untuk satu konsep.
+    return [c for c in mods.named_children if c.type in ("annotation", "marker_annotation")]
+
+
+def _java_annotation_name(ann) -> str:
+    name = ann.child_by_field_name("name")
+    if name is None:
+        name = next((c for c in ann.named_children if c.type in ("identifier", "scoped_identifier")), None)
+    return name.text.decode().rsplit(".", 1)[-1].lower() if name else ""
+
+
+def _java_annotation_args(ann):
+    return next((c for c in ann.named_children if c.type == "annotation_argument_list"), None)
+
+
+def _java_path_value(node) -> Optional[str]:
+    """String literal, atau elemen pertamanya kalau path ditulis sebagai array.
+
+    `@GetMapping("/vets")` dan `@GetMapping({"/vets"})` adalah satu handler yang
+    sama; kurung kurawal cuma sintaks. Mencatat semua elemen array akan membuat
+    satu method tampak seperti beberapa fitur berbeda di dokumen, jadi ambil yang
+    pertama.
+    """
+    if node is None:
+        return None
+    if node.type == "element_value_array_initializer":
+        node = next((c for c in node.named_children), None)
+    return _string_literal_value(node)
+
+
+def _java_annotation_path(ann) -> Optional[str]:
+    """Path dari anotasi. Empat bentuk, semuanya diambil dari petclinic sungguhan:
+        @GetMapping("/list")                     -> string_literal posisional
+        @GetMapping({"/vets"})                   -> array posisional (VetController)
+        @RequestMapping(value = "/find", ...)    -> element_value_pair `value`
+        @RequestMapping(path = "/p", ...)        -> element_value_pair `path`
+
+    Bentuk array posisional sempat terlewat, dan gagalnya SUNYI: path jatuh ke None
+    lalu keluar sebagai "/", sehingga VetController dan WelcomeController sama-sama
+    melaporkan `GET /` — pola yang sama persis dengan url_prefix Blueprint Flask.
+    """
+    args = _java_annotation_args(ann)
+    if args is None:
+        return None
+    for child in args.named_children:
+        if child.type in ("string_literal", "element_value_array_initializer"):
+            return _java_path_value(child)
+        if child.type == "element_value_pair":
+            key = child.child_by_field_name("key")
+            if key is not None and key.text.decode() in ("value", "path"):
+                return _java_path_value(child.child_by_field_name("value"))
+    return None
+
+
+def _java_request_methods(value) -> list[str]:
+    """`method = RequestMethod.POST` -> ["POST"]
+    `method = {RequestMethod.GET, RequestMethod.PUT}` -> ["GET", "PUT"]"""
+    if value is None:
+        return []
+    if value.type == "element_value_array_initializer":
+        return [m for c in value.named_children for m in _java_request_methods(c)]
+    if value.type == "field_access":
+        field = value.child_by_field_name("field")
+        name = field.text.decode().lower() if field else ""
+        return [name.upper()] if name in HTTP_METHODS else []
+    if value.type == "identifier":
+        # `import static ...RequestMethod.GET` membuat RequestMethod. hilang.
+        name = value.text.decode().lower()
+        return [name.upper()] if name in HTTP_METHODS else []
+    return []
+
+
+def _java_annotation_methods(ann) -> list[str]:
+    args = _java_annotation_args(ann)
+    if args is None:
+        return []
+    for child in args.named_children:
+        if child.type != "element_value_pair":
+            continue
+        key = child.child_by_field_name("key")
+        if key is not None and key.text.decode() == "method":
+            return _java_request_methods(child.child_by_field_name("value"))
+    return []
+
+
+def _java_join_path(prefix: str, path: Optional[str]) -> str:
+    """@RequestMapping("/owners") di class + @GetMapping("/new") di method = /owners/new.
+
+    Ini masalah yang sama dengan url_prefix Blueprint Flask (path tercatat /login
+    padahal aslinya /auth/login) — bedanya di Java kedua bagiannya ada di FILE YANG
+    SAMA, jadi bisa disambung deterministik tanpa analisis lintas-file.
+    """
+    prefix = (prefix or "").strip()
+    path = (path or "").strip()
+    if not prefix:
+        return path or "/"
+    if not path:
+        return prefix
+    return prefix.rstrip("/") + "/" + path.lstrip("/")
+
+
+def _java_class_path_prefix(annotations: list) -> str:
+    """@RequestMapping di level class adalah PREFIX, bukan endpoint. Memperlakukannya
+    sebagai endpoint akan memunculkan `/owners` hantu yang tidak punya handler."""
+    for ann in annotations:
+        if _java_annotation_name(ann) == "requestmapping":
+            return _java_annotation_path(ann) or ""
+    return ""
+
+
+def _java_endpoints_from_annotations(annotations: list, prefix: str) -> list[EndpointInfo]:
+    endpoints: list[EndpointInfo] = []
+    for ann in annotations:
+        name = _java_annotation_name(ann)
+        if name in SPRING_METHOD_ANNOTATIONS:
+            endpoints.append(
+                EndpointInfo(
+                    method=SPRING_METHOD_ANNOTATIONS[name],
+                    path=_java_join_path(prefix, _java_annotation_path(ann)),
+                )
+            )
+        elif name == "requestmapping":
+            # APROKSIMASI YANG DISENGAJA: @RequestMapping tanpa `method=` sebenarnya
+            # menerima SEMUA method. Beda dari Flask, di mana GET memang default
+            # framework-nya — di sini GET adalah tebakan, bukan aturan. Dipilih
+            # karena mencatat 5 baris untuk satu handler adalah noise yang pasti
+            # salah, sementara mencatat 0 membuang handler yang nyata.
+            # BELUM TERUJI DI REPO NYATA: petclinic memakai @GetMapping/@PostMapping
+            # eksplisit di semua handler-nya, dan @RequestMapping-nya cuma di level
+            # class (prefix). Butuh repo Spring bergaya lama untuk membuktikan ini.
+            declared = _java_annotation_methods(ann) or ["GET"]
+            endpoints.extend(
+                EndpointInfo(method=method, path=_java_join_path(prefix, _java_annotation_path(ann)))
+                for method in declared
+            )
+    return endpoints
+
+
+def _java_javadoc(node) -> str:
+    """Javadoc adalah block_comment SIBLING sebelum deklarasi — bukan di dalam body
+    seperti docstring Python, jadi _docstring_from_body tidak akan menemukannya.
+
+    Ini bukan detail kosmetik: `description` membawa docstring ke Contract A, dan
+    LLM terbukti membacanya (PostgreSQL/Neon di dokumen esteler datang dari sana,
+    bukan dari `dependencies`)."""
+    prev = node.prev_named_sibling
+    if prev is None or prev.type != "block_comment":
+        return ""
+    text = prev.text.decode().strip()
+    if not text.startswith("/**"):
+        return ""  # komentar biasa /* ... */, bukan Javadoc
+    lines = []
+    for line in text.splitlines():
+        line = line.strip()
+        if line.startswith("/**"):
+            line = line[3:]
+        if line.endswith("*/"):
+            line = line[:-2]
+        line = line.lstrip("*").strip()
+        if line.startswith("@"):
+            break  # @param/@return dst: metadata tag, bukan kalimat deskripsi
+        if line:
+            lines.append(line)
+    return " ".join(lines).strip()
+
+
+def _java_parameters(params_node) -> list[str]:
+    if params_node is None:
+        return []
+    names = []
+    for p in params_node.named_children:
+        if p.type not in ("formal_parameter", "spread_parameter"):
+            continue
+        name = p.child_by_field_name("name")
+        names.append(name.text.decode() if name else p.text.decode())
+    return names
+
+
+def _java_import_name(node) -> Optional[str]:
+    """import java.util.List;                        -> List
+    import java.util.*;                              -> java.util
+    import static org.junit.Assert.assertEquals;     -> assertEquals
+
+    Diselaraskan dengan Python (`from x import y` -> `y`): yang dicatat adalah nama
+    yang dipakai di kode, bukan path paket penuh."""
+    target = next(
+        (c for c in node.named_children if c.type in ("scoped_identifier", "identifier")), None
+    )
+    if target is None:
+        return None
+    if any(c.type == "asterisk" for c in node.children):
+        return target.text.decode()  # wildcard: nama yang bermakna cuma paketnya
+    if target.type == "identifier":
+        return target.text.decode()
+    name = target.child_by_field_name("name")
+    return name.text.decode() if name else target.text.decode()
+
+
+def _parse_java(root) -> tuple[list[str], list[ClassInfo], list[FunctionInfo], list[EndpointInfo]]:
+    dependencies: list[str] = []
+    classes: list[ClassInfo] = []
+    endpoints: list[EndpointInfo] = []
+
+    def visit_type(type_node):
+        name_node = type_node.child_by_field_name("name")
+        class_info = ClassInfo(class_name=name_node.text.decode() if name_node else "")
+        prefix = _java_class_path_prefix(_java_annotations(type_node))
+        body = type_node.child_by_field_name("body")
+        if body is None:
+            classes.append(class_info)
+            return
+        for member in body.named_children:
+            if member.type == "method_declaration":
+                method_name = member.child_by_field_name("name")
+                return_type = member.child_by_field_name("type")
+                parameters = _java_parameters(member.child_by_field_name("parameters"))
+                class_info.methods.append(
+                    MethodInfo(
+                        method_name=method_name.text.decode() if method_name else "",
+                        parameters=parameters,
+                        return_type=return_type.text.decode() if return_type else None,
+                        description=_java_javadoc(member),
+                    )
+                )
+                found = _java_endpoints_from_annotations(_java_annotations(member), prefix)
+                for endpoint in found:
+                    if parameters:
+                        endpoint.payload = ", ".join(parameters)
+                endpoints.extend(found)
+            elif member.type in JAVA_TYPE_DECLARATIONS:
+                visit_type(member)  # nested/inner class
+        classes.append(class_info)
+
+    def visit(node):
+        for child in node.named_children:
+            if child.type == "import_declaration":
+                name = _java_import_name(child)
+                if name:
+                    dependencies.append(name)
+            elif child.type in JAVA_TYPE_DECLARATIONS:
+                visit_type(child)
+            else:
+                visit(child)
+
+    visit(root)
+    # functions[] sengaja selalu kosong: Java tidak punya top-level function, semua
+    # method hidup di dalam class. Kosong di sini adalah fakta, bukan lubang.
+    return dependencies, classes, [], endpoints
+
+
 # --- Public API ---------------------------------------------------------------
 
 def parse_file(file_name: str, file_path: str, content: str) -> Optional[FileMetadata]:
@@ -481,6 +773,8 @@ def parse_file(file_name: str, file_path: str, content: str) -> Optional[FileMet
         dependencies, classes, functions, endpoints = _parse_python(tree.root_node)
     elif language in ("javascript", "typescript", "tsx"):
         dependencies, classes, functions, endpoints = _parse_ts_js(tree.root_node)
+    elif language == "java":
+        dependencies, classes, functions, endpoints = _parse_java(tree.root_node)
     else:
         return None
 
