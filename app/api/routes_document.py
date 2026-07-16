@@ -60,7 +60,7 @@ def _render_docx_or_502(
         # Teruskan sebab aslinya apa adanya. Versi sebelumnya meratakan SEMUA
         # kegagalan jadi "layanan tidak merespons", yang menyembunyikan HTTP 414
         # (script kepanjangan) dan bikin bugnya lama tidak terdiagnosis.
-        logger.exception("Gagal merender diagram Mermaid")
+        logger.exception("Gagal merender diagram PlantUML")
         raise HTTPException(status_code=502, detail=f"Gagal merender diagram: {e}") from e
     except RuntimeError as e:
         logger.exception("Pandoc tidak tersedia saat export docx")
@@ -115,7 +115,7 @@ def _run_generation(job_id: str, body: GenerateDocumentRequest) -> None:
             500,
         )
     except DiagramRenderError as e:
-        logger.exception("Gagal merender diagram Mermaid")
+        logger.exception("Gagal merender diagram PlantUML")
         job_store.mark_failed(job_id, f"Gagal merender diagram: {e}", 502)
     except ValueError as e:
         job_store.mark_failed(job_id, str(e), 400)
@@ -270,7 +270,8 @@ def _generate_document(
     )
 
     diagrams = document_content.get("diagrams") or {}
-    n_diagrams = len(diagrams.get("activity_diagrams") or []) + 3
+    # +4 = arsitektur, integrasi komponen, flow proses bisnis, use case
+    n_diagrams = len(diagrams.get("activity_diagrams") or []) + 4
     on_progress(f"Menggambar {n_diagrams} diagram lalu menyusun .docx...")
     try:
         return generate_docx(

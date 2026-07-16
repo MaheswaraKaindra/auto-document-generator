@@ -1,7 +1,7 @@
 """Test routes_document.py (Peran 3) — endpoint /documents/sdd, /uat, /generate.
 
-Mermaid.ink dan pemanggilan LLM (Claude) selalu di-mock supaya test tidak
-bergantung pada koneksi internet, API key, atau kuota.
+Proses plantuml.jar dan pemanggilan LLM (Claude) selalu di-mock supaya test
+tidak bergantung pada Java/jar terpasang, koneksi internet, API key, atau kuota.
 """
 
 import json
@@ -10,7 +10,6 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
-import requests
 from docx import Document
 from fastapi.testclient import TestClient
 
@@ -59,15 +58,14 @@ def _generate(client, **body) -> dict:
 
 
 @pytest.fixture
-def mock_mermaid_ok():
-    response = Mock()
-    response.content = _MINIMAL_PNG
-    response.raise_for_status = Mock()
-    with patch("app.services.compiler_service.requests.get", return_value=response) as mocked:
+def mock_plantuml_ok():
+    with patch(
+        "app.services.compiler_service._run_plantuml", return_value=_MINIMAL_PNG
+    ) as mocked:
         yield mocked
 
 
-def test_generate_sdd_from_content_returns_docx(client, mock_mermaid_ok):
+def test_generate_sdd_from_content_returns_docx(client, mock_plantuml_ok):
     data = _load_fixture("document_content_sdd.json")
 
     response = client.post("/documents/sdd", json=data)
@@ -78,7 +76,7 @@ def test_generate_sdd_from_content_returns_docx(client, mock_mermaid_ok):
     )
 
 
-def test_generate_uat_from_content_returns_docx(client, mock_mermaid_ok):
+def test_generate_uat_from_content_returns_docx(client, mock_plantuml_ok):
     data = _load_fixture("document_content_uat.json")
 
     response = client.post("/documents/uat", json=data)
@@ -94,12 +92,14 @@ def test_generate_sdd_missing_field_returns_422(client):
     assert response.status_code == 422
 
 
-def test_generate_sdd_returns_502_when_mermaid_fails(client):
+def test_generate_sdd_returns_502_when_diagram_render_fails(client):
+    from app.domain.exceptions import DiagramRenderError
+
     data = _load_fixture("document_content_sdd.json")
 
     with patch(
-        "app.services.compiler_service.requests.get",
-        side_effect=requests.ConnectionError("boom"),
+        "app.services.compiler_service._run_plantuml",
+        side_effect=DiagramRenderError("boom"),
     ):
         response = client.post("/documents/sdd", json=data)
 
@@ -115,7 +115,7 @@ def test_generate_full_pipeline_rejects_invalid_document_type(client):
     assert response.status_code == 422
 
 
-def test_generate_returns_202_immediately_without_doing_the_work(client, mock_mermaid_ok):
+def test_generate_returns_202_immediately_without_doing_the_work(client, mock_plantuml_ok):
     """Inti dari async: POST balik SEBELUM pipeline jalan.
 
     Versi lama menahan seluruh pipeline (terukur 191 detik pada repo nyata) di
@@ -186,7 +186,7 @@ def _docx_text_from_response(response, tmp_path) -> str:
     return "\n".join(parts)
 
 
-def test_form_metadata_survives_the_whole_async_round_trip(client, mock_mermaid_ok, tmp_path):
+def test_form_metadata_survives_the_whole_async_round_trip(client, mock_plantuml_ok, tmp_path):
     """Jalur yang benar-benar dipakai end user, sekarang tiga langkah: isian form
     harus menembus POST -> background task -> compiler -> template -> DB -> lalu
     keluar utuh di docx yang diunduh lewat /jobs/{id}/download."""
@@ -227,7 +227,7 @@ def test_every_meta_field_in_templates_exists_in_schema():
         assert not unknown, f"{template} memakai field yang tidak ada di DocumentMetadata: {sorted(unknown)}"
 
 
-def test_generate_works_without_metadata(client, mock_mermaid_ok, tmp_path):
+def test_generate_works_without_metadata(client, mock_plantuml_ok, tmp_path):
     """document_metadata opsional -- request tanpa field ini harus tetap jalan
     dan menghasilkan dokumen berpenanda seperti sebelumnya."""
     content = _load_fixture("document_content_sdd.json")
@@ -303,7 +303,7 @@ def test_cors_exposes_content_disposition():
 # menunggu AI dua menit".
 
 
-def test_progress_reports_each_stage_in_order(mock_mermaid_ok):
+def test_progress_reports_each_stage_in_order(mock_plantuml_ok):
     """Urutan tahapnya = urutan pipeline. Kalau ada yang menyisipkan tahap baru
     di tempat yang salah, pengguna melihat kebohongan tentang apa yang terjadi."""
     from app.api.schemas_document import GenerateDocumentRequest

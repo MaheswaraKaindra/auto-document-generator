@@ -64,18 +64,24 @@ class UATTestCase(BaseModel):
 class ActivityDiagram(BaseModel):
     activity_name: str = Field(description="Nama fitur/modul spesifik, misal: 'Proses Login User' atau 'Manajemen Inventaris'")
     description: str = Field(description="Narasi singkat mengenai apa yang terjadi di aktivitas ini.")
-    mermaid_script: str = Field(description="Script murni Mermaid flowchart TD khusus untuk aktivitas ini.")
+    actor: str = Field(description="Role/aktor yang menjalankan aktivitas ini, misal: 'Admin' atau 'Customer'")
+    pre_condition: str = Field(description="Syarat yang harus terpenuhi sebelum aktivitas ini bisa dimulai")
+    steps: List[str] = Field(description="Langkah-langkah aktivitas berurutan, satu kalimat per langkah ('Aktor melakukan X' / 'Sistem merespons Y'), konsisten dengan isi diagram_script")
+    diagram_script: str = Field(description="Source PlantUML activity diagram murni untuk aktivitas ini (@startuml ... @enduml).")
 
 
 class SDDDiagrams(BaseModel):
     system_architecture: str = Field(
-        description="Mermaid graph LR: Komponen makro (User, Repo Frontend, Repo Backend, Database)."
+        description="PlantUML component diagram level makro: actor User, component per repo/aplikasi, database & cloud HANYA kalau berjejak di metadata."
     )
     component_integration: str = Field(
-        description="Mermaid graph TD: Relasi teknis UI Component ke API Endpoint."
+        description="PlantUML component diagram: panah dari komponen UI/halaman ke endpoint backend yang dipanggilnya."
+    )
+    business_process_flow: str = Field(
+        description="PlantUML activity diagram: alur proses bisnis end-to-end dari sudut pandang pengguna, menggambar business_flow_steps."
     )
     use_case_diagram: str = Field(
-        description="Mermaid flowchart LR: Menyimulasikan Use Case UML. Aktor menggunakan node ((Actor)) dan aksi menggunakan node ([Action])."
+        description="PlantUML use case diagram: actor + usecase di dalam rectangle sistem, dihubungkan panah."
     )
     activity_diagrams: List[ActivityDiagram] = Field(
         description="Daftar diagram aktivitas modular yang dipecah per fitur utama."
@@ -85,6 +91,16 @@ class SDDDiagrams(BaseModel):
 class FeatureRequirement(BaseModel):
     feature_name: str = Field(description="Nama fitur, misal: 'Manajemen User' atau 'Pendataan Inventaris'")
     description: str = Field(description="Satu-dua kalimat menjelaskan apa yang bisa dilakukan user dengan fitur ini, ditulis dengan bahasa yang mudah dipahami non-teknis.")
+
+
+class UserRole(BaseModel):
+    role_name: str = Field(description="Nama role/aktor pengguna, misal: 'Admin' atau 'Customer'")
+    description: str = Field(description="Apa yang boleh dilakukan role ini di sistem — hak akses & tanggung jawabnya, 1-2 kalimat non-teknis.")
+
+
+class SystemRequirementItem(BaseModel):
+    name: str = Field(description="Kategori requirement, misal: 'Programming Language', 'Web Framework', 'Database', 'External Service'")
+    detail: str = Field(description="Isi kategorinya sesuai jejak di metadata, misal: 'Python — Flask' atau 'PostgreSQL (via SQLAlchemy)'")
 
 
 class UseCase(BaseModel):
@@ -98,11 +114,13 @@ class UseCase(BaseModel):
 class DocumentContent(BaseModel):
     document_type: str = Field(description="Jenis dokumen: 'SDD' atau 'UAT'")
     app_description: str = Field(description="Satu paragraf ringkasan fungsi utama sistem berdasarkan kode, ditulis dengan bahasa yang bisa dipahami pembaca non-teknis (product owner, QA, user bisnis), bukan hanya developer.")
-    system_requirements: List[str] = Field(description="Daftar teknologi, library, atau framework yang terdeteksi.")
+    user_roles: List[UserRole] = Field(description="Daftar role/aktor pengguna sistem beserta hak aksesnya, diturunkan dari role yang terlihat di kode.")
+    system_requirements: List[SystemRequirementItem] = Field(description="Requirement teknis terstruktur (kategori + isi) yang terdeteksi dari metadata kode.")
     feature_requirements: List[FeatureRequirement] = Field(description="Daftar fitur aplikasi beserta deskripsinya, diturunkan dari endpoint/UI component/class yang ditemukan di kode.")
-    diagrams: SDDDiagrams = Field(description="Kumpulan script murni Mermaid.js untuk berbagai bab SDD.")
+    diagrams: SDDDiagrams = Field(description="Kumpulan source PlantUML murni untuk berbagai bab SDD.")
     use_cases: List[UseCase] = Field(description="Daftar use case terstruktur per aktor (bukan cuma diagram), lengkap dengan pre-condition, description, dan acceptance criteria.")
-    business_flow_description: str = Field(description="Narasi alur bisnis lintas-repo (Frontend memanggil Backend API apa).")
+    business_flow_description: str = Field(description="Satu paragraf pengantar alur bisnis end-to-end (lintas-repo bila ada), non-teknis.")
+    business_flow_steps: List[str] = Field(description="Tahapan alur proses bisnis bernomor dari awal sampai selesai, satu kalimat per tahap (siapa melakukan apa, sistem merespons apa).")
     uat_test_cases: List[UATTestCase] = Field(description="Daftar test case yang diekstrak dari UI components dan Endpoints.")
 
 
@@ -130,6 +148,23 @@ ALOKASI FOKUS BERDASARKAN JENIS DOKUMEN YANG DIMINTA (target_doc_type):
 - Field lain (`app_description`, `system_requirements`, `business_flow_description`) tetap diisi
   lengkap terlepas dari target_doc_type.
 
+ATURAN BUKTI UNTUK DIAGRAM (SANGAT PENTING):
+- Jangan menggambar komponen yang tidak punya jejak APA PUN di metadata JSON. Jejak bisa ada di mana
+  saja: `dependencies`, `description` (docstring), nama class/function, endpoint. Contoh: JANGAN
+  menggambar kotak Database kalau tidak ada satu pun jejak library database/ORM/koneksi DB di
+  metadata. Diagram kecil yang semua kotaknya berjejak LEBIH BAIK daripada diagram lengkap yang
+  separuhnya tebakan.
+
+ATURAN USER ROLES (user_roles):
+1. Turunkan dari role/aktor yang benar-benar terlihat di kode (route admin vs customer, middleware
+   auth, nama tabel/kolom role). Kalau kode tidak membedakan role, cukup satu entry (mis. "User").
+2. `description` = apa yang boleh dilakukan role itu di sistem, 1-2 kalimat non-teknis.
+
+ATURAN SYSTEM REQUIREMENTS (system_requirements):
+1. Tiap entry: `name` = kategori ("Programming Language", "Web Framework", "Database",
+   "External Service", "Runtime", dst.), `detail` = isinya sesuai jejak di metadata.
+2. Hanya tulis yang berjejak — jangan menebak versi atau menambah teknologi yang tidak terlihat.
+
 ATURAN FEATURE REQUIREMENTS (feature_requirements):
 1. Satu entry per fitur/modul utama (bukan per endpoint/per fungsi individual) — kelompokkan endpoint
    dan UI component yang berkaitan menjadi satu fitur.
@@ -141,40 +176,62 @@ ATURAN USE CASE (use_cases):
 2. `acceptance_criteria` harus berupa kalimat spesifik dan bisa diverifikasi (bukan "sistem berjalan baik"),
    diturunkan dari endpoint/fitur yang benar-benar ada.
 
+ATURAN BUSINESS FLOW (business_flow_description, business_flow_steps):
+1. `business_flow_description`: satu paragraf pengantar alur bisnis end-to-end, non-teknis.
+2. `business_flow_steps`: 5-12 tahapan bernomor dari awal sampai selesai, satu kalimat per tahap,
+   bergantian sudut pandang pengguna dan sistem ("Customer menambahkan menu ke keranjang", "Sistem
+   membuat kode pesanan unik"). Harus konsisten dengan diagrams.business_process_flow.
+
+SEMUA DIAGRAM = SOURCE PLANTUML MURNI (BUKAN MERMAID):
+- Setiap field diagram WAJIB source PlantUML valid: baris pertama `@startuml`, baris terakhir
+  `@enduml`. TANPA code fence markdown (```).
+- DILARANG menulis `!theme`, `skinparam`, warna, atau font — gaya visual disuntik sistem secara
+  terpusat. Tulis ISI diagram saja.
+- Satu pernyataan per baris. Label yang mengandung spasi/karakter khusus WAJIB dalam tanda kutip
+  ganda.
+
 ATURAN DIAGRAM 1: SYSTEM ARCHITECTURE (diagrams.system_architecture)
-1. Gunakan syntax `graph LR`. Level makro (User -> Frontend -> Backend -> Database). Jangan masukkan nama file/fungsi.
+1. Component diagram level makro. Baris kedua: `left to right direction`.
+2. Elemen: `actor "User"`, `component "Nama" as Alias` per aplikasi/repo, `database "Nama"` HANYA
+   kalau berjejak, `cloud "Nama"` untuk layanan eksternal yang berjejak. Hubungkan dengan `-->`.
+3. Jangan masukkan nama file/fungsi.
 
 ATURAN DIAGRAM 2: COMPONENT INTEGRATION (diagrams.component_integration)
-1. Gunakan syntax `graph TD`. Tarik panah (-->) dari 'ui_component' di Frontend menuju 'api_endpoints' di Backend.
+1. Component diagram: kelompokkan per repo dengan `package "NamaRepo" { ... }`.
+2. Tarik panah dari komponen UI/halaman ke endpoint backend yang dipanggilnya, contoh:
+   `[Login.js] --> [POST /users/login]`.
 
 ATURAN DIAGRAM 3: USE CASE DIAGRAM (diagrams.use_case_diagram)
-1. Gunakan syntax `flowchart LR`.
-2. Buat aktor eksternal dengan kurung ganda, contoh: `User(("User"))`.
-3. Buat aksi (use case) dengan kurung siku lengkung, contoh: `UC1(["Melakukan Login"])`.
+1. Baris kedua: `left to right direction`.
+2. Aktor: `actor Admin` (atau `actor "Nama Panjang" as Alias`). Use case oval di dalam kotak sistem:
+   `rectangle "NamaSistem" { usecase "Melakukan Login" as UC1 }`.
+3. Hubungkan: `Admin --> UC1`. Setiap use case harus terhubung ke minimal satu aktor.
 
-ATURAN DIAGRAM 4: ACTIVITY DIAGRAMS (diagrams.activity_diagrams)
-1. Jangan buat satu diagram raksasa! Pecah alur sistem menjadi beberapa aktivitas modular (misal: satu untuk Login, satu untuk Transaksi, dll) berdasarkan endpoint/UI yang Anda temukan di JSON.
-2. Untuk setiap aktivitas, buat `activity_name`, `description`, dan `mermaid_script`-nya masing-masing.
-3. Gunakan syntax `flowchart TD` untuk setiap aktivitas.
-4. Gunakan node belah ketupat untuk kondisi logika, contoh: `Cek{{"Valid?"}}`.
+ATURAN DIAGRAM 4: BUSINESS PROCESS FLOW & ACTIVITY DIAGRAMS
+1. Keduanya activity diagram PlantUML: mulai `start`, aksi `:Kalimat langkah;` (WAJIB diawali `:`
+   dan diakhiri `;`), keputusan `if (Kondisi?) then (Ya) ... else (Tidak) ... endif`, akhiri `stop`.
+2. Untuk pengulangan gunakan `repeat ... repeat while (Kondisi?) is (Ya) not (Tidak)`.
+3. Jangan buat satu diagram raksasa untuk activity_diagrams — pecah per fitur utama (satu untuk
+   Login, satu untuk Transaksi, dst.) berdasarkan endpoint/UI yang ditemukan di JSON.
+4. Untuk setiap aktivitas isi SEMUA field: `activity_name`, `description`, `actor`, `pre_condition`,
+   `steps` (langkah bernomor — harus menceritakan alur yang SAMA dengan diagramnya), dan
+   `diagram_script`.
 
-ATURAN UMUM & PENCEGAHAN SYNTAX ERROR (SANGAT PENTING):
-- OUTPUT DIAGRAM HARUS SYNTAX MERMAID MURNI. Dilarang menggunakan tag ```mermaid.
-- WAJIB MENGGUNAKAN TANDA KUTIP GANDA (" ") untuk setiap teks/label di dalam node.
-- WAJIB MENGGUNAKAN ENTER / NEWLINE UNTUK MEMISAHKAN SETIAP BARIS PERNYATAAN.
-- LARANGAN KEYWORD (RESERVED WORDS): JANGAN PERNAH menggunakan kata `end`, `start`, atau `subgraph` sebagai ID Node.
-  CONTOH SALAH (AKAN FATAL ERROR): `start((Start)) --> A` atau `E --> end((End))`
-  CONTOH BENAR: `StartNode(("Start")) --> A` atau `E --> EndNode(("End"))`
-- Patuhi skema JSON output yang telah ditetapkan secara ketat!
-- WAJIB MENGGUNAKAN ENTER / NEWLINE UNTUK MEMISAHKAN SETIAP BARIS PERNYATAAN. Dilarang keras menulis seluruh diagram dalam satu baris string!
-  CONTOH FORMAT YANG BENAR:
-  flowchart LR
-  User(("User"))
-  NodeA["Proses"]
-  User --> NodeA
-
-  CONTOH FORMAT YANG SALAH (AKAN ERROR):
-  flowchart LR User(("User")) --> NodeA["Proses"]
+PENCEGAHAN SYNTAX ERROR PLANTUML:
+- `if` WAJIB ditutup `endif`; `repeat` WAJIB ditutup `repeat while (...)`.
+- Jangan memakai karakter `;` di DALAM teks langkah — dia penutup pernyataan.
+- Contoh activity yang benar:
+  @startuml
+  start
+  :Pengguna membuka halaman login;
+  :Pengguna mengisi email dan password;
+  if (Kredensial valid?) then (Ya)
+    :Sistem mengarahkan ke dashboard;
+  else (Tidak)
+    :Sistem menampilkan pesan error;
+  endif
+  stop
+  @enduml
 - Patuhi skema JSON output yang telah ditetapkan secara ketat!
 """
 
@@ -225,7 +282,7 @@ class LLMService:
     def _guard_context_window(self, messages: list) -> None:
         """Tolak SEBELUM membayar kalau Contract A tidak akan muat.
 
-        Pola yang sama dengan _render_mermaid_to_image di compiler_service:
+        Pola yang sama dengan _run_plantuml di compiler_service:
         periksa dulu, gagal dengan pesan yang menyebut sebab asli beserta
         angkanya, jangan habiskan request percuma.
 

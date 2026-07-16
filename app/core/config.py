@@ -22,6 +22,14 @@ LLM_MODEL = os.getenv("LLM_MODEL", "claude-sonnet-5")
 # meninggalkan riwayat yang menunjuk ke file yang sudah tidak ada.
 DATABASE_PATH = os.getenv("DATABASE_PATH", "data/jobs.db")
 
+# Path ke plantuml.jar untuk merender diagram secara LOKAL (butuh Java 17+ di
+# PATH). Rendering diagram pindah dari mermaid.ink (layanan hosted) ke PlantUML
+# lokal pada 2026-07-16: (1) isi diagram — nama endpoint, struktur komponen —
+# tidak lagi dikirim ke internet; (2) gaya UML-nya (aktor stick-figure, oval use
+# case) cocok dengan dokumen acuan enterprise. Unduh sekali dari
+# https://github.com/plantuml/plantuml/releases (asset plantuml-<versi>.jar).
+PLANTUML_JAR = os.getenv("PLANTUML_JAR", "tools/plantuml.jar")
+
 GITHUB_CLIENT_ID = os.getenv("GITHUB_CLIENT_ID")
 GITHUB_CLIENT_SECRET = os.getenv("GITHUB_CLIENT_SECRET")
 GITHUB_OAUTH_REDIRECT_URI = os.getenv("GITHUB_OAUTH_REDIRECT_URI", "http://localhost:8000/auth/github/callback")

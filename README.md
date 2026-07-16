@@ -60,7 +60,9 @@ Security · Features Requirement · Flow Proses Bisnis · Use Case · Activity D
 **UAT** (`.docx`): Informasi Dokumen · Distribution List · Version History ·
 Rencana UAT · Sertifikasi · Prosedur Pengujian · Ringkasan Aplikasi · Case Pengujian
 
-Diagramnya gambar Mermaid yang ter-embed, bukan placeholder.
+Diagramnya UML sungguhan (PlantUML — aktor stick-figure, oval use case,
+activity ber-start/end) yang ter-embed sebagai gambar, dirender **lokal** —
+isi diagram tidak pernah meninggalkan mesin.
 
 Contoh nyata — dari repo publik, bukan contoh buatan:
 
@@ -88,10 +90,10 @@ narrow_to_product()   tanya pyproject.toml / package.json: mana yang produk?
 Parser (Tree-sitter, deterministik, TANPA LLM)  ->  ParsedRepoContext.json
         |
         v
-LLM (Claude)  ->  narasi + script diagram Mermaid  ->  DocumentContent.json
+LLM (Claude)  ->  narasi + script diagram PlantUML  ->  DocumentContent.json
         |
         v
-Jinja2 (Markdown) + Mermaid->PNG  ->  Pandoc  ->  .docx
+Jinja2 (Markdown) + PlantUML->PNG (lokal)  ->  Pandoc  ->  .docx
 ```
 
 Tiap tahap dipisah **kontrak JSON** yang jelas, jadi sumber kode bisa diganti
@@ -105,7 +107,8 @@ detail struktur.
 
 ## Setup
 
-Butuh Python 3.11+, Node.js (untuk frontend), dan
+Butuh Python 3.11+, Node.js (untuk frontend), **Java 17+** (untuk render
+diagram PlantUML secara lokal), dan
 [API key Anthropic](https://console.anthropic.com/settings/keys).
 
 ```bash
@@ -115,6 +118,9 @@ venv\Scripts\activate          # Windows
 
 pip install -r requirements.txt
 python -c "import pypandoc; pypandoc.download_pandoc()"   # sekali saja
+
+# plantuml.jar — unduh sekali dari https://github.com/plantuml/plantuml/releases
+# (asset plantuml-<versi>.jar), simpan sebagai tools/plantuml.jar
 
 cp .env.example .env           # isi ANTHROPIC_API_KEY
 
@@ -136,7 +142,7 @@ dalam ~50ms, pipeline jalan di latar belakang, klien polling
 ## Testing
 
 ```bash
-pytest                                       # 186 test; LLM/Mermaid/GitHub di-mock, $0
+pytest                                       # 191 test; LLM/PlantUML/GitHub di-mock, $0
 python scripts/validation/run_validation.py  # ingest+parse ke 10 repo publik nyata, gratis
 ```
 
@@ -153,8 +159,6 @@ Ditulis terbuka, karena produk ini menjual kejujuran isinya:
   bukan decorator. Go, .NET, PHP, Ruby belum didukung parser.
 - **Monorepo raksasa tidak muat** — seluruh konteks dikirim dalam satu panggilan
   LLM; repo ~7.000 file menembus context window.
-- **Diagram dirender lewat layanan hosted** (`mermaid.ink`) — isi diagram keluar
-  ke internet. Untuk repo confidential, ganti ke rendering lokal dulu.
 - **Upload ZIP belum tersambung ke pembuatan dokumen** — `POST /ingest/zip`
   menganalisis kodenya, tapi `POST /documents/generate` baru menerima repo
   GitHub. Untuk kode yang tidak di GitHub, hasil analisis ZIP harus dikirim

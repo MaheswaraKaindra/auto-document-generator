@@ -2,7 +2,7 @@
 Compiler service (Peran 3 — Backend & Templating).
 
 Alur: DocumentContent (Contract B, dari LLMService milik Peran 2)
-      -> render diagram Mermaid jadi gambar
+      -> render diagram PlantUML jadi gambar (LOKAL, lewat plantuml.jar)
       -> render template Jinja2 (Markdown)
       -> export ke .docx lewat pypandoc.
 
@@ -10,19 +10,17 @@ Tidak menyentuh/menduplikasi logika Peran 1 (parser_service.py) atau
 Peran 2 (llm_service.py) — modul ini murni konsumen dari Contract B.
 """
 
-import base64
-import json
+import subprocess
 import tempfile
 import uuid
-import zlib
 from pathlib import Path
 from typing import Any
 
 import pypandoc
-import requests
 from jinja2 import Environment, FileSystemLoader
 from PIL import Image
 
+from app.core import config
 from app.domain.exceptions import DiagramRenderError
 
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
@@ -56,23 +54,17 @@ _TITLE_BY_DOC_TYPE = {
 # scripts/build_reference_docx.py — bukan file biner misterius.
 REFERENCE_DOCX = TEMPLATES_DIR / "reference.docx"
 
-# mermaid.ink ada di balik reverse proxy dengan batas panjang URL ~8KB.
-# Diukur langsung: URL 7720 karakter masih 200, 9376 karakter sudah 414.
-_MERMAID_URL_LIMIT = 8000
+# Ketajaman render PlantUML. Default PlantUML 96 dpi — cukup untuk layar, buram
+# untuk cetak (pelajaran yang sama dengan mermaid.ink dulu: layak cetak butuh
+# ≥150 dpi, dan produk lama memakai ~246 dpi lewat width=1600). 200 dpi ~2x
+# ukuran piksel default: tajam di kertas tanpa membengkakkan docx.
+_PLANTUML_DPI = 200
 
-# `type=png` BUKAN kosmetik — ini akar "diagram blur". Endpoint /img/ mermaid.ink
-# mengembalikan **JPEG** secara default, dan JPEG itu lossy: dirancang untuk foto,
-# dan menghasilkan artefak di sekeliling tiap garis dan huruf. Diagram adalah line
-# art; JPEG adalah pilihan terburuk untuknya. (Filenya sempat disimpan berakhiran
-# .png padahal isinya JPEG — yang menyembunyikan masalahnya dari siapa pun yang
-# cuma melihat nama file.)
-#
-# `width=1600` mengurus separuh sisanya: ruang halaman 6,5 inci (8,5 dikurangi
-# margin), jadi 1600 px = ~246 dpi — di atas 150 dpi yang layak cetak. Diagram
-# bawaan mermaid.ink terukur serendah 381 px lebarnya = ~59 dpi saat direntangkan.
-# Tidak dinaikkan lagi: scale=3 memberi 4800 px (308 KB/diagram, 11 diagram = 3,4
-# MB) untuk ketajaman yang tidak akan terlihat mata di kertas.
-_MERMAID_IMAGE_PARAMS = "type=png&width=1600"
+# Gaya visual diagram disuntik DI SINI, bukan ditulis LLM — filosofi yang sama
+# dengan reference.docx: rupa dokumen diatur dari satu tempat yang deterministik,
+# bukan dari output model yang bisa berubah-ubah antar panggilan. `!theme plain`
+# = UML klasik hitam-putih, gaya yang dipakai dokumen acuan enterprise.
+_PLANTUML_STYLE_PREAMBLE = ("!theme plain", f"skinparam dpi {_PLANTUML_DPI}")
 
 # Ruang yang benar-benar tersedia di halaman, dipakai _image_attr untuk membatasi
 # ukuran tampil diagram. Lebar: 8,5 inci dikurangi margin 1 inci di dua sisi.
@@ -81,12 +73,6 @@ _MERMAID_IMAGE_PARAMS = "type=png&width=1600"
 # lebih kecil daripada tumpah ke halaman berikutnya.
 _PAGE_WIDTH_IN = 6.5
 _PAGE_HEIGHT_IN = 8.0
-
-_HTTP_HINTS = {
-    400: "script Mermaid tidak valid (cek syntax-nya)",
-    414: "URL kepanjangan — script diagram terlalu besar",
-    503: "layanan sedang kelebihan beban, coba lagi nanti",
-}
 
 _MANUAL_PLACEHOLDER = "*(diisi manual)*"
 
@@ -119,86 +105,103 @@ def _build_metadata_context(document_metadata: dict[str, Any] | None) -> _Metada
     return _MetadataDict(filled)
 
 
-def _strip_code_fence(mermaid_script: str) -> str:
-    """Buang code fence Markdown (```mermaid ... ```) kalau LLM terlanjur
-    menyertakannya. Fence bikin mermaid.ink menolak script dengan HTTP 400."""
-    script = mermaid_script.strip()
+def _strip_code_fence(diagram_script: str) -> str:
+    """Buang code fence Markdown (```plantuml ... ```) kalau LLM terlanjur
+    menyertakannya — fence bukan bagian bahasa diagram mana pun."""
+    script = diagram_script.strip()
     if not script.startswith("```"):
         return script
     lines = [ln for ln in script.splitlines() if not ln.strip().startswith("```")]
     return "\n".join(lines).strip()
 
 
-def _encode_pako(mermaid_script: str) -> str:
-    """Encode script jadi segmen URL "pako:" (zlib deflate + base64url).
+def _normalize_plantuml(diagram_script: str) -> str:
+    """Siapkan script LLM untuk plantuml.jar: buang fence, pastikan terbungkus
+    @startuml/@enduml, lalu suntik preamble gaya (theme + dpi) TEPAT sesudah
+    @startuml.
 
-    mermaid.ink menerima dua bentuk: base64 polos dan "pako:" terkompresi.
-    Kita pakai pako karena teks Mermaid sangat repetitif sehingga rasio
-    kompresinya tinggi (~7x pada diagram nyata) — itulah yang menahan URL
-    tetap di bawah batas ~8KB untuk repo besar (lihat _MERMAID_URL_LIMIT).
+    Preamble disuntik di sini dan LLM DILARANG menulis theme/skinparam sendiri
+    (lihat SYSTEM_PROMPT llm_service): rupa diagram harus datang dari satu tempat
+    deterministik, bukan dari selera model yang berubah antar panggilan — filosofi
+    yang sama dengan reference.docx untuk rupa dokumen.
     """
-    state = {"code": mermaid_script, "mermaid": {"theme": "default"}}
-    raw = json.dumps(state, separators=(",", ":")).encode("utf-8")
-    compressor = zlib.compressobj(9, zlib.DEFLATED, 15)
-    deflated = compressor.compress(raw) + compressor.flush()
-    return "pako:" + base64.urlsafe_b64encode(deflated).decode("ascii")
+    script = _strip_code_fence(diagram_script)
+    if "@startuml" not in script:
+        script = f"@startuml\n{script}\n@enduml"
+
+    lines = []
+    injected = False
+    for line in script.splitlines():
+        lines.append(line)
+        if not injected and line.strip().startswith("@startuml"):
+            lines.extend(_PLANTUML_STYLE_PREAMBLE)
+            injected = True
+    return "\n".join(lines)
 
 
-def _render_mermaid_to_image(mermaid_script: str, images_dir: Path) -> str:
+def _run_plantuml(plantuml_source: str) -> bytes:
+    """Jalankan plantuml.jar (mode -pipe: source di stdin, PNG di stdout).
+
+    Dipisah dari _render_diagram_to_image supaya test bisa me-mock PROSES
+    EKSTERNALNYA saja — normalisasi script dan penulisan file tetap teruji asli.
+
+    Render LOKAL, bukan layanan hosted — dua alasan, satu keputusan (2026-07-16):
+    (1) privasi: isi diagram (nama endpoint, struktur komponen) tidak lagi
+    meninggalkan mesin — keterbatasan mermaid.ink yang tercatat sejak awal;
+    (2) rupa: PlantUML menggambar UML sungguhan (aktor stick-figure, oval use
+    case, start/stop activity) — bahasa visual dokumen acuan enterprise, dipilih
+    pemilik project lewat perbandingan berdampingan (scripts/diagram_comparison.py).
+
+    -Playout=smetana: layout engine Java murni bawaan jar. Tanpa ini diagram
+    use case & component menuntut Graphviz/dot terpasang terpisah di sistem —
+    dependency kedua yang diam-diam, gagal hanya di mesin yang tidak punya.
     """
-    Render satu script Mermaid jadi file gambar PNG lewat mermaid.ink.
-
-    PERHATIAN: cara ini mengirim ISI DIAGRAM (bisa memuat nama endpoint,
-    struktur komponen internal) ke layanan pihak ketiga lewat internet.
-    Untuk data yang confidential (repo perusahaan), ganti fungsi ini
-    dengan rendering lokal (mis. mermaid-cli) sebelum dipakai di
-    lingkungan produksi.
-
-    JANGAN DIPARALELKAN — sudah dicoba 2026-07-16 dan mermaid.ink MENOLAK.
-    Pemanggilnya merender diagram satu per satu, berurutan, dan itu memang
-    terlihat seperti target optimisasi yang jelas: terukur ~2,9 detik per diagram,
-    jadi 11 diagram = ~31 detik dari total ~2-3 menit (20%) yang habis untuk
-    perjalanan bolak-balik yang tidak saling bergantung.
-
-    Tapi diuji ke layanan sungguhan: **2 request bersamaan sudah cukup untuk
-    dapat HTTP 503**, diukur tepat sesudah satu request tunggal berhasil (jadi
-    bukan layanannya yang mati). 4 worker juga 503. Batas rate-nya tidak
-    terdokumentasi — mermaid.ink layanan gratis milik orang lain.
-    Konsekuensinya kalau tetap dipaksa: satu 503 menggagalkan SELURUH dokumen,
-    jadi pertukarannya adalah hemat ~25 detik ditukar dengan dokumen yang selalu
-    gagal. Test tidak akan menangkapnya — mermaid.ink di-mock di semua test.
-
-    Paralelisme baru mungkin kalau render pindah ke lokal (mermaid-cli), dan itu
-    memang sudah jadi arah yang disarankan di paragraf pertama untuk alasan
-    privasi. Dua alasan, satu perbaikan.
-    """
-    images_dir.mkdir(parents=True, exist_ok=True)
-
-    script = _strip_code_fence(mermaid_script)
-    url = f"https://mermaid.ink/img/{_encode_pako(script)}?{_MERMAID_IMAGE_PARAMS}"
-
-    if len(url) > _MERMAID_URL_LIMIT:
+    jar = Path(config.PLANTUML_JAR)
+    if not jar.is_file():
         raise DiagramRenderError(
-            f"Script diagram terlalu besar untuk mermaid.ink walau sudah dikompresi "
-            f"(URL {len(url)} karakter, batas ~{_MERMAID_URL_LIMIT}). Pecah diagram "
-            f"jadi beberapa bagian, atau pindah ke rendering lokal (mermaid-cli)."
+            f"plantuml.jar tidak ditemukan di '{jar}'. Unduh dari "
+            f"https://github.com/plantuml/plantuml/releases (asset "
+            f"plantuml-<versi>.jar), simpan sebagai tools/plantuml.jar, atau "
+            f"tunjuk lokasinya lewat PLANTUML_JAR di .env."
         )
 
     try:
-        response = requests.get(url, timeout=30)
-        response.raise_for_status()
-    except requests.HTTPError as e:
-        status = e.response.status_code if e.response is not None else "?"
+        result = subprocess.run(
+            ["java", "-jar", str(jar), "-pipe", "-tpng",
+             "-charset", "UTF-8", "-Playout=smetana"],
+            input=plantuml_source.encode("utf-8"),
+            capture_output=True,
+            timeout=120,
+        )
+    except FileNotFoundError as e:
         raise DiagramRenderError(
-            f"mermaid.ink menolak diagram (HTTP {status}): {_HTTP_HINTS.get(status, 'sebab tidak dikenal')}."
+            "Java tidak ditemukan di PATH — render diagram PlantUML butuh "
+            "Java 17+ terpasang."
         ) from e
-    except requests.RequestException as e:
+    except subprocess.TimeoutExpired as e:
         raise DiagramRenderError(
-            f"mermaid.ink tidak merespons ({type(e).__name__}). Cek koneksi internet."
+            "PlantUML tidak selesai merender dalam 120 detik — script diagram "
+            "kemungkinan terlalu besar."
         ) from e
 
+    # PlantUML MENGGAMBAR pesan syntax error sebagai gambar (exit code tetap
+    # non-nol) — kalau cuma percaya stdout, error itu ter-embed diam-diam ke
+    # dokumen sebagai "diagram". Periksa exit code DAN magic number PNG.
+    if result.returncode != 0 or not result.stdout.startswith(b"\x89PNG"):
+        stderr = result.stderr.decode("utf-8", "replace").strip()
+        raise DiagramRenderError(
+            f"PlantUML menolak script diagram: {stderr[:400] or 'tanpa detail'} "
+            f"(cek syntax PlantUML-nya)."
+        )
+    return result.stdout
+
+
+def _render_diagram_to_image(diagram_script: str, images_dir: Path) -> str:
+    """Render satu script PlantUML jadi file PNG lokal; kembalikan path-nya."""
+    images_dir.mkdir(parents=True, exist_ok=True)
+    png = _run_plantuml(_normalize_plantuml(diagram_script))
     image_path = images_dir / f"{uuid.uuid4().hex}.png"
-    image_path.write_bytes(response.content)
+    image_path.write_bytes(png)
     return str(image_path)
 
 
@@ -244,31 +247,51 @@ def _build_sdd_context(data: dict[str, Any]) -> dict[str, Any]:
         }
         for uc in data.get("use_cases", [])
     ]
+    cleaned_roles = [
+        {**role, "description": role["description"].replace("\n", " ")}
+        for role in data.get("user_roles", [])
+    ]
+    cleaned_requirements = [
+        {**req, "detail": req["detail"].replace("\n", " ")}
+        for req in data.get("system_requirements", [])
+    ]
+    cleaned_flow_steps = [step.replace("\n", " ") for step in data.get("business_flow_steps", [])]
 
-    architecture = _render_mermaid_to_image(diagrams["system_architecture"], IMAGES_DIR)
-    integration = _render_mermaid_to_image(diagrams["component_integration"], IMAGES_DIR)
-    use_case = _render_mermaid_to_image(diagrams["use_case_diagram"], IMAGES_DIR)
+    # Empat diagram tetap diakses dengan diagrams[...] — sengaja KeyError kalau
+    # hilang: dokumen tanpa salah satunya cacat, dan lebih baik gagal berisik.
+    architecture = _render_diagram_to_image(diagrams["system_architecture"], IMAGES_DIR)
+    integration = _render_diagram_to_image(diagrams["component_integration"], IMAGES_DIR)
+    business_flow = _render_diagram_to_image(diagrams["business_process_flow"], IMAGES_DIR)
+    use_case = _render_diagram_to_image(diagrams["use_case_diagram"], IMAGES_DIR)
 
     return {
         **data,
         "feature_requirements": cleaned_features,
         "use_cases": cleaned_use_cases,
+        "user_roles": cleaned_roles,
+        "system_requirements": cleaned_requirements,
+        "business_flow_steps": cleaned_flow_steps,
         "diagrams": {
             "system_architecture_image": architecture,
             "system_architecture_attr": _image_attr(architecture),
             "component_integration_image": integration,
             "component_integration_attr": _image_attr(integration),
+            "business_process_flow_image": business_flow,
+            "business_process_flow_attr": _image_attr(business_flow),
             "use_case_diagram_image": use_case,
             "use_case_diagram_attr": _image_attr(use_case),
             "activity_diagrams": [
                 {
                     "activity_name": activity["activity_name"],
                     "description": activity["description"],
+                    "actor": activity["actor"].replace("\n", " "),
+                    "pre_condition": activity["pre_condition"].replace("\n", " "),
+                    "steps": [s.replace("\n", " ") for s in activity["steps"]],
                     "image_path": path,
                     "image_attr": _image_attr(path),
                 }
                 for activity, path in (
-                    (a, _render_mermaid_to_image(a["mermaid_script"], IMAGES_DIR))
+                    (a, _render_diagram_to_image(a["diagram_script"], IMAGES_DIR))
                     for a in diagrams.get("activity_diagrams", [])
                 )
             ],

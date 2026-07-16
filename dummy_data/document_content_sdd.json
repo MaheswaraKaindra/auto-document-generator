@@ -1,11 +1,25 @@
 {
   "document_type": "SDD",
   "app_description": "Aplikasi ini adalah sistem manajemen inventaris SPBU yang memungkinkan admin mengelola stok barang, mencatat transaksi masuk/keluar, dan memantau ketersediaan barang secara real-time melalui dashboard web.",
+  "user_roles": [
+    {
+      "role_name": "Admin",
+      "description": "Mengelola seluruh data inventaris: menambah item, mengubah stok, dan memantau dashboard."
+    }
+  ],
   "system_requirements": [
-    "Python 3.11+",
-    "FastAPI",
-    "PostgreSQL 14",
-    "React 18 (Frontend)"
+    {
+      "name": "Programming Language",
+      "detail": "Python 3.11+ (Backend), JavaScript/React 18 (Frontend)"
+    },
+    {
+      "name": "Web Framework",
+      "detail": "FastAPI"
+    },
+    {
+      "name": "Database",
+      "detail": "PostgreSQL 14"
+    }
   ],
   "feature_requirements": [
     {
@@ -14,14 +28,24 @@
     }
   ],
   "diagrams": {
-    "system_architecture": "graph LR\nUser((\"User\"))\nFrontend[\"Frontend Web\"]\nBackend[\"Backend API\"]\nDatabase[(\"Database\")]\nUser --> Frontend\nFrontend --> Backend\nBackend --> Database",
-    "component_integration": "graph TD\nInventoryPage[\"InventoryListPage\"] --> GetItems[\"GET /api/inventory\"]\nAddItemForm[\"AddItemForm\"] --> PostItem[\"POST /api/inventory/add\"]",
-    "use_case_diagram": "flowchart LR\nAdmin((\"Admin\"))\nUC1([\"Melihat Daftar Inventaris\"])\nUC2([\"Menambah Item Baru\"])\nAdmin --> UC1\nAdmin --> UC2",
+    "system_architecture": "@startuml\nleft to right direction\nactor \"User\"\ncomponent \"Frontend Web\" as FE\ncomponent \"Backend API\" as BE\ndatabase \"Database\" as DB\n\"User\" --> FE\nFE --> BE\nBE --> DB\n@enduml",
+    "component_integration": "@startuml\npackage \"Frontend\" {\n  [InventoryListPage]\n  [AddItemForm]\n}\npackage \"Backend\" {\n  [GET /api/inventory]\n  [POST /api/inventory/add]\n}\n[InventoryListPage] --> [GET /api/inventory]\n[AddItemForm] --> [POST /api/inventory/add]\n@enduml",
+    "business_process_flow": "@startuml\nstart\n:Admin login ke sistem;\n:Admin membuka halaman inventaris;\n:Admin menambah atau mengubah data item;\n:Sistem menyimpan perubahan ke database;\n:Dashboard menampilkan data terbaru;\nstop\n@enduml",
+    "use_case_diagram": "@startuml\nleft to right direction\nactor Admin\nrectangle \"Sistem Inventaris\" {\n  usecase \"Melihat Daftar Inventaris\" as UC1\n  usecase \"Menambah Item Baru\" as UC2\n}\nAdmin --> UC1\nAdmin --> UC2\n@enduml",
     "activity_diagrams": [
       {
         "activity_name": "Proses Tambah Item Inventaris",
         "description": "Admin menambahkan item baru ke dalam sistem inventaris melalui form input.",
-        "mermaid_script": "flowchart TD\nStartNode((\"Start\")) --> Isi[\"Isi form item\"]\nIsi --> Submit[\"Submit form\"]\nSubmit --> Cek{\"Valid?\"}\nCek -->|Ya| Simpan[\"Simpan ke database\"]\nCek -->|Tidak| Error[\"Tampilkan error\"]\nSimpan --> EndNode((\"End\"))\nError --> Isi"
+        "actor": "Admin",
+        "pre_condition": "Admin telah login dan berada di halaman inventaris.",
+        "steps": [
+          "Admin membuka form Tambah Item.",
+          "Admin mengisi nama, jumlah, dan satuan item.",
+          "Admin menekan tombol Simpan.",
+          "Sistem memvalidasi isian form.",
+          "Jika valid, sistem menyimpan item ke database dan menampilkannya di daftar."
+        ],
+        "diagram_script": "@startuml\nstart\n:Admin membuka form Tambah Item;\n:Admin mengisi data item;\n:Admin menekan Simpan;\nif (Isian valid?) then (Ya)\n  :Sistem menyimpan ke database;\nelse (Tidak)\n  :Sistem menampilkan pesan error;\nendif\nstop\n@enduml"
       }
     ]
   },
@@ -39,6 +63,13 @@
     }
   ],
   "business_flow_description": "Admin login ke sistem, membuka halaman inventaris, lalu menambah/mengubah data item. Setiap perubahan langsung tersinkron ke database dan tercermin di dashboard secara real-time.",
+  "business_flow_steps": [
+    "Admin login ke sistem menggunakan akun terdaftar.",
+    "Admin membuka halaman inventaris dari menu utama.",
+    "Admin menambah item baru atau mengubah data item yang sudah ada.",
+    "Sistem memvalidasi lalu menyimpan perubahan ke database.",
+    "Dashboard menampilkan data stok terbaru secara real-time."
+  ],
   "uat_test_cases": [
     {
       "test_id": "UAT-01",

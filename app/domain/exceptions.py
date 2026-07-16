@@ -11,10 +11,10 @@ class SourceNotFoundError(SourceProviderError):
 
 
 class DiagramRenderError(Exception):
-    """Rendering a Mermaid script into an image failed.
+    """Rendering a diagram script (PlantUML) into an image failed.
 
-    Carries a message stating the actual cause (service unreachable, script
-    rejected, script too large) so the caller does not have to guess.
+    Carries a message stating the actual cause (jar/Java missing, script
+    rejected with PlantUML's own stderr) so the caller does not have to guess.
     """
 
 

@@ -1,19 +1,17 @@
-"""Test compiler_service.py (Peran 3) — render Jinja2 + Mermaid + export docx.
+"""Test compiler_service.py (Peran 3) — render Jinja2 + PlantUML + export docx.
 
-Mermaid.ink selalu di-mock supaya test tidak bergantung pada koneksi internet
-atau layanan pihak ketiga yang tidak stabil.
+Proses plantuml.jar selalu di-mock (lewat _run_plantuml) supaya test tidak
+bergantung pada Java/jar terpasang — normalisasi script dan penulisan file
+tetap teruji asli.
 """
 
-import base64
 import json
 import re
-import uuid
-import zlib
 from pathlib import Path
+from subprocess import CompletedProcess
 from unittest.mock import Mock, patch
 
 import pytest
-import requests
 from docx import Document
 from docx.oxml.ns import qn
 
@@ -90,11 +88,12 @@ _FULL_UAT_METADATA = {
 
 
 @pytest.fixture
-def mock_mermaid_ok():
-    response = Mock()
-    response.content = _MINIMAL_PNG
-    response.raise_for_status = Mock()
-    with patch("app.services.compiler_service.requests.get", return_value=response) as mocked:
+def mock_plantuml_ok():
+    """Mock PROSES EKSTERNAL-nya saja (_run_plantuml): normalisasi script,
+    penulisan file, dan seluruh alur template tetap berjalan asli."""
+    with patch(
+        "app.services.compiler_service._run_plantuml", return_value=_MINIMAL_PNG
+    ) as mocked:
         yield mocked
 
 
@@ -105,7 +104,7 @@ def redirect_output_dir(tmp_path, monkeypatch):
     monkeypatch.setattr(compiler_service, "IMAGES_DIR", tmp_path / "images")
 
 
-def test_generate_docx_sdd_produces_valid_docx(mock_mermaid_ok):
+def test_generate_docx_sdd_produces_valid_docx(mock_plantuml_ok):
     data = _load_fixture("document_content_sdd.json")
 
     output_path = compiler_service.generate_docx("SDD", data, project_name="Test Project")
@@ -117,7 +116,7 @@ def test_generate_docx_sdd_produces_valid_docx(mock_mermaid_ok):
     assert data["app_description"] in full_text
 
 
-def test_generate_docx_uat_produces_valid_docx(mock_mermaid_ok):
+def test_generate_docx_uat_produces_valid_docx(mock_plantuml_ok):
     data = _load_fixture("document_content_uat.json")
 
     output_path = compiler_service.generate_docx("UAT", data, project_name="Test Project")
@@ -128,7 +127,7 @@ def test_generate_docx_uat_produces_valid_docx(mock_mermaid_ok):
     assert "User Acceptance Testing" in full_text
 
 
-def test_generate_docx_lowercase_type_still_works(mock_mermaid_ok):
+def test_generate_docx_lowercase_type_still_works(mock_plantuml_ok):
     """document_type harus case-insensitive ('sdd' == 'SDD')."""
     data = _load_fixture("document_content_sdd.json")
 
@@ -144,91 +143,74 @@ def test_generate_docx_invalid_type_raises_value_error():
         compiler_service.generate_docx("BUKAN_TIPE_VALID", data)
 
 
-def test_mermaid_unreachable_raises_diagram_render_error():
-    data = _load_fixture("document_content_sdd.json")
-
-    with patch(
-        "app.services.compiler_service.requests.get",
-        side_effect=requests.ConnectionError("mermaid.ink tidak terjangkau"),
-    ):
-        with pytest.raises(DiagramRenderError, match="tidak merespons"):
-            compiler_service.generate_docx("SDD", data)
-
-
-def _decode_pako_url(url: str) -> str:
-    """Balik URL 'pako:' jadi script Mermaid aslinya, untuk verifikasi test."""
-    payload = url.split("/img/pako:", 1)[1]
-    return json.loads(zlib.decompress(base64.urlsafe_b64decode(payload)))["code"]
-
-
-def test_mermaid_url_uses_pako_and_round_trips(mock_mermaid_ok):
-    """Encoding harus 'pako:' (terkompresi), dan script harus bisa dibalik utuh.
-
-    Ini yang menahan URL di bawah batas ~8KB mermaid.ink; encoding base64 polos
-    sebelumnya menembus batas itu pada repo besar dan dijawab HTTP 414.
-    """
-    data = _load_fixture("document_content_sdd.json")
-
-    compiler_service.generate_docx("SDD", data)
-
-    url = mock_mermaid_ok.call_args_list[0].args[0]
-    assert "/img/pako:" in url
-    assert _decode_pako_url(url) == data["diagrams"]["system_architecture"]
-
-
-def test_pako_keeps_large_diagram_under_url_limit(mock_mermaid_ok):
-    """Diagram besar yang dulu bikin 414 harus lolos batas panjang URL."""
-    big_script = "graph LR\n" + "\n".join(
-        f"N{i}[Service Node Number {i}]-->N{i + 1}[Service Node Number {i + 1}]"
-        for i in range(120)
-    )
-    plain_b64_len = len(base64.urlsafe_b64encode(big_script.encode()))
-
-    compiler_service._render_mermaid_to_image(big_script, compiler_service.IMAGES_DIR)
-
-    url = mock_mermaid_ok.call_args_list[0].args[0]
-    assert plain_b64_len > compiler_service._MERMAID_URL_LIMIT  # dulu: 414
-    assert len(url) < compiler_service._MERMAID_URL_LIMIT  # sekarang: muat
-
-
-def test_oversized_diagram_fails_before_hitting_network(mock_mermaid_ok):
-    """Kalau tetap kebesaran walau dikompresi, gagal dengan pesan jelas dan
-    jangan buang-buang request ke mermaid.ink."""
-    # Teks acak supaya tidak bisa dikompresi -- meniru diagram yang benar-benar besar.
-    incompressible = "graph LR\n" + "\n".join(uuid.uuid4().hex for _ in range(600))
-
-    with pytest.raises(DiagramRenderError, match="terlalu besar"):
-        compiler_service._render_mermaid_to_image(incompressible, compiler_service.IMAGES_DIR)
-
-    mock_mermaid_ok.assert_not_called()
-
-
-def test_http_error_message_names_the_real_status():
-    """Sebab asli (mis. 414) harus tersebut, bukan diratakan jadi 'tidak merespons'
-    -- persis penyamaran itu yang dulu bikin bug ini lama tak terdiagnosis."""
-    response = Mock(status_code=414)
-    error = requests.HTTPError("414 Client Error", response=response)
-    response.raise_for_status = Mock(side_effect=error)
-
-    with patch("app.services.compiler_service.requests.get", return_value=response):
-        with pytest.raises(DiagramRenderError, match="414"):
-            compiler_service._render_mermaid_to_image("graph LR\nA-->B", compiler_service.IMAGES_DIR)
-
-
-def test_code_fence_is_stripped_before_encoding(mock_mermaid_ok):
-    """LLM kadang membungkus script dengan ```mermaid -- fence bikin 400."""
-    compiler_service._render_mermaid_to_image(
-        "```mermaid\ngraph LR\nA-->B\n```", compiler_service.IMAGES_DIR
+def test_missing_jar_raises_diagram_render_error(tmp_path, monkeypatch):
+    """plantuml.jar yang tidak ada harus gagal dengan pesan yang menyebut CARA
+    memperbaikinya (unduh dari mana, taruh di mana) — bukan FileNotFoundError
+    mentah dari subprocess."""
+    monkeypatch.setattr(
+        compiler_service.config, "PLANTUML_JAR", str(tmp_path / "tidak-ada.jar")
     )
 
-    url = mock_mermaid_ok.call_args_list[0].args[0]
-    assert _decode_pako_url(url) == "graph LR\nA-->B"
+    with pytest.raises(DiagramRenderError, match="plantuml.jar tidak ditemukan"):
+        compiler_service._run_plantuml("@startuml\nA --> B\n@enduml")
+
+
+def test_plantuml_failure_carries_stderr():
+    """Sebab asli dari PlantUML (pesan syntax error di stderr) harus tersebut,
+    bukan diratakan — kelas penyamaran yang sama dengan 502 yang dulu menelan
+    414 mermaid.ink: sebab asli tertelan gejala."""
+    failed = CompletedProcess(
+        args=[], returncode=1, stdout=b"", stderr=b"Syntax Error on line 3"
+    )
+
+    with patch("app.services.compiler_service.subprocess.run", return_value=failed):
+        with pytest.raises(DiagramRenderError, match="Syntax Error on line 3"):
+            compiler_service._run_plantuml("@startuml\nrusak\n@enduml")
+
+
+def test_error_image_with_nonzero_exit_is_rejected():
+    """PlantUML MENGGAMBAR pesan syntax error sebagai PNG (exit code tetap
+    non-nol). Kalau cuma percaya stdout, gambar error itu ter-embed diam-diam ke
+    dokumen sebagai 'diagram' — exit code harus tetap diperiksa."""
+    error_drawn_as_png = CompletedProcess(
+        args=[], returncode=200, stdout=_MINIMAL_PNG, stderr=b"ERROR line 2"
+    )
+
+    with patch("app.services.compiler_service.subprocess.run", return_value=error_drawn_as_png):
+        with pytest.raises(DiagramRenderError, match="ERROR line 2"):
+            compiler_service._run_plantuml("@startuml\nrusak\n@enduml")
+
+
+def test_render_receives_normalized_source(mock_plantuml_ok):
+    """Script LLM harus dinormalisasi sebelum sampai ke plantuml.jar: fence
+    dibuang, terbungkus @startuml, dan preamble gaya (theme + dpi) tersuntik —
+    gaya visual datang dari SATU tempat deterministik, bukan dari LLM."""
+    compiler_service._render_diagram_to_image(
+        "```plantuml\n@startuml\nAdmin --> UC1\n@enduml\n```",
+        compiler_service.IMAGES_DIR,
+    )
+
+    source = mock_plantuml_ok.call_args_list[0].args[0]
+    assert "```" not in source
+    assert source.startswith("@startuml")
+    assert "!theme plain" in source
+    assert "Admin --> UC1" in source
+
+
+def test_bare_script_gets_wrapped(mock_plantuml_ok):
+    """Script tanpa @startuml (LLM lupa) tetap harus jadi source yang valid."""
+    compiler_service._render_diagram_to_image("A --> B", compiler_service.IMAGES_DIR)
+
+    source = mock_plantuml_ok.call_args_list[0].args[0]
+    assert source.startswith("@startuml")
+    assert source.rstrip().endswith("@enduml")
+    assert "A --> B" in source
 
 
 # --- Metadata dokumen (isian manusia dari form) ---
 
 
-def test_sdd_metadata_leaves_no_manual_placeholder(mock_mermaid_ok):
+def test_sdd_metadata_leaves_no_manual_placeholder(mock_plantuml_ok):
     """Inti dari fitur ini: 17 field form harus menutup SEMUA lubang SDD yang
     bukan tanda tangan. Kalau ada field template yang lupa dipetakan ke form,
     penandanya akan tersisa dan test ini merah."""
@@ -241,7 +223,7 @@ def test_sdd_metadata_leaves_no_manual_placeholder(mock_mermaid_ok):
     assert _PLACEHOLDER_IN_DOCX not in _docx_text(output_path)
 
 
-def test_uat_metadata_leaves_no_manual_placeholder(mock_mermaid_ok):
+def test_uat_metadata_leaves_no_manual_placeholder(mock_plantuml_ok):
     """Pasangan test di atas untuk UAT: 8 field menutup 8 lubang non-tanda-tangan."""
     data = _load_fixture("document_content_uat.json")
 
@@ -252,7 +234,7 @@ def test_uat_metadata_leaves_no_manual_placeholder(mock_mermaid_ok):
     assert _PLACEHOLDER_IN_DOCX not in _docx_text(output_path)
 
 
-def test_metadata_values_appear_in_docx(mock_mermaid_ok):
+def test_metadata_values_appear_in_docx(mock_plantuml_ok):
     """Field tidak cuma menghapus penanda -- isinya harus benar-benar mendarat,
     termasuk yang di dalam sel tabel (Demografi, checklist Security)."""
     data = _load_fixture("document_content_sdd.json")
@@ -266,7 +248,7 @@ def test_metadata_values_appear_in_docx(mock_mermaid_ok):
         assert value in text, f"metadata {value!r} tidak muncul di docx"
 
 
-def test_without_metadata_falls_back_to_old_behaviour(mock_mermaid_ok):
+def test_without_metadata_falls_back_to_old_behaviour(mock_plantuml_ok):
     """Perilaku lama adalah LANTAI, bukan langit: tidak mengisi form sama sekali
     harus menghasilkan dokumen seperti sebelum form ini ada, bukan error atau
     sel kosong melompong."""
@@ -277,7 +259,7 @@ def test_without_metadata_falls_back_to_old_behaviour(mock_mermaid_ok):
     assert _PLACEHOLDER_IN_DOCX in _docx_text(output_path)
 
 
-def test_blank_metadata_fields_treated_as_unfilled(mock_mermaid_ok):
+def test_blank_metadata_fields_treated_as_unfilled(mock_plantuml_ok):
     """Form mengirim string kosong untuk input yang tidak disentuh (dan Pydantic
     mengirim None untuk field yang absen). Keduanya harus jatuh ke penanda --
     bukan bikin sel tabel kosong yang terbaca seperti bug."""
@@ -292,7 +274,7 @@ def test_blank_metadata_fields_treated_as_unfilled(mock_mermaid_ok):
     assert _PLACEHOLDER_IN_DOCX in _docx_text(output_path)
 
 
-def test_sdd_carries_acuan_skeleton_sections(mock_mermaid_ok):
+def test_sdd_carries_acuan_skeleton_sections(mock_plantuml_ok):
     """Kerangka bagian manual yang meniru dokumen acuan (halaman muka, Timeline,
     Cost Estimation, blok tanda tangan, bab Mockup) harus ada di SDD sebagai
     kerangka KOSONG — bukan penanda (diisi manual), karena tidak dipetakan ke
@@ -319,7 +301,7 @@ def test_sdd_carries_acuan_skeleton_sections(mock_mermaid_ok):
     assert _PLACEHOLDER_IN_DOCX not in text
 
 
-def test_uat_has_no_mockup_section(mock_mermaid_ok):
+def test_uat_has_no_mockup_section(mock_plantuml_ok):
     """Bab Mockup cuma milik SDD — dokumen acuan UAT tidak punya, dan bab
     placeholder yang tidak relevan itu halaman hampa (pelajaran Daftar Gambar)."""
     data = _load_fixture("document_content_uat.json")
@@ -329,7 +311,7 @@ def test_uat_has_no_mockup_section(mock_mermaid_ok):
     assert "Mockup" not in _docx_text(output_path)
 
 
-def test_signature_blocks_survive_full_metadata(mock_mermaid_ok):
+def test_signature_blocks_survive_full_metadata(mock_plantuml_ok):
     """Blok tanda tangan & sertifikasi hasil sengaja TIDAK ditanyakan di form:
     tanda tangan bukan data yang diketik, dan hasil Lolos/Gagal belum ada saat
     generate. Metadata selengkap apa pun tidak boleh menghapusnya."""
@@ -370,8 +352,8 @@ def _document_xml(output_path: str) -> str:
     return zipfile.ZipFile(output_path).read("word/document.xml").decode("utf-8", "ignore")
 
 
-def test_sdd_figures_are_numbered_in_document_order(mock_mermaid_ok):
-    """Fixture punya 1 activity diagram -> 3 gambar tetap + 1 = Gambar 1..4."""
+def test_sdd_figures_are_numbered_in_document_order(mock_plantuml_ok):
+    """Fixture punya 1 activity diagram -> 4 gambar tetap + 1 = Gambar 1..5."""
     data = _load_fixture("document_content_sdd.json")
 
     output_path = compiler_service.generate_docx("SDD", data)
@@ -379,28 +361,34 @@ def test_sdd_figures_are_numbered_in_document_order(mock_mermaid_ok):
     assert _captions(output_path, "Image Caption") == [
         "Gambar 1 Arsitektur Sistem",
         "Gambar 2 Integrasi Komponen",
-        "Gambar 3 Use Case Diagram",
-        "Gambar 4 Activity Diagram Proses Tambah Item Inventaris",
+        "Gambar 3 Flow Proses Bisnis",
+        "Gambar 4 Use Case Diagram",
+        "Gambar 5 Activity Diagram Proses Tambah Item Inventaris",
     ]
 
 
-def test_sdd_tables_are_numbered_in_document_order(mock_mermaid_ok):
-    """Fixture punya 1 use case -> 3 tabel tetap + 1 = Tabel 1..4."""
+def test_sdd_tables_are_numbered_in_document_order(mock_plantuml_ok):
+    """Fixture punya 1 use case + 1 activity -> 5 tabel tetap + 1 + 1 = Tabel 1..7."""
     data = _load_fixture("document_content_sdd.json")
 
     output_path = compiler_service.generate_docx("SDD", data)
 
     assert _captions(output_path, "Table Caption") == [
-        "Tabel 1 Informasi Demografi Aplikasi",
-        "Tabel 2 Application Security",
-        "Tabel 3 Application Features Requirement",
-        "Tabel 4 Use Case UC-01 — Admin",
+        "Tabel 1 Informasi Role Pengguna",
+        "Tabel 2 Informasi Demografi Aplikasi",
+        "Tabel 3 System Requirement",
+        "Tabel 4 Application Security",
+        "Tabel 5 Application Features Requirement",
+        "Tabel 6 Use Case UC-01 — Admin",
+        "Tabel 7 Activity Diagram Proses Tambah Item Inventaris",
     ]
 
 
-def test_numbering_offset_holds_when_loop_grows(mock_mermaid_ok):
-    """Penjaga paling penting: offset `+3` di template. Loop activity diagram &
-    use case harus MELANJUTKAN penomoran gambar/tabel tetap, bukan mulai dari 1.
+def test_numbering_offset_holds_when_loop_grows(mock_plantuml_ok):
+    """Penjaga paling penting: offset di template. Loop activity diagram &
+    use case harus MELANJUTKAN penomoran gambar/tabel tetap, bukan mulai dari 1 —
+    dan tabel activity harus melanjutkan DARI tabel use case (offset-nya memuat
+    use_cases|length).
 
     Kalau seseorang menambah gambar/tabel tetap tanpa menaikkan offset-nya,
     nomor akan bentrok DIAM-DIAM — tanpa error, tanpa test lain yang gagal."""
@@ -417,13 +405,18 @@ def test_numbering_offset_holds_when_loop_grows(mock_mermaid_ok):
 
     figure_numbers = [c.split()[1] for c in _captions(output_path, "Image Caption")]
     table_numbers = [c.split()[1] for c in _captions(output_path, "Table Caption")]
-    assert figure_numbers == ["1", "2", "3", "4", "5", "6"]  # 3 tetap + 3 activity
-    assert table_numbers == ["1", "2", "3", "4", "5"]  # 3 tetap + 2 use case
+    assert figure_numbers == ["1", "2", "3", "4", "5", "6", "7"]  # 4 tetap + 3 activity
+    assert table_numbers == [
+        "1", "2", "3", "4", "5",  # tetap
+        "6", "7",                 # 2 use case
+        "8", "9", "10",           # 3 activity, melanjutkan dari use case
+    ]
 
 
-def test_front_matter_tables_are_not_captioned(mock_mermaid_ok):
-    """Informasi Dokumen & Revision History sengaja tanpa caption — dokumen acuan
-    pun tidak menomorinya, dan penomoran isi mulai dari Informasi Demografi."""
+def test_front_matter_tables_are_not_captioned(mock_plantuml_ok):
+    """Informasi Dokumen, Revision History, Timeline, Cost, dan blok tanda tangan
+    sengaja tanpa caption — dokumen acuan pun tidak menomorinya; penomoran isi
+    mulai dari tabel role pengguna di Deskripsi Aplikasi."""
     data = _load_fixture("document_content_sdd.json")
 
     output_path = compiler_service.generate_docx("SDD", data)
@@ -431,10 +424,12 @@ def test_front_matter_tables_are_not_captioned(mock_mermaid_ok):
     captions = " | ".join(_captions(output_path, "Table Caption"))
     assert "Informasi Dokumen" not in captions
     assert "Revision History" not in captions
-    assert captions.startswith("Tabel 1 Informasi Demografi")
+    assert "Timeline" not in captions
+    assert "Cost" not in captions
+    assert captions.startswith("Tabel 1 Informasi Role Pengguna")
 
 
-def test_docx_carries_indonesian_list_headings(mock_mermaid_ok):
+def test_docx_carries_indonesian_list_headings(mock_plantuml_ok):
     """Judulnya Indonesia lewat DUA mekanisme Pandoc yang berbeda: `lang=id`
     menerjemahkan Daftar Gambar/Tabel (`lof-title`/`lot-title` DIABAIKAN writer
     docx), sementara Daftar Isi justru cuma bisa lewat `toc-title` dan tidak ikut
@@ -455,7 +450,7 @@ def test_docx_carries_indonesian_list_headings(mock_mermaid_ok):
     assert "List of Tables" not in visible
 
 
-def test_uat_has_no_empty_figure_and_table_lists(mock_mermaid_ok):
+def test_uat_has_no_empty_figure_and_table_lists(mock_plantuml_ok):
     """UAT TIDAK boleh dapat Daftar Gambar/Tabel: dia punya NOL gambar dan cuma
     satu tabel isi (sisanya front-matter yang tidak di-caption), jadi --lof/--lot
     menghasilkan dua halaman indeks KOSONG di tiap dokumen UAT.
@@ -474,7 +469,7 @@ def test_uat_has_no_empty_figure_and_table_lists(mock_mermaid_ok):
     assert "Daftar Isi" in visible  # Daftar Isi tetap ada — UAT memang punya bab
 
 
-def test_docx_embeds_word_field_codes_for_the_lists(mock_mermaid_ok):
+def test_docx_embeds_word_field_codes_for_the_lists(mock_plantuml_ok):
     """Daftar Gambar/Tabel ditulis sebagai FIELD CODE, bukan teks jadi — itu yang
     membuat WORD menghitung nomor halamannya sendiri, sehingga kita tidak perlu
     tahu pagination dari sisi Markdown. Sudah diverifikasi manual di Word: 11
@@ -524,7 +519,7 @@ def test_reference_docx_carries_a_page_number_footer():
     assert "TITLE" in footer_xml
 
 
-def test_generated_docx_has_numbered_pages(mock_mermaid_ok):
+def test_generated_docx_has_numbered_pages(mock_plantuml_ok):
     """Rantai lengkap: footer di reference.docx harus benar-benar sampai ke
     dokumen yang dihasilkan DAN terpasang ke halamannya (`footerReference`) —
     bukan sekadar ikut menumpang di dalam paketnya."""
@@ -539,7 +534,7 @@ def test_generated_docx_has_numbered_pages(mock_mermaid_ok):
     assert "footerReference" in _document_xml(output_path)
 
 
-def test_document_title_lands_in_both_places(mock_mermaid_ok):
+def test_document_title_lands_in_both_places(mock_plantuml_ok):
     """Judul dipakai DUA kali: sebagai judul besar halaman pertama (style Title)
     dan sebagai teks kaki tiap halaman (field TITLE membacanya dari docProps).
     Satu sumber, dua tempat — kalau docProps kosong, kaki halaman ikut kosong."""
@@ -558,7 +553,7 @@ def test_document_title_lands_in_both_places(mock_mermaid_ok):
     assert titles == ["Solution Design Document — Esteler App"]
 
 
-def test_uat_gets_its_own_title(mock_mermaid_ok):
+def test_uat_gets_its_own_title(mock_plantuml_ok):
     uat = _load_fixture("document_content_uat.json")
 
     output_path = compiler_service.generate_docx("UAT", uat, project_name="Esteler App")
@@ -575,7 +570,7 @@ def test_title_without_project_name_stays_clean():
     assert compiler_service._document_title("SDD", "   ") == "Solution Design Document"
 
 
-def test_pandoc_styles_survive_the_reference_doc(mock_mermaid_ok):
+def test_pandoc_styles_survive_the_reference_doc(mock_plantuml_ok):
     """reference.docx dibangun DARI kerangka bawaan Pandoc, bukan dari nol —
     Pandoc mencari nama style tertentu, dan kerangka buatan sendiri yang
     kehilangan salah satunya merusak Daftar Gambar/Tabel TANPA error apa pun."""
@@ -583,8 +578,8 @@ def test_pandoc_styles_survive_the_reference_doc(mock_mermaid_ok):
 
     output_path = compiler_service.generate_docx("SDD", data)
 
-    assert len(_captions(output_path, "Image Caption")) == 4
-    assert len(_captions(output_path, "Table Caption")) == 4
+    assert len(_captions(output_path, "Image Caption")) == 5
+    assert len(_captions(output_path, "Table Caption")) == 7
 
 
 # --- Kualitas visual ----------------------------------------------------------
@@ -608,25 +603,31 @@ def _images(output_path: str):
     ]
 
 
-def test_diagrams_are_lossless_not_jpeg(mock_mermaid_ok):
-    """Akar "diagram blur": endpoint /img/ mermaid.ink membalas **JPEG** secara
-    default. JPEG itu lossy dan dirancang untuk foto — dipakai untuk line art, dia
-    menaruh artefak di sekeliling tiap garis dan huruf. Filenya bahkan sempat
-    disimpan berakhiran .png padahal isinya JPEG, yang menyembunyikan masalahnya
-    dari siapa pun yang cuma melihat nama file."""
-    compiler_service._render_mermaid_to_image("graph LR\n A-->B", compiler_service.IMAGES_DIR)
+def test_diagrams_are_lossless_not_jpeg(mock_plantuml_ok):
+    """Warisan pelajaran "diagram blur" era mermaid.ink: file yang ditulis harus
+    benar-benar PNG (lossless — JPEG menaruh artefak di sekeliling line art),
+    apa pun yang dikembalikan renderer. Penjaga rantai: byte dari renderer harus
+    mendarat utuh di file."""
+    path = compiler_service._render_diagram_to_image(
+        "@startuml\nA --> B\n@enduml", compiler_service.IMAGES_DIR
+    )
 
-    url = mock_mermaid_ok.call_args_list[0].args[0]
-    assert "type=png" in url
+    content = Path(path).read_bytes()
+    assert content.startswith(b"\x89PNG")
+    assert content == _MINIMAL_PNG
 
 
-def test_diagrams_are_rendered_large_enough_to_print(mock_mermaid_ok):
-    """Diagram bawaan mermaid.ink terukur serendah 381 px lebarnya; direntangkan
-    ke ruang halaman 6,5 inci itu ~59 dpi. Cetak layak butuh ~150."""
-    compiler_service._render_mermaid_to_image("graph LR\n A-->B", compiler_service.IMAGES_DIR)
+def test_diagrams_are_rendered_large_enough_to_print(mock_plantuml_ok):
+    """Default PlantUML 96 dpi — cukup untuk layar, buram untuk cetak (layak
+    cetak butuh ≥150; era mermaid.ink memakai ~246). Preamble dpi harus benar-benar
+    sampai ke source yang dirender."""
+    compiler_service._render_diagram_to_image(
+        "@startuml\nA --> B\n@enduml", compiler_service.IMAGES_DIR
+    )
 
-    url = mock_mermaid_ok.call_args_list[0].args[0]
-    assert "width=1600" in url  # 1600 / 6.5 inci = ~246 dpi
+    source = mock_plantuml_ok.call_args_list[0].args[0]
+    assert f"skinparam dpi {compiler_service._PLANTUML_DPI}" in source
+    assert compiler_service._PLANTUML_DPI >= 150
 
 
 def test_tall_diagram_is_capped_by_height_not_width(tmp_path):
@@ -650,7 +651,7 @@ def test_wide_diagram_is_capped_by_width(tmp_path):
     assert compiler_service._image_attr(str(wide)) == "{width=6.5in}"
 
 
-def test_every_diagram_fits_on_the_page(mock_mermaid_ok):
+def test_every_diagram_fits_on_the_page(mock_plantuml_ok):
     """Penjaga rantai: atribut ukuran harus benar-benar sampai ke docx, bukan cuma
     benar di dalam fungsinya sendiri."""
     import re
@@ -672,7 +673,7 @@ def test_every_diagram_fits_on_the_page(mock_mermaid_ok):
         assert height <= compiler_service._PAGE_HEIGHT_IN + 0.1
 
 
-def test_acceptance_criteria_render_as_a_real_numbered_list(mock_mermaid_ok):
+def test_acceptance_criteria_render_as_a_real_numbered_list(mock_plantuml_ok):
     """Markdown mensyaratkan list didahului BARIS KOSONG. Tanpa itu "1." dianggap
     lanjutan paragraf "Acceptance Criteria:" dan seluruh kriteria dilebur jadi
     satu paragraf gembung — terjadi betulan, dan lolos semua test karena teksnya
@@ -692,7 +693,7 @@ def test_acceptance_criteria_render_as_a_real_numbered_list(mock_mermaid_ok):
     )
 
 
-def test_use_case_headings_survive_after_criteria_list(mock_mermaid_ok):
+def test_use_case_headings_survive_after_criteria_list(mock_plantuml_ok):
     """Sisi SEBALIKNYA dari test di atas: Pandoc juga mensyaratkan baris kosong
     SEBELUM heading (blank_before_header). Tanpa itu heading use case berikutnya
     ("### 11.2 ...") menempel di baris kriteria terakhir dan keluar sebagai TEKS
@@ -716,7 +717,70 @@ def test_use_case_headings_survive_after_criteria_list(mock_mermaid_ok):
     )
 
 
-def test_front_matter_is_separated_from_the_body(mock_mermaid_ok):
+def test_activity_diagram_carries_reference_style_metadata_table(mock_plantuml_ok):
+    """Tiap activity diagram di dokumen acuan punya tabel metadata (No. ACT001,
+    Actor, System, Pre-Condition) + langkah bernomor — bukan cuma gambar dan satu
+    kalimat. Nomor ACT ditanam deterministik dari urutan, bukan diminta ke LLM."""
+    data = _load_fixture("document_content_sdd.json")
+    activity = data["diagrams"]["activity_diagrams"][0]
+    data = {
+        **data,
+        "diagrams": {**data["diagrams"], "activity_diagrams": [activity, activity]},
+    }
+
+    output_path = compiler_service.generate_docx(
+        "SDD", data, project_name="Test Project"
+    )
+
+    text = _docx_text(output_path)
+    assert "ACT001" in text
+    assert "ACT002" in text
+    assert activity["actor"] in text
+    assert activity["pre_condition"] in text
+    for step in activity["steps"]:
+        assert step in text, f"langkah aktivitas {step!r} hilang dari dokumen"
+
+
+def test_business_flow_carries_diagram_and_numbered_steps(mock_plantuml_ok):
+    """Flow Proses Bisnis di acuan = diagram + tahapan bernomor, bukan satu
+    paragraf prosa. Langkahnya harus jadi list bernomor sungguhan (pelajaran
+    Acceptance Criteria: tanpa baris kosong, list terlebur jadi paragraf)."""
+    data = _load_fixture("document_content_sdd.json")
+
+    output_path = compiler_service.generate_docx("SDD", data)
+
+    paragraphs = list(Document(output_path).paragraphs)
+    label = next(
+        i for i, p in enumerate(paragraphs)
+        if p.text.strip() == "Tahapan alur proses bisnis:"
+    )
+    first_step = paragraphs[label + 1]
+    ppr = first_step._p.find(qn("w:pPr"))
+    assert ppr is not None and ppr.find(qn("w:numPr")) is not None, (
+        "tahapan pertama bukan item list bernomor — kemungkinan terlebur ke paragraf"
+    )
+    text = _docx_text(output_path)
+    for step in data["business_flow_steps"]:
+        assert step in text
+
+
+def test_user_roles_and_system_requirements_land_in_tables(mock_plantuml_ok):
+    """Tabel role pengguna (bab 1) dan System Requirement terstruktur (bab 4)
+    meniru acuan — isinya harus benar-benar mendarat di sel tabel."""
+    data = _load_fixture("document_content_sdd.json")
+
+    output_path = compiler_service.generate_docx("SDD", data)
+
+    text = _docx_text(output_path)
+    for role in data["user_roles"]:
+        assert role["role_name"] in text
+        assert role["description"] in text
+    for req in data["system_requirements"]:
+        assert req["name"] in text
+        assert req["detail"] in text
+
+
+def test_front_matter_is_separated_from_the_body(mock_plantuml_ok):
     """Halaman muka (identitas, riwayat revisi, persetujuan) harus berhenti di
     halamannya sendiri, tidak menyambung ke Deskripsi Aplikasi."""
     import zipfile
@@ -750,7 +814,7 @@ def test_table_header_is_black_with_white_text():
     assert 'w:color w:val="FFFFFF"' in first_row.group(0)
 
 
-def test_typography_reaches_the_generated_document(mock_mermaid_ok):
+def test_typography_reaches_the_generated_document(mock_plantuml_ok):
     """Diperiksa lewat python-docx, BUKAN cocok-cocokan string XML: Pandoc menulis
     ulang XML-nya dengan gaya spasi berbeda (`<w:b />` bukan `<w:b/>`), dan
     assertion berbasis string diam-diam gagal karena itu — betulan terjadi."""

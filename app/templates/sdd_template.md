@@ -1,26 +1,29 @@
 {#
   PENOMORAN GAMBAR & TABEL — baca ini sebelum menambah gambar/tabel.
 
-  Nomornya ditanam langsung di teks caption ("Gambar 4 ..."), bukan dihitung
+  Nomornya ditanam langsung di teks caption ("Gambar 5 ..."), bukan dihitung
   Word. Word cuma mengumpulkan caption itu ke Daftar Gambar/Tabel dan menambahkan
-  nomor HALAMAN-nya. Jadi urutan di sini WAJIB urut dokumen, dan `+3` di bawah
+  nomor HALAMAN-nya. Jadi urutan di sini WAJIB urut dokumen, dan offset di bawah
   adalah jumlah gambar/tabel tetap yang mendahului loop-nya:
 
-    Gambar 1-3 tetap : Arsitektur Sistem, Integrasi Komponen, Use Case Diagram
-    Gambar 4..N      : activity diagram      -> loop.index + 3
-    Tabel  1-3 tetap : Demografi, Security, Features Requirement
-    Tabel  4..N      : use case per aktor    -> loop.index + 3
+    Gambar 1-4 tetap : Arsitektur Sistem, Integrasi Komponen, Flow Proses
+                       Bisnis, Use Case Diagram
+    Gambar 5..N      : activity diagram      -> loop.index + 4
+    Tabel  1-5 tetap : Role Pengguna, Demografi, System Requirement, Security,
+                       Features Requirement
+    Tabel  6..N      : use case per aktor    -> loop.index + 5
+    Tabel  N+1..     : activity diagram      -> loop.index + 5 + use_cases|length
 
-  Menambah gambar/tabel TETAP berarti offset `+3` ikut naik — di dua tempat.
+  Menambah gambar/tabel TETAP berarti offset ikut naik — di SEMUA tempatnya.
   Kalau lupa, penomorannya bentrok tanpa error apa pun.
 
-  Ketiga gambar tetap dijamin ada: compiler mengaksesnya dengan diagrams["..."]
+  Keempat gambar tetap dijamin ada: compiler mengaksesnya dengan diagrams["..."]
   (KeyError kalau hilang) dan render yang gagal melempar DiagramRenderError, jadi
-  dokumen yang jadi pasti punya ketiganya — tidak ada Gambar 2 tanpa Gambar 1.
+  dokumen yang jadi pasti punya keempatnya — tidak ada Gambar 2 tanpa Gambar 1.
 
-  Tabel front-matter (Informasi Dokumen, Revision History) sengaja TIDAK
-  di-caption: dokumen acuan pun tidak menomorinya, dan penomoran isi dimulai
-  dari Informasi Demografi.
+  Tabel front-matter (Informasi Dokumen, Revision History, Timeline, Cost,
+  tanda tangan) sengaja TIDAK di-caption: dokumen acuan pun tidak menomorinya —
+  penomoran isinya dimulai dari tabel role pengguna di Deskripsi Aplikasi.
 #}
 ## Informasi Dokumen
 
@@ -125,6 +128,16 @@ Tanda tangan dibubuhkan pada dokumen cetak setelah dokumen ini disetujui — bag
 
 {{ app_description }}
 
+{# Tabel role meniru acuan: penomoran tabel isi dimulai DI SINI (Tabel 1),
+   bukan di Demografi — acuan pun begitu. #}
+| No. | Nama Role | Keterangan |
+| --- | --- | --- |
+{% for role in user_roles -%}
+| {{ loop.index }} | {{ role.role_name }} | {{ role.description }} |
+{% endfor %}
+
+: Tabel 1 Informasi Role Pengguna
+
 ## 2. Application Dev System Type
 
 {{ meta.dev_system_type }}
@@ -141,13 +154,17 @@ Tanda tangan dibubuhkan pada dokumen cetak setelah dokumen ini disetujui — bag
 | 6 | Collaboration Profile | {{ meta.collaboration_profile }} | |
 | 7 | Technology Capability | {{ meta.technology_capability }} | |
 
-: Tabel 1 Informasi Demografi Aplikasi
+: Tabel 2 Informasi Demografi Aplikasi
 
 ## 4. System Requirement
 
-{% for requirement in system_requirements %}
-- {{ requirement }}
+| No. | System Requirement | Uraian |
+| --- | --- | --- |
+{% for requirement in system_requirements -%}
+| {{ loop.index }} | {{ requirement.name }} | {{ requirement.detail }} |
 {% endfor %}
+
+: Tabel 3 System Requirement
 
 ## 5. How to Access
 
@@ -175,7 +192,7 @@ Tanda tangan dibubuhkan pada dokumen cetak setelah dokumen ini disetujui — bag
 | 2 | Secure Coding Practice | {{ meta.security_secure_coding }} |
 | 3 | Reverse Proxy | {{ meta.security_reverse_proxy }} |
 
-: Tabel 2 Application Security
+: Tabel 4 Application Security
 
 ## 9. Application Features Requirement
 
@@ -185,15 +202,25 @@ Tanda tangan dibubuhkan pada dokumen cetak setelah dokumen ini disetujui — bag
 | {{ loop.index }} | {{ feature.feature_name }} | {{ feature.description }} |
 {% endfor %}
 
-: Tabel 3 Application Features Requirement
+: Tabel 5 Application Features Requirement
 
 ## 10. Flow Proses Bisnis
 
 {{ business_flow_description }}
 
+![Gambar 3 Flow Proses Bisnis]({{ diagrams.business_process_flow_image }}){{ diagrams.business_process_flow_attr }}
+
+Tahapan alur proses bisnis:
+
+{% for step in business_flow_steps %}
+{{ loop.index }}. {{ step }}
+{% endfor %}
+{# Baris kosong di bawah WAJIB — heading berikutnya harus dipisah baris kosong
+   dari list (blank_before_header), kembaran aturan di blok Acceptance Criteria. #}
+
 ## 11. Use Case
 
-![Gambar 3 Use Case Diagram]({{ diagrams.use_case_diagram_image }}){{ diagrams.use_case_diagram_attr }}
+![Gambar 4 Use Case Diagram]({{ diagrams.use_case_diagram_image }}){{ diagrams.use_case_diagram_attr }}
 
 {% for uc in use_cases %}
 ### 11.{{ loop.index }} Use Case {{ uc.use_case_id }} — {{ uc.actor }}
@@ -205,7 +232,7 @@ Tanda tangan dibubuhkan pada dokumen cetak setelah dokumen ini disetujui — bag
 | Pre-Condition | {{ uc.pre_condition }} |
 | Description | {{ uc.description }} |
 
-: Tabel {{ loop.index + 3 }} Use Case {{ uc.use_case_id }} — {{ uc.actor }}
+: Tabel {{ loop.index + 5 }} Use Case {{ uc.use_case_id }} — {{ uc.actor }}
 
 {# Baris kosong di bawah WAJIB. Markdown mensyaratkan list didahului baris
    kosong; tanpa itu "1." dianggap lanjutan paragraf "Acceptance Criteria:" dan
@@ -232,7 +259,27 @@ Tanda tangan dibubuhkan pada dokumen cetak setelah dokumen ini disetujui — bag
 
 {{ activity.description }}
 
-![Gambar {{ loop.index + 3 }} Activity Diagram {{ activity.activity_name }}]({{ activity.image_path }}){{ activity.image_attr }}
+![Gambar {{ loop.index + 4 }} Activity Diagram {{ activity.activity_name }}]({{ activity.image_path }}){{ activity.image_attr }}
+
+{# Nomor ACT ditanam deterministik dari urutan (bukan diminta ke LLM): tidak ada
+   yang bisa dikarang dari penomoran, dan urutannya dijamin sinkron dengan
+   heading 12.N di atasnya. #}
+| Field | Isi |
+| --- | --- |
+| No. Activity Diagram | ACT{{ "%03d" | format(loop.index) }} |
+| Actor | {{ activity.actor }} |
+| System | {{ project_name }} |
+| Pre-Condition | {{ activity.pre_condition }} |
+
+: Tabel {{ loop.index + 5 + use_cases | length }} Activity Diagram {{ activity.activity_name }}
+
+**Description:**
+
+{% for step in activity.steps %}
+{{ loop.index }}. {{ step }}
+{% endfor %}
+{# Baris kosong di bawah WAJIB — pemisah list dari heading 12.N+1 berikutnya
+   (blank_before_header), aturan yang sama dengan blok Acceptance Criteria. #}
 
 {% endfor %}
 

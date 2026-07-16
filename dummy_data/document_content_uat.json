@@ -1,11 +1,25 @@
 {
   "document_type": "UAT",
   "app_description": "Aplikasi ini adalah sistem manajemen inventaris SPBU yang memungkinkan admin mengelola stok barang, mencatat transaksi masuk/keluar, dan memantau ketersediaan barang secara real-time melalui dashboard web.",
+  "user_roles": [
+    {
+      "role_name": "Admin",
+      "description": "Mengelola seluruh data inventaris dan memantau dashboard."
+    }
+  ],
   "system_requirements": [
-    "Python 3.11+",
-    "FastAPI",
-    "PostgreSQL 14",
-    "React 18 (Frontend)"
+    {
+      "name": "Programming Language",
+      "detail": "Python 3.11+ (Backend), JavaScript/React 18 (Frontend)"
+    },
+    {
+      "name": "Web Framework",
+      "detail": "FastAPI"
+    },
+    {
+      "name": "Database",
+      "detail": "PostgreSQL 14"
+    }
   ],
   "feature_requirements": [
     {
@@ -14,9 +28,10 @@
     }
   ],
   "diagrams": {
-    "system_architecture": "graph LR\nUser((\"User\")) --> Frontend[\"Frontend Web\"]",
-    "component_integration": "graph TD\nA[\"A\"] --> B[\"B\"]",
-    "use_case_diagram": "flowchart LR\nAdmin((\"Admin\")) --> UC1([\"Login\"])",
+    "system_architecture": "@startuml\nleft to right direction\nactor \"User\"\ncomponent \"Frontend Web\" as FE\n\"User\" --> FE\n@enduml",
+    "component_integration": "@startuml\n[A] --> [B]\n@enduml",
+    "business_process_flow": "@startuml\nstart\n:Admin login;\n:Admin mengelola inventaris;\nstop\n@enduml",
+    "use_case_diagram": "@startuml\nleft to right direction\nactor Admin\nrectangle \"Sistem Inventaris\" {\n  usecase \"Login\" as UC1\n}\nAdmin --> UC1\n@enduml",
     "activity_diagrams": []
   },
   "use_cases": [
@@ -32,6 +47,11 @@
     }
   ],
   "business_flow_description": "Admin login ke sistem, membuka halaman inventaris, lalu menambah/mengubah data item.",
+  "business_flow_steps": [
+    "Admin login ke sistem menggunakan akun terdaftar.",
+    "Admin membuka halaman inventaris.",
+    "Admin menambah atau mengubah data item."
+  ],
   "uat_test_cases": [
     {
       "test_id": "UAT-01",

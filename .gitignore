@@ -32,6 +32,11 @@ scripts/validation/out/
 # Database SQLite (status job + dokumen hasil) — dibuat otomatis saat runtime.
 data/
 
+# Binary tool pihak ketiga yang diunduh manual (plantuml.jar — 29 MB, lihat
+# setup di CLAUDE.md). Terlalu besar untuk di-commit, dan versinya urusan
+# masing-masing mesin.
+tools/
+
 # Catatan belajar pribadi + bekal presentasi — bukan dokumentasi produk.
 PELAJARAN.md
 

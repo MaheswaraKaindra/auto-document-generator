@@ -23,6 +23,12 @@ Prasyarat (unduh sekali, taruh di mana saja, tunjuk lewat env var):
   - PLANTUML_JAR = path ke plantuml.jar   (github.com/plantuml/plantuml/releases)
   - D2_EXE       = path ke d2.exe          (github.com/terrastruct/d2/releases)
 
+KEPUTUSANNYA SUDAH DIAMBIL (2026-07-16): pemilik project memilih PlantUML, dan
+produk sudah dimigrasikan — compiler_service kini merender PlantUML lokal.
+Script ini disimpan sebagai REKAM JEJAK bagaimana keputusan itu dibuat; sisi
+Mermaid-nya kini self-contained (encoding pako + mermaid.ink inline) karena
+fungsi mermaid di compiler_service sudah tidak ada.
+
 Pakai:  python scripts/diagram_comparison.py
 Hasil:  scripts/validation/out/diagram_comparison.html  (buka di browser)
 Biaya:  $0 — nol panggilan LLM.
@@ -34,12 +40,13 @@ import os
 import subprocess
 import sys
 import tempfile
+import zlib
 from pathlib import Path
+
+import requests
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
-
-from app.services.compiler_service import _render_mermaid_to_image  # noqa: E402
 
 OUT_DIR = ROOT / "scripts" / "validation" / "out"
 CONTRACT_B = OUT_DIR / "esteler-flask__SDD_contract_b.json"
@@ -167,12 +174,18 @@ def render_d2(source: str) -> tuple[bytes, str]:
 
 
 def render_mermaid(script: str) -> tuple[bytes, str]:
-    """Render lewat jalur PRODUK (mermaid.ink, PNG width=1600) — supaya sisi
-    Mermaid di lembar ini persis yang mendarat di dokumen sungguhan."""
-    images_dir = OUT_DIR / "diagram_comparison_tmp"
-    images_dir.mkdir(parents=True, exist_ok=True)
-    path = _render_mermaid_to_image(script, images_dir)
-    return Path(path).read_bytes(), "image/png"
+    """Render lewat mermaid.ink (jalur produk LAMA, sebelum migrasi PlantUML) —
+    inline di sini karena fungsinya sudah dihapus dari compiler_service."""
+    state = {"code": script, "mermaid": {"theme": "default"}}
+    raw = json.dumps(state, separators=(",", ":")).encode("utf-8")
+    compressor = zlib.compressobj(9, zlib.DEFLATED, 15)
+    deflated = compressor.compress(raw) + compressor.flush()
+    encoded = "pako:" + base64.urlsafe_b64encode(deflated).decode("ascii")
+    resp = requests.get(
+        f"https://mermaid.ink/img/{encoded}?type=png&width=1600", timeout=30
+    )
+    resp.raise_for_status()
+    return resp.content, "image/png"
 
 
 def data_uri(content: bytes, mime: str) -> str:
