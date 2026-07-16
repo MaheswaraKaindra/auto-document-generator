@@ -23,6 +23,14 @@ app.add_middleware(
     allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
+    # `allow_headers` mengizinkan header REQUEST; ini yang mengizinkan JavaScript
+    # MEMBACA header response. Dua hal berbeda, dan tanpa baris ini browser
+    # menyembunyikan Content-Disposition secara diam-diam: server mengirim
+    # "Solution_Design_Document.docx", frontend tidak bisa membacanya, lalu jatuh
+    # ke nama cadangan — jadi SETIAP pengguna mengunduh "dokumen.docx".
+    # Tidak ada error, tidak ada peringatan; cuma nama file yang tidak berguna.
+    # Ketahuan di gladi bersih demo, dari nama file yang terunduh.
+    expose_headers=["Content-Disposition"],
 )
 
 app.include_router(ingestion_router)

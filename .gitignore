@@ -6,8 +6,12 @@ __pycache__/
 PERAN1_NOTES.md
 *.msi
 
-# Dokumen hasil generate saat testing manual + file lock Word
-output_*.docx
+# Dokumen hasil generate + file lock Word. Pola lama `output_*.docx` cuma cocok
+# dengan nama yang DULU dipakai kode; dokumen yang diunduh lewat browser mendarat
+# dengan nama apa pun (mis. dokumen.docx, Solution_Design_Document.docx) di folder
+# unduhan — yang saat demo ternyata root project ini. Repo ini tidak punya satu
+# pun .docx yang memang perlu di-commit (template-nya .md), jadi pola lebar aman.
+*.docx
 ~$*
 
 # Artefak run validasi (Contract A, docx, laporan) — hasil eksperimen, bukan

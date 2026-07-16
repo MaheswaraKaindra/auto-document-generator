@@ -267,3 +267,28 @@ def test_bad_document_type_rejected_synchronously_without_creating_a_job(client)
 
     assert response.status_code == 422
     assert "job_id" not in response.json()
+
+
+def test_cors_exposes_content_disposition():
+    """Tanpa `expose_headers`, browser MENYEMBUNYIKAN Content-Disposition dari
+    JavaScript — diam-diam, tanpa error. Akibatnya frontend jatuh ke nama
+    cadangan dan SETIAP pengguna mengunduh "dokumen.docx" alih-alih
+    "Solution_Design_Document.docx".
+
+    `allow_headers=["*"]` TIDAK menutupi ini: itu untuk header REQUEST.
+
+    Bug ini ketahuan di gladi bersih demo — dari nama file yang terunduh, bukan
+    dari test. Test tidak bisa menangkapnya sebelumnya karena TestClient tidak
+    menegakkan CORS sama sekali: dia bukan browser. Jadi yang diperiksa di sini
+    KONFIGURASINYA, dan batas itu harus jujur diakui — hanya browser sungguhan
+    yang membuktikan filenya terunduh dengan nama benar."""
+    from app.main import app
+
+    cors = next(
+        (m for m in app.user_middleware if "CORS" in str(m.cls)),
+        None,
+    )
+
+    assert cors is not None, "CORS middleware hilang"
+    exposed = cors.kwargs.get("expose_headers", [])
+    assert "Content-Disposition" in exposed

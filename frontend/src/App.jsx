@@ -298,8 +298,10 @@ function App() {
             />
           </label>
           <p className="hint">
-            Muncul di halaman judul dokumen. Kalau dikosongkan, dokumennya tertulis
-            “generated-project”.
+            Ini <strong>nama aplikasinya di seluruh dokumen</strong>, bukan cuma judul —
+            AI memakainya saat menulis deskripsi dan use case, karena nama asli aplikasi
+            tidak selalu bisa ditebak dari kodenya. Tulis nama yang Anda ingin dibaca
+            orang. Kalau dikosongkan, dokumennya tertulis “generated-project”.
           </p>
         </div>
 
