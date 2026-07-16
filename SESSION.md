@@ -17,8 +17,9 @@ UI-nya sendiri** — bukan lewat test, bukan lewat script. Dan satu jam di kursi
 pengguna menemukan **tiga bug yang 156 test hijau tidak pernah lihat**. Ditambah:
 dukungan **Java + Spring MVC** (bahasa enterprise pertama), `url_prefix` Flask,
 **Daftar Gambar & Daftar Tabel** (celah struktur terakhir yang bisa diselesaikan
-— sisa cuma Mockup), README, frontend yang menjelaskan dirinya, dan progress
-per-tahap. **Produk siap didemokan.** 167 test hijau, biaya ~$0,6.
+— sisa cuma Mockup), README, frontend yang menjelaskan dirinya, progress
+per-tahap, dan **kualitas visual dokumen** (yang menyingkap tiga cacat fungsional
+lagi). **Produk siap didemokan.** 183 test hijau, biaya ~$0,6.
 
 ---
 
@@ -35,6 +36,10 @@ per-tahap. **Produk siap didemokan.** 167 test hijau, biaya ~$0,6.
 | 7 | **404 GitHub menyuruh curiga URL** | Ditemukan pengguna di percobaan PERTAMA. GitHub balas 404 untuk repo-tak-ada DAN repo-privat — identik. Sekarang pesannya menyebut token. |
 | 8 | **Semua unduhan bernama `dokumen.docx`** | CORS tanpa `expose_headers` → browser sembunyikan `Content-Disposition` → fallback. Diam-diam. |
 | 9 | **2-3 menit tanpa kabar** | Progress per tahap. Detik ke-5: *"Membaca kode: 22 file, 38 endpoint, 16 class"* — angka nyata dari repo pengguna. |
+| 10 | **Dokumen terlihat seperti render Markdown** | Diminta pemilik project. Tampilan (tipografi, tabel header hitam, kaki halaman) pindah ke `reference.docx` lewat `--reference-doc`. Pipeline & kedua Contract **tidak disentuh**. |
+| 11 | **"Diagram blur" ternyata JPEG** | mermaid.ink membalas JPEG (lossy, untuk foto) pada *line art*, 77 dpi. Disimpan berakhiran `.png` padahal isinya JPEG. → PNG lossless, 246 dpi. |
+| 12 | **Acceptance Criteria jadi paragraf gembung** | Markdown butuh baris kosong sebelum list. 8 use case × kriteria terlebur jadi blok tak terbaca. Terukur: paragraf **11 → 42**. |
+| 13 | **5 dari 11 gambar tumpah keluar halaman** | Setinggi 17,2 inci di halaman 11 inci. `_image_attr` membatasi sisi yang lebih dulu mentok → **11/11 muat**. |
 
 **Dibatalkan setelah diukur:** Tahap 2 saleor ($2,27, hasilnya ambigu — lihat #2
 di prioritas) dan render diagram paralel (503 — lihat pelajaran).
@@ -53,12 +58,17 @@ Ini yang membedakan sesi ini dari semua sesi sebelumnya:
 - **Progress muncul di layar** — *"Membaca kode: 22 file, 38 endpoint"* di detik ke-5.
 - **Tiga bug ditemukan dari kursi pengguna** (#7, #8, #9 di atas). Tidak satu pun
   bisa ditemukan lewat test, XML, atau repo nyata.
+- **Tiga cacat lagi ditemukan dari INSTING pemilik project** ("outputnya harus
+  terlihat profesional") — #11, #12, #13. Ketiganya terlihat kosmetik, ternyata
+  merusak fungsi, dan **semuanya gagal sunyi**. Luput seharian karena setiap
+  pemeriksaan menguji STRUKTUR dan ISI, tidak pernah TAMPILAN.
+- **Tampilan akhirnya dinilai mata manusia**: *"jauh lebih rapi sekarang."*
 
 ---
 
 ## Pelajaran metodologis (yang paling mahal kalau dilupakan)
 
-**"Memeriksa PROKSI, bukan barangnya" muncul TUJUH kali hari ini.** Bukan di
+**"Memeriksa PROKSI, bukan barangnya" muncul DELAPAN kali hari ini.** Bukan di
 tempat yang terlihat seperti tempat bug:
 
 | Yang diperiksa (proksi) | Barangnya | Akibatnya |
@@ -70,6 +80,8 @@ tempat yang terlihat seperti tempat bug:
 | **"17 endpoint, naik dari 0"** | Path-nya benar atau tidak | `VetController` lapor `GET /`, salah |
 | **XML mentah** | Teks yang terlihat pembaca | `"List of Figures"` memang ada — sebagai id internal Word |
 | **"404 ini mirip bug yang kita berantas"** | Apakah ada yang terkena? | Tidak ada. Dipergoki pemilik project dengan 4 kata. |
+| **String `<w:b/>`** | **XML yang di-parse** | "bold gagal terpasang" — padahal terpasang; Pandoc menulis `<w:b />` dengan spasi |
+| **Struktur & isi dokumen** | **Rupanya** | Dokumen "lengkap" tapi diagramnya JPEG 77 dpi, kriteria terlebur, 5 gambar tumpah halaman |
 
 > Pengetahuan umum tentang framework itu **prior**, bukan **bukti**.
 > Pertanyaan pertama bukan *"sudah diukur belum?"* tapi **"yang mau saya ukur ini
