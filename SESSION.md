@@ -78,12 +78,15 @@ Commit: `6b6dd12` (font+tabel), `663a594` (docs), `1330f9b` (Remark), `9c55248`
 **Perbandingan 16 bab SUDAH dilakukan (tak ada gap ketujuh). premco praktis
 demo-ready. Bug Nuxt default SUDAH diperbaiki. Kandidat berikutnya:**
 
-1. ~~**Bug `default` crash pada Nuxt/Next**~~ — **SELESAI**: `_sanitize_route_param_brackets`
-   di `_normalize_plantuml` melepas kurung route-param sebelum plantuml.jar
-   (deterministik, $0, diagram TETAP dirender bukan placeholder). Diverifikasi
-   visual (PROBE18). Sisa yang MUNGKIN suatu saat: resiliensi per-diagram
-   (placeholder untuk PlantUML rusak lewat jalur lain) — sengaja belum, menjaga
-   filosofi gagal-berisik.
+1. ~~**Bug `default` crash pada Nuxt/Next**~~ — **SELESAI & DIKERASKAN 2 repo**:
+   `_sanitize_route_param_brackets` di `_normalize_plantuml` melepas kurung
+   route-param sebelum plantuml.jar (deterministik, $0, diagram TETAP dirender
+   bukan placeholder). Diverifikasi MyPertamina (PROBE18) LALU nuxt/movies —
+   yang langsung mengungkap gap overfit (param jadi segmen pertama `[[type]/...`
+   memakan kurung komponen); diperbaiki dgn cocok kurung berimbang, double dulu
+   (PROBE19). **Pelajaran: 1 repo = fix jalan, 2 repo = fix general.** Sisa yang
+   MUNGKIN suatu saat: resiliensi per-diagram (placeholder untuk PlantUML rusak
+   lewat jalur lain) — sengaja belum, menjaga filosofi gagal-berisik.
 2. **3 gap Contract B — SEBAGIAN BESAR DIBATALKAN setelah dibuka** (bukan lagi
    "~$0,25 regen"): SysReq table-2 = kompatibilitas Browser/Android = deployment,
    TAK code-derivable (kolom Remark sudah ditambah $0, tabel kedua di-drop); flow
