@@ -21,8 +21,17 @@ JADI dokumen Pertamina — mewarisi status itu tanpa diperiksa. Dikerjakan **nom
 1 & 2 dari daftar 4 gap**, semuanya lapisan presentasi, biaya **$0**: (1) **font**
 diperbaiki dari Aptos ke Calibri (bug: komentar build script MENALAR bukan
 mengukur), (2) **How to Access → tabel checklist**, **Infrastructure → kerangka
-22 baris**. Diverifikasi VISUAL (docx→PDF→PNG→dilihat). **215 test hijau** (212+3).
-1 commit (`6b6dd12`) + commit dokumen ini.
+22 baris**. Diverifikasi VISUAL (docx→PDF→PNG→dilihat). Lalu **perbandingan 16 bab
+premco×PREMCO**: TIDAK ada gap ketujuh (3 kecurigaan semuanya kosmetik); sisa
+beda = 3 gap Contract B, tapi MEMBUKA bab-nya membatalkan rencana regen — tak
+satu pun jujur bisa diisi dari kode (SysReq table-2 = kompatibilitas browser =
+deployment; flow nested redundan dgn diagram & esteler tak bercabang; deskripsi
+list redundan). Cuma kolom Remark SysReq yang benar & $0 (dikerjakan). Terakhir
+**tes repo NYATA `MyPertamina.id-Clone` (Vue/JS, ~$0,20)** membuktikan klaim
+netral-bahasa DAN mengungkap bug Nuxt (file `[slug].vue` merusak PlantUML,
+mematikan generate premco lewat diagram yang tak dipakainya) — diperbaiki.
+**216 test hijau**. Commit: `6b6dd12` (font+tabel), `663a594` (docs), `1330f9b`
+(Remark), `9c55248` (fix Nuxt) + commit dokumen ini.
 
 ## Yang diselesaikan (semuanya presentasi, nol pipeline/Contract/LLM)
 
@@ -33,6 +42,9 @@ mengukur), (2) **How to Access → tabel checklist**, **Infrastructure → keran
 | 3 | **Infrastructure → kerangka** | 22 baris kosong (Akses URL/Server/DB/Web Service per env, Rev. Proxy, TFS) diisi manual di Word — isinya URL deployment. HANYA template premco; default tetap teks bebas. |
 | 4 | **Penomoran tabel bergeser** | How to Access disisipkan jadi Tabel 4, sisanya +1, di kedua template. Test penomoran menangkapnya. |
 | 5 | **3 test penjaga baru** | Font tema (satu-satunya yang bisa menangkap bug Aptos), tabel How to Access, kerangka Infrastructure. |
+| 6 | **SysReq kolom Remark** | premco jadi 4-kolom seperti acuan. Tabel kedua ("Server Side 2") SENGAJA di-drop: isinya kompatibilitas Browser/Android = deployment, tak dapat diturunkan kode. `1330f9b`. |
+| 7 | **Perbandingan 16 bab premco×PREMCO** ($0) | Skeleton extractor (`compare_skeleton.py`) diff kedua docx. Verdict: struktur lengkap & sepadan, TIDAK ada gap ketujuh. 3 kecurigaan (demografi 8v7, activity 7v6, use case) semuanya kosmetik. Sisa beda nyata = 3 gap Contract B — tapi membuka bab-nya membatalkan regen (tak jujur code-derivable). |
+| 8 | **Tes repo NYATA MyPertamina (Vue/JS)** | Klaim netral-bahasa TERBUKTI: dokumen berjejak (Nuxt/JWT/Express/model dgn bukti kode), aktor bisnis, ~$0,20. Bug Nuxt ditemukan+diperbaiki (bawah). `9c55248`. Probe: `out/PROBE17_mypertamina_premco.docx`. |
 
 ## Kejadian yang layak diingat (jebakan, semua DIPROBE)
 
@@ -50,21 +62,31 @@ mengukur), (2) **How to Access → tabel checklist**, **Infrastructure → keran
   sempurna?") yang menemukannya, bukan saya.
 - **pywin32 + pymupdf DEV-ONLY** — dipasang untuk verifikasi visual, SENGAJA
   tidak masuk requirements.txt (bukan dependency aplikasi).
+- **Kurung siku Nuxt/Next merusak PlantUML.** File `[category]/[slug].vue`
+  masuk ke sintaks komponen `[...]` → bersarang → syntax error. Kelas bug yang
+  cuma muncul di repo ASLI (mock lewatkan, seperti 414 mermaid). premco kebal
+  sesudah fix (tak pakai component_integration); **default MASIH crash** — item
+  Keterbatasan. Buka bab yang salah bukan yang dipakai bisa mematikan seluruh
+  dokumen: `_build_sdd_context` dulu render KEEMPAT diagram tanpa peduli template.
 
 ## Kalau melanjutkan besok, mulai dari sini
 
-**Nomor 1 & 2 SELESAI. Sisa daftar gap `premco`→PREMCO (urutan = keputusan
-pemilik):**
+**Perbandingan 16 bab SUDAH dilakukan (tak ada gap ketujuh). premco praktis
+demo-ready. Kandidat berikutnya:**
 
-1. **Perbandingan berdampingan 16 bab `premco`×PREMCO** ($0, render ulang
-   Contract B esteler). Yang 12-pasang minggu lalu itu template `default`;
-   `premco` belum pernah disandingkan bab-per-bab. Bisa memunculkan **gap
-   ketujuh**. Lakukan INI sebelum menyatakan premco selesai.
-2. **3 gap yang butuh Contract B + prompt** (~$0,25, satu regen esteler
-   memverifikasi semua): System Requirement jadi 2 tabel (Server Side 1 & 2),
-   langkah flow bisnis BERSARANG (a/b), Deskripsi Aplikasi memuat list "fitur
-   utama" terkurasi. Begitu SysReq jadi 2 tabel, penomoran premco otomatis SAMA
-   PERSIS dengan aslinya (selisih-1 sekarang murni karena itu).
+1. **Bug `default` crash pada Nuxt/Next** (BARU, dari tes MyPertamina). default
+   memakai component_integration; nama file `[slug].vue` merusak PlantUML →
+   seluruh dokumen gagal. premco sudah kebal. Perbaikan: pengerasan prompt (LLM
+   hindari `[]` di label) / sanitasi `_normalize_plantuml` / resiliensi per-diagram
+   — butuh regen untuk verifikasi. Repo Nuxt/Next umum, jadi ini nyata. Detail di
+   Keterbatasan CLAUDE.md.
+2. **3 gap Contract B — SEBAGIAN BESAR DIBATALKAN setelah dibuka** (bukan lagi
+   "~$0,25 regen"): SysReq table-2 = kompatibilitas Browser/Android = deployment,
+   TAK code-derivable (kolom Remark sudah ditambah $0, tabel kedua di-drop); flow
+   nested redundan dgn diagram flow + esteler tak bercabang jadi regen tak akan
+   membuktikannya; deskripsi "fitur utama" redundan dgn bab Features. Sisa yang
+   layak SUATU SAAT: flow nested sebagai peningkatan Contract B, diverifikasi
+   pada repo yang logika bisnisnya bercabang (BUKAN esteler).
 3. **UAT premco** (roadmap tahap b) — **BLOCKER: tidak ada acuan UAT Pertamina
    di repo** (dicek: cuma ada `uat_template.md` & output kita sendiri). Registry
    `premco` pun baru SDD. Mengerjakannya sekarang = menebak. Butuh pemilik
@@ -87,4 +109,10 @@ membuka V2, (c) penilaian engineer Pertamina atas PROBE16/PROBE15.
   berbentuk tabel; sandingkan dengan docx PREMCO asli. (Daftar Gambar/Tabel di
   probe ini menampilkan placeholder karena skrip verifikasi hanya meng-update
   TOC utama, bukan TablesOfFigures — bukan cacat dokumen, cuma probe.)
+- **Buka `scripts/validation/out/PROBE17_mypertamina_premco.docx`** — dokumen
+  gaya premco dari repo NYATA MyPertamina.id-Clone (Vue/JS), bukan esteler.
+  Bukti pipeline netral-bahasa. Ctrl+A → F9 di Word untuk mengisi daftar.
+- Untuk demo ke mentor: pakai PROBE17 (repo relevan Pertamina) atau PROBE16;
+  sebut sendiri 3 beda yang tersisa (SysReq client-compat, kolom Entitas Tim,
+  flow flat) sebagai "sengaja tak dikarang dari kode", bukan tunggu ditemukan.
 - Dua tugas lama: revoke API key lama, isi GITHUB_TOKEN.
