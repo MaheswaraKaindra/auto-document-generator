@@ -785,6 +785,48 @@ def test_premco_survives_invalid_component_integration(monkeypatch):
         compiler_service.generate_docx("SDD", data, template_id="default")
 
 
+def test_sanitize_route_param_brackets():
+    """Sanitizer melepas kurung route-param Nuxt/Next yang merusak sintaks
+    komponen PlantUML `[...]`, TANPA menyentuh nama ber-titik (`[login.vue]`)
+    atau token PlantUML khusus (`[*]`) atau komponen berdiri sendiri."""
+    s = compiler_service._sanitize_route_param_brackets
+    assert s("[a/[b]/[c].vue]") == "[a/b/c.vue]"
+    assert s("[promo/[slug].vue] as X") == "[promo/slug.vue] as X"
+    assert s("pages/[[...all]].vue") == "pages/all.vue"
+    assert s("blog/[...slug].vue") == "blog/slug.vue"
+    assert s("users/[id]/edit.vue") == "users/id/edit.vue"
+    # Yang TIDAK boleh disentuh:
+    assert s("[login.vue] as Z") == "[login.vue] as Z"   # ber-titik = bukan param
+    assert s("State --> [*]") == "State --> [*]"          # token PlantUML
+    assert s("[Login] as L") == "[Login] as L"            # komponen berdiri sendiri
+
+
+def test_default_template_survives_nuxt_route_brackets(mock_plantuml_ok):
+    """Regresi MyPertamina: template DEFAULT MEMAKAI component_integration, jadi
+    nama file Nuxt `[slug].vue` di dalamnya dulu mematikan seluruh dokumen. Sesudah
+    sanitasi, DEFAULT sukses DAN diagram tetap sampai ke plantuml.jar (dirender,
+    bukan placeholder) — nama file utuh minus kurung route-param."""
+    data = _load_fixture("document_content_sdd.json")
+    data = {
+        **data,
+        "diagrams": {
+            **data["diagrams"],
+            "component_integration": (
+                "@startuml\n[pages/[id]/edit.vue] as A\n[login.vue] as B\nA --> B\n@enduml"
+            ),
+        },
+    }
+
+    compiler_service.generate_docx("SDD", data, template_id="default")
+
+    scripts = [call.args[0] for call in mock_plantuml_ok.call_args_list]
+    integration = next((s for s in scripts if "edit.vue" in s), None)
+    assert integration is not None, "component_integration tidak sampai ke plantuml.jar"
+    assert "[id]" not in integration          # kurung route-param terlepas
+    assert "pages/id/edit.vue" in integration
+    assert "[login.vue]" in integration       # komponen ber-titik utuh
+
+
 def test_premco_use_case_table_gets_blue_title_bar(mock_plantuml_ok):
     """Konvensi paling khas dokumen PREMCO asli: tabel use case/activity
     ber-BAR JUDUL — baris pertama satu sel merged, biru muda 9CC3E5 (warna

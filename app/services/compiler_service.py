@@ -12,6 +12,7 @@ Peran 2 (llm_service.py) — modul ini murni konsumen dari Contract B.
 
 import base64
 import io
+import re
 import subprocess
 import tempfile
 import uuid
@@ -235,17 +236,41 @@ def _strip_code_fence(diagram_script: str) -> str:
     return "\n".join(lines).strip()
 
 
+# Nuxt/Next menamai file dynamic-route dengan kurung siku: [id].vue, [...slug].vue,
+# [[...all]].vue. Nama itu masuk ke diagram sebagai [product/[category]/[slug].vue],
+# dan kurung siku BERSARANG merusak sintaks komponen PlantUML [...] → seluruh
+# dokumen gagal (ditemukan pada MyPertamina.id-Clone, 2026-07-18). Cocokkan HANYA
+# segmen route-param (isinya identifier: [\w-], boleh diawali "..."/"[["); nama
+# komponen ber-titik seperti [login.vue] dan token PlantUML khusus [*]/[H] TIDAK
+# tersentuh karena isinya bukan identifier murni.
+_ROUTE_PARAM = r"\[\[?\.{0,3}([\w-]+)\]\]?"
+_TOKEN_GLUE = r"[\w/.]"  # bukti bahwa kurung siku ini BAGIAN nama file, bukan komponen berdiri sendiri (spasi/`as` = komponen)
+
+
+def _sanitize_route_param_brackets(script: str) -> str:
+    """Lepas kurung siku route-param Nuxt/Next yang terjepit di dalam nama file
+    (mis. `[slug]` di `pages/[slug].vue`) supaya tidak merusak sintaks `[...]`
+    PlantUML. Diagram TETAP dirender (nama file jadi `pages/slug.vue`), bukan
+    diganti placeholder — isinya utuh, cuma kurungnya dilepas."""
+    previous = None
+    while previous != script:
+        previous = script
+        script = re.sub(rf"(?<={_TOKEN_GLUE}){_ROUTE_PARAM}", r"\1", script)
+        script = re.sub(rf"{_ROUTE_PARAM}(?={_TOKEN_GLUE})", r"\1", script)
+    return script
+
+
 def _normalize_plantuml(diagram_script: str) -> str:
-    """Siapkan script LLM untuk plantuml.jar: buang fence, pastikan terbungkus
-    @startuml/@enduml, lalu suntik preamble gaya (theme + dpi) TEPAT sesudah
-    @startuml.
+    """Siapkan script LLM untuk plantuml.jar: buang fence, lepas kurung siku
+    route-param yang merusak sintaks, pastikan terbungkus @startuml/@enduml, lalu
+    suntik preamble gaya (theme + dpi) TEPAT sesudah @startuml.
 
     Preamble disuntik di sini dan LLM DILARANG menulis theme/skinparam sendiri
     (lihat SYSTEM_PROMPT llm_service): rupa diagram harus datang dari satu tempat
     deterministik, bukan dari selera model yang berubah antar panggilan — filosofi
     yang sama dengan reference.docx untuk rupa dokumen.
     """
-    script = _strip_code_fence(diagram_script)
+    script = _sanitize_route_param_brackets(_strip_code_fence(diagram_script))
     if "@startuml" not in script:
         script = f"@startuml\n{script}\n@enduml"
 
