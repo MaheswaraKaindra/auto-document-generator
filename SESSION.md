@@ -38,6 +38,7 @@ bukan membaca XML. 196 test hijau (191+5). Biaya sesi: **$0**.
 | 7 | **Perbandingan berdampingan PREMCO×esteler, 12 pasang halaman** | Dikerjakan sendiri (komposit kiri-kanan per bagian, `pair_*.png` di scratchpad). Verdict: grammar visual setara; gap fungsional tersisa cuma tinggi TTD (→ baris #6) dan logo (→ baris #8). Bonus: Daftar Gambar PREMCO terlihat rusak (semua entri menyebut CORETAD) bersanding dengan punya kita yang benar — bukti visual klaim jualan. |
 | 8 | **Slot upload logo di form** | `logo_base64` di `GenerateDocumentRequest` (BUKAN DocumentMetadata — kontrak kosongnya beda) → `decode_logo` validasi SINKRON di POST (422 sebelum job/LLM) → `_add_header_logo` di post-process: kanan-atas header tiap halaman, tinggi 0,45"/lebar maks 2,4", **tepi transparan dipangkas dulu** (logo Pertamina uji dari pemilik ber-padding 50% — tanpa pemangkasan tampil kerdil 0,22"). Frontend: input file di panel Dokumen. Probe FINAL: `out/PROBE13_logo_pertamina_esteler.docx` — disandingkan PREMCO, ukuran/posisi logo praktis identik. |
 | 9 | **V0 "upload template perusahaan"** (ide pemilik = roadmap tahap c) | Diukur pada docx PREMCO ASLI (40,7 MB di root, gitignored). Hasil: pemetaan bab 16/16 tanpa ambigu isi (4 ambiguitas format); swap `--reference-doc` mentah = RUSAK total (40 MB, Word bilang corrupt — font/media embed ikut kontainer) → jalur benar SINTESIS reference.docx dari properti terukur (dan angka terukurnya PERSIS yang kita hardcode manual minggu ini); template nyata bawa pembusukan sendiri (6 heading kosong, nomor gambar kacau). Laporan: `scripts/validation/V0_TEMPLATE_PREMCO.md`. Verdict: **layak lanjut V1**. |
+| 10 | **V1 MULTI-TEMPLATE selesai** | `_TEMPLATE_REGISTRY` (default/premco) + `template_id` di API & dropdown frontend, 422 sinkron via `validate_template`. Template `sdd_premco_template.md` = kompilasi manual konvensi terukur: bab tanpa nomor, bar judul biru 9CC3E5 (marker `((BAR))` → merge+warna+keepNext), kriteria & langkah DI DALAM sel (marker `((BR))` → line break sungguhan — `<br/>` DIBUANG diam-diam writer docx Pandoc; sel ber-break dipaksa rata kiri), kolom Remark, 2 bab mockup, tanpa Component Integration. Diverifikasi berdampingan dengan dokumen asli. Probe: `out/PROBE15_template_premco_esteler.docx`. 212 test. |
 
 ## Kejadian yang layak diingat (jebakan Word/Pandoc, semua DIPROBE)
 
@@ -63,37 +64,33 @@ bukan membaca XML. 196 test hijau (191+5). Biaya sesi: **$0**.
 
 ## Kalau melanjutkan besok, mulai dari sini
 
-**Keputusan pemilik yang dibutuhkan: V1 template (tahap c) ATAU UAT (tahap b)?**
-V0 memberi lampu hijau untuk V1 (kompilasi manual template PREMCO jadi template
-kedua + pipeline multi-template) — baca `scripts/validation/V0_TEMPLATE_PREMCO.md`
-dulu, khususnya "Bentuk V1 yang disarankan" + 4 ambiguitas format yang butuh
-keputusan pemilik. Tapi roadmap lama menaruh UAT (b) lebih dulu dan UAT lebih
-kecil. Dua-duanya valid; jangan dikerjakan paralel.
+**V1 SELESAI. Kandidat berikutnya (urutannya keputusan pemilik):**
 
-1. **Minta pemilik buka `scripts/validation/out/PROBE13_logo_pertamina_esteler.docx`**
-   (706 KB, TERBARU: + logo Pertamina sungguhan di header; PROBE9-12 versi
-   bertahap sebelumnya) di Word. Perbandingan berdampingan dengan PREMCO sudah
-   dikerjakan (baris #7); yang tersisa untuk mata pemilik: setuju/tidak dengan
-   verdict-nya. Catatan: logo uji ada di `frontend/dist/assets/` — folder itu
-   DITIMPA tiap `npm run build`, pindahkan kalau mau disimpan. Kalau
-   masih ada gap visual, itu daftar kerja berikutnya. (Logo perusahaan di header
-   tiap halaman = satu-satunya elemen acuan yang sengaja tidak ditiru — kita
-   tidak punya logo; kandidat: slot upload logo di form.)
-2. **UAT belum disentuh secara visual** (tahap b roadmap): urutan halamannya
-   masih gaya lama (--toc di depan). Perlakukan seperti SDD sesi ini — tapi
-   idealnya setelah pemilik menyediakan PDF acuan UAT.
-3. Regen petclinic (~$0,25) opsional — cross-check tampilan baru di dokumen Java.
-4. Kasus fastapi (ATURAN BUKTI diagram) masih terbuka — butuh regen fastapi murah.
+1. **UAT** (roadmap tahap b) — belum disentuh secara visual maupun bentuk;
+   urutan halamannya masih gaya lama (`--toc` di depan). Perlakukan seperti SDD
+   minggu ini; idealnya setelah pemilik menyediakan acuan UAT.
+2. **V2 template upload** — analisis template dibantu LLM + UI tinjauan
+   pemetaan + form dinamis dari slot manual. **Prasyarat: kumpulkan 1-2
+   template docx dari sumber LAIN** supaya tidak overfit ke PREMCO (V0/V1 baru
+   membuktikan satu sumber). Jalur teknis sudah terbukti: sintesis
+   reference.docx (bukan swap — swap menghasilkan paket corrupt), marker
+   post-process untuk struktur yang markdown tidak bisa.
+3. Murah & menggantung lama: regen petclinic (~$0,25, cross-check tampilan di
+   Java), kasus fastapi ATURAN BUKTI (regen murah), ablasi endpoint esteler
+   (~$0,15), uji Sonnet 5 vs Opus 4.8 (~$1).
 
 **Menggantung dari sesi-sesi lalu (masih berlaku):**
 - Revoke `GOOGLE_API_KEY` & `LLAMA_API_KEY` (5 sesi menggantung).
 - Isi `GITHUB_TOKEN` di .env.
-- Ablasi endpoint esteler (~$0,15).
 - ZIP → dokumen belum tersambung.
-- Uji kualitas Sonnet 5 vs Opus 4.8 (~$1, sekali bayar).
 
 ## Yang perlu dilakukan manusia
 
-- **Buka PROBE9 di Word + sandingkan dengan PDF acuan** — nilai sendiri:
-  9.8/10 tercapai atau belum, dan apa yang kurang.
+- **Buka `scripts/validation/out/PROBE15_template_premco_esteler.docx`** —
+  esteler bergaya PREMCO (bar biru, kriteria di dalam tabel) + logo; sandingkan
+  sendiri dengan dokumen aslinya. PROBE13 = pembanding gaya default. Coba juga
+  dropdown "Gaya Dokumen" di frontend.
+- **Logo uji Anda di `frontend/dist/assets` TERHAPUS** oleh `npm run build`
+  (dist = output build, selalu ditimpa; salinan trimmed selamat di media
+  PROBE13). Simpan aset uji di luar `dist/`.
 - Dua tugas lama: revoke API key lama, isi GITHUB_TOKEN.

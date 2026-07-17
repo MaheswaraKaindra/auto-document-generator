@@ -20,7 +20,7 @@ from app.domain.exceptions import (
 )
 from app.domain.models import GithubIngestRequest, SourceType
 from app.services import job_store
-from app.services.compiler_service import decode_logo, generate_docx
+from app.services.compiler_service import decode_logo, generate_docx, validate_template
 from app.services.ingestion_service import IngestionService
 from app.services.llm_service import DocumentContent, LLMService
 from app.services.parser_service import build_parsed_repo_context
@@ -157,6 +157,13 @@ def generate_document_full_pipeline(
         # Validasi murah dikerjakan SINKRON: request yang salah bentuk harus
         # ditolak sekarang, bukan jadi job yang gagal 3 menit kemudian.
         raise HTTPException(status_code=422, detail="document_type harus 'SDD' atau 'UAT'")
+
+    # Prinsip yang sama untuk pilihan template: kombinasi template x jenis
+    # dokumen yang tidak tersedia ditolak SEKARANG, bukan jadi job gagal.
+    try:
+        validate_template(body.template_id, doc_type)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
 
     # Prinsip yang sama untuk logo: decode + validasi gambar itu murah, jadi
     # file yang rusak/kebesaran ditolak 422 di sini — SEBELUM job dibuat dan
@@ -298,6 +305,7 @@ def _generate_document(
                 body.document_metadata.model_dump() if body.document_metadata else None
             ),
             logo_bytes=logo_bytes,
+            template_id=body.template_id,
         )
     except RuntimeError as e:
         # compiler_service melempar RuntimeError POLOS untuk "pandoc tidak ada".

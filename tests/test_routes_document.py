@@ -221,6 +221,44 @@ def test_form_metadata_survives_the_whole_async_round_trip(client, mock_plantuml
     assert "Divisi Operasional" in text
 
 
+def test_unavailable_template_combo_is_rejected_synchronously_with_422(client):
+    """Kombinasi template x jenis dokumen yang tidak tersedia ditolak SAAT POST
+    — sebelum job dibuat, sebelum LLM dibayar. premco baru menyediakan SDD."""
+    response = client.post(
+        "/documents/generate",
+        json={"document_type": "UAT", "repositories": [], "template_id": "premco"},
+    )
+
+    assert response.status_code == 422
+    assert "belum menyediakan" in response.json()["detail"]
+
+    response = client.post(
+        "/documents/generate",
+        json={"document_type": "SDD", "repositories": [], "template_id": "ngawur"},
+    )
+    assert response.status_code == 422
+
+
+def test_premco_template_survives_the_async_round_trip(client, mock_plantuml_ok, tmp_path):
+    """template_id harus menembus POST -> background task -> compiler: dokumen
+    yang diunduh memakai gaya premco (bar biru), bukan default."""
+    import zipfile
+
+    content = _load_fixture("document_content_sdd.json")
+
+    with patch.object(
+        routes_document._llm_service, "generate_document_content", return_value=content
+    ):
+        job = _generate(client, document_type="SDD", template_id="premco")
+
+    assert job["status"] == "done"
+    download = client.get(job["download_url"])
+    path = tmp_path / "premco.docx"
+    path.write_bytes(download.content)
+    xml = zipfile.ZipFile(path).read("word/document.xml").decode("utf-8", "ignore")
+    assert 'w:fill="9CC3E5"' in xml
+
+
 def test_broken_logo_is_rejected_synchronously_with_422(client):
     """Logo rusak harus ditolak SAAT POST — sebelum job dibuat, jauh sebelum
     panggilan LLM berbayar. Prinsip yang sama dengan validasi document_type."""

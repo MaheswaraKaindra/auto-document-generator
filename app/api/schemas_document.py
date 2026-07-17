@@ -68,6 +68,10 @@ class GenerateDocumentRequest(BaseModel):
     github_token: Optional[str] = None
     repositories: list[GithubRepoIn]
     document_metadata: Optional[DocumentMetadata] = None
+    # Gaya dokumen: "default" (template bawaan) atau "premco" (kompilasi manual
+    # docx PREMCO, V1 roadmap tahap c — baru menyediakan SDD). Divalidasi
+    # sinkron di endpoint; kombinasi yang tidak tersedia = 422.
+    template_id: str = "default"
     # Logo perusahaan (PNG/JPEG, base64) — muncul di header TIAP halaman dokumen,
     # seperti dokumen acuan enterprise. SENGAJA bukan field DocumentMetadata:
     # kontrak metadata itu "string yang jatuh ke penanda (diisi manual) kalau

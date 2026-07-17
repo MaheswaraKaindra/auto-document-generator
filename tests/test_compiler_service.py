@@ -722,6 +722,97 @@ def test_pandoc_styles_survive_the_reference_doc(mock_plantuml_ok):
     assert len(_captions(output_path, "Table Caption")) == 7
 
 
+# --- Multi-template (V1: template "premco" hasil kompilasi manual) -------------
+
+
+def test_unknown_template_is_rejected():
+    data = _load_fixture("document_content_sdd.json")
+
+    with pytest.raises(ValueError, match="template_id tidak dikenal"):
+        compiler_service.generate_docx("SDD", data, template_id="tidak-ada")
+
+
+def test_premco_template_has_no_uat_yet():
+    """Template premco baru menyediakan SDD — kombinasi yang tidak tersedia
+    harus gagal DENGAN PESAN yang menyebut apa yang tersedia, bukan KeyError."""
+    data = _load_fixture("document_content_uat.json")
+
+    with pytest.raises(ValueError, match="belum menyediakan dokumen UAT"):
+        compiler_service.generate_docx("UAT", data, template_id="premco")
+
+
+def test_premco_use_case_table_gets_blue_title_bar(mock_plantuml_ok):
+    """Konvensi paling khas dokumen PREMCO asli: tabel use case/activity
+    ber-BAR JUDUL — baris pertama satu sel merged, biru muda 9CC3E5 (warna
+    terukur dari 27 sel dokumen aslinya), teks bold. Marker ((BAR)) dari
+    template tidak boleh bocor ke dokumen jadi."""
+    data = _load_fixture("document_content_sdd.json")
+
+    output_path = compiler_service.generate_docx("SDD", data, template_id="premco")
+
+    document = Document(output_path)
+    bar_tables = [
+        t for t in document.tables
+        if t.rows and t.rows[0].cells[0].text.startswith(("Use Case", "Activity Diagram"))
+    ]
+    # fixture punya 1 use case + 1 activity diagram
+    assert len(bar_tables) == 2, "tabel ber-bar judul tidak ditemukan"
+    for table in bar_tables:
+        xml = table._tbl.xml
+        assert 'w:fill="9CC3E5"' in xml, "bar judul tidak berwarna biru PREMCO"
+        assert "<w:vMerge" in xml or "gridSpan" in xml, "baris pertama tidak di-merge"
+        assert 'w:firstRow="0"' in xml, "header hitam kondisional belum dimatikan untuk tabel bar"
+    assert _TITLE_BAR_LEAK not in _docx_text(output_path)
+
+
+_TITLE_BAR_LEAK = "((BAR))"
+
+
+def test_premco_keeps_criteria_and_steps_inside_the_table(mock_plantuml_ok):
+    """Konvensi PREMCO: acceptance criteria & langkah activity DI DALAM sel
+    tabel (baris Description/Acceptance Criteria), bukan list di luar. Isinya
+    harus utuh sampai ke sel DAN antar-item dipisah line break sungguhan —
+    marker ((BR)) tidak boleh bocor, dan `<br/>` bukan pilihan karena writer
+    docx Pandoc membuang raw HTML tanpa suara (item menyambung jadi satu
+    kalimat — betulan terjadi di probe V1)."""
+    data = _load_fixture("document_content_sdd.json")
+
+    output_path = compiler_service.generate_docx("SDD", data, template_id="premco")
+
+    text = _docx_text(output_path)
+    for criterion in data["use_cases"][0]["acceptance_criteria"]:
+        assert criterion in text
+    for step in data["diagrams"]["activity_diagrams"][0]["steps"]:
+        assert step in text
+    assert "((BR))" not in text, "marker line break bocor ke dokumen"
+    # line break sungguhan antar item: cari <w:br/> di dalam tabel ber-bar
+    document = Document(output_path)
+    bar_tables = [
+        t for t in document.tables
+        if t.rows and t.rows[0].cells[0].text.startswith(("Use Case", "Activity Diagram"))
+    ]
+    assert any("<w:br" in t._tbl.xml for t in bar_tables), (
+        "tidak ada line break di sel kriteria/langkah — item menyambung jadi satu baris"
+    )
+    # bab premco tanpa nomor; dua bab mockup
+    assert "Mockup Website" in text
+    assert "Mockup Aplikasi" in text
+
+
+def test_default_template_is_untouched_by_premco(mock_plantuml_ok):
+    """Template default tidak boleh ikut berubah gaya: tanpa bar biru, bab
+    tetap bernomor, mockup tetap satu bab."""
+    data = _load_fixture("document_content_sdd.json")
+
+    output_path = compiler_service.generate_docx("SDD", data)
+
+    xml = _document_xml(output_path)
+    assert "9CC3E5" not in xml
+    text = _docx_text(output_path)
+    assert "1. Deskripsi Aplikasi" in text
+    assert "Mockup Antarmuka" in text
+
+
 # --- Logo header (slot upload di form) -----------------------------------------
 
 

@@ -167,9 +167,17 @@ function buildMetadataPayload(metadata, documentType) {
 // penggunanya tahu detik itu juga, bukan setelah request bolak-balik.
 const LOGO_MAX_BYTES = 2 * 1024 * 1024
 
+// Gaya dokumen — cermin dari _TEMPLATE_REGISTRY di backend (server tetap
+// sumber kebenaran: kombinasi yang tidak tersedia ditolak 422).
+const TEMPLATE_OPTIONS = [
+  { id: 'default', label: 'Bawaan (gaya acuan enterprise)', docTypes: ['SDD', 'UAT'] },
+  { id: 'premco', label: 'Gaya PREMCO (baru SDD)', docTypes: ['SDD'] },
+]
+
 function App() {
   const [projectName, setProjectName] = useState('')
   const [documentType, setDocumentType] = useState('SDD')
+  const [templateId, setTemplateId] = useState('default')
   const [githubToken, setGithubToken] = useState('')
   const [repositories, setRepositories] = useState([emptyRepo()])
   const [metadata, setMetadata] = useState({})
@@ -250,6 +258,7 @@ function App() {
       })),
       document_metadata: buildMetadataPayload(metadata, documentType),
       logo_base64: logo?.base64 || null,
+      template_id: templateId,
     }
 
     try {
@@ -377,7 +386,15 @@ function App() {
           <div className="field">
             <label>
               Tipe Dokumen
-              <select value={documentType} onChange={(e) => setDocumentType(e.target.value)}>
+              <select
+                value={documentType}
+                onChange={(e) => {
+                  const nextType = e.target.value
+                  setDocumentType(nextType)
+                  const chosen = TEMPLATE_OPTIONS.find((t) => t.id === templateId)
+                  if (chosen && !chosen.docTypes.includes(nextType)) setTemplateId('default')
+                }}
+              >
                 <option value="SDD">Solution Design Document (SDD)</option>
                 <option value="UAT">User Acceptance Test (UAT)</option>
               </select>
@@ -398,6 +415,24 @@ function App() {
               )}{' '}
               Keduanya dibaca dari repo yang sama — pilih salah satu, jalankan lagi untuk yang
               lain.
+            </p>
+          </div>
+
+          <div className="field">
+            <label>
+              Gaya Dokumen
+              <select value={templateId} onChange={(e) => setTemplateId(e.target.value)}>
+                {TEMPLATE_OPTIONS.map((t) => (
+                  <option key={t.id} value={t.id} disabled={!t.docTypes.includes(documentType)}>
+                    {t.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <p className="hint">
+              Isi dokumennya sama — yang berbeda <strong>bentuk penyajiannya</strong>. Gaya
+              PREMCO meniru konvensi dokumen aslinya: tabel use case/activity ber-bar judul
+              dengan kriteria di dalam tabel, bab tanpa nomor, dua bab mockup.
             </p>
           </div>
 

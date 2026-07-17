@@ -44,10 +44,39 @@ _jinja_env = Environment(
     lstrip_blocks=True,
 )
 
-_TEMPLATE_BY_DOC_TYPE = {
-    "SDD": "sdd_template.md",
-    "UAT": "uat_template.md",
+# Registry template (sejak V1 multi-template, 2026-07-17): satu template = satu
+# gaya dokumen, dipilih user lewat `template_id` di form. "default" = template
+# yang dimodelkan dari acuan enterprise; "premco" = hasil KOMPILASI MANUAL docx
+# PREMCO asli (V0/V1 roadmap tahap c — lihat scripts/validation/
+# V0_TEMPLATE_PREMCO.md). Template boleh menyediakan sebagian jenis dokumen
+# saja; kombinasi yang tidak tersedia ditolak ValueError -> 422 SINKRON di
+# endpoint, sebelum ada kerja berbayar.
+_TEMPLATE_REGISTRY: dict[str, dict[str, str]] = {
+    "default": {
+        "SDD": "sdd_template.md",
+        "UAT": "uat_template.md",
+    },
+    "premco": {
+        "SDD": "sdd_premco_template.md",
+    },
 }
+
+
+def validate_template(template_id: str, document_type: str) -> None:
+    """Tolak kombinasi template x jenis dokumen yang tidak tersedia — dipanggil
+    SINKRON oleh endpoint (422 sebelum job dibuat) DAN oleh generate_docx
+    (pertahanan kalau dipanggil dari jalur lain)."""
+    doc_types = _TEMPLATE_REGISTRY.get(template_id)
+    if doc_types is None:
+        raise ValueError(
+            f"template_id tidak dikenal: {template_id!r} "
+            f"(tersedia: {', '.join(sorted(_TEMPLATE_REGISTRY))})"
+        )
+    if document_type.upper() not in doc_types:
+        raise ValueError(
+            f"Template {template_id!r} belum menyediakan dokumen "
+            f"{document_type.upper()} (tersedia: {', '.join(sorted(doc_types))})."
+        )
 
 # Judul dokumen — masuk ke halaman pertama DAN ke kaki tiap halaman. Sengaja di
 # sini, bukan sebagai `# Judul` di template: Pandoc merendernya dengan style
@@ -97,6 +126,21 @@ _PAGE_HEIGHT_IN = 8.0
 _DIAGRAM_DISPLAY_DPI = 360
 
 _MANUAL_PLACEHOLDER = "*(diisi manual)*"
+
+# Bar judul tabel gaya PREMCO (baris pertama tabel di-merge jadi satu sel biru
+# muda berjudul). Pipe table Markdown tidak bisa merge sel, jadi template
+# menandai baris pertamanya dengan marker ini dan post-process yang mengubahnya
+# jadi bar sungguhan. Warna birunya TERUKUR dari docx PREMCO asli (27 sel),
+# bukan ditebak.
+_TITLE_BAR_MARKER = "((BAR))"
+_TITLE_BAR_FILL = "9CC3E5"
+
+# Pemisah baris DI DALAM sel tabel. Markdown pipe table tidak bisa memuat baris
+# baru, dan `<br/>` DIBUANG diam-diam oleh writer docx Pandoc (raw HTML tidak
+# didukung di docx — terlihat di probe V1: langkah activity menyambung jadi
+# "login.2. Admin ..."). Template menulis marker ini; post-process menukarnya
+# dengan <w:br/> sungguhan.
+_LINE_BREAK_MARKER = "((BR))"
 
 # Logo di header: tinggi standar meniru logo dokumen acuan (~0,45 inci di kanan
 # atas tiap halaman). Logo pita yang sangat lebar dibatasi LEBARNYA supaya tidak
@@ -431,6 +475,79 @@ def _pandoc_args(normalized_type: str, title: str) -> list[str]:
     return args
 
 
+def _apply_title_bars(document) -> None:
+    """Ubah baris pertama tabel yang ditandai _TITLE_BAR_MARKER jadi BAR JUDUL
+    gaya PREMCO: satu sel merged selebar tabel, latar biru muda, teks bold di
+    tengah — persis tabel use case/activity di docx PREMCO asli.
+
+    Kenapa post-process: pipe table Markdown tidak punya sintaks merge sel, dan
+    conditional formatting `firstRow` dari table style (header hitam-teks-putih)
+    harus DIMATIKAN khusus untuk tabel ber-bar — teks putih di atas biru muda
+    tidak terbaca. Keduanya cuma bisa dilakukan sesudah docx jadi.
+    """
+    for table in document.tables:
+        if not table.rows:
+            continue
+        first_row = table.rows[0]
+        if not first_row.cells[0].text.startswith(_TITLE_BAR_MARKER):
+            continue
+        title = first_row.cells[0].text[len(_TITLE_BAR_MARKER):].strip()
+
+        # Matikan header hitam kondisional (firstRow) untuk tabel INI saja.
+        tbl_look = table._tbl.tblPr.find(qn("w:tblLook"))
+        if tbl_look is not None:
+            tbl_look.set(qn("w:firstRow"), "0")
+
+        merged = first_row.cells[0]
+        for cell in first_row.cells[1:]:
+            merged = merged.merge(cell)
+        merged.text = title
+        paragraph = merged.paragraphs[0]
+        paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        for run in paragraph.runs:
+            run.bold = True
+        shading = OxmlElement("w:shd")
+        shading.set(qn("w:val"), "clear")
+        shading.set(qn("w:color"), "auto")
+        shading.set(qn("w:fill"), _TITLE_BAR_FILL)
+        merged._tc.get_or_add_tcPr().append(shading)
+
+        # Ikat tabelnya supaya UTUH pindah halaman — tanpa ini tabel kecil
+        # ber-bar gampang patah tepat sesudah bar-nya, dan bar (yang juga
+        # tblHeader) terulang membingungkan (terlihat di probe V1, kembaran
+        # persis kasus blok tanda tangan).
+        rows = list(table.rows)
+        for row in rows[:-1]:
+            for cell in row.cells:
+                for cell_paragraph in cell.paragraphs:
+                    _set_keep_next(cell_paragraph._p)
+
+
+def _expand_line_break_markers(document) -> None:
+    """Tukar _LINE_BREAK_MARKER di sel tabel dengan line break Word sungguhan.
+
+    Dipakai template premco untuk daftar bernomor DI DALAM sel (acceptance
+    criteria, langkah activity — konvensi dokumen aslinya). Lihat komentar di
+    konstanta: `<br/>` bukan pilihan, Pandoc membuangnya tanpa suara.
+    """
+    for table in document.tables:
+        for row in table.rows:
+            for cell in row.cells:
+                for paragraph in cell.paragraphs:
+                    if _LINE_BREAK_MARKER not in paragraph.text:
+                        continue
+                    parts = paragraph.text.split(_LINE_BREAK_MARKER)
+                    paragraph.text = parts[0]
+                    for part in parts[1:]:
+                        run = paragraph.add_run()
+                        run.add_break()
+                        run.add_text(part)
+                    # Rata KIRI: body justified (warisan style) + line break
+                    # manual = tiap baris direntangkan Word sampai penuh —
+                    # "Admin    membuka    halaman" (terlihat di probe V1).
+                    paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
+
+
 def _center_table_headers(document) -> None:
     """Ratakan tengah teks baris pertama SETIAP tabel — meniru header tabel
     dokumen acuan.
@@ -590,6 +707,8 @@ def _postprocess_docx(docx_path: str, logo_bytes: bytes | None = None) -> None:
     """Sentuhan yang tidak bisa dititipkan ke reference.docx maupun Pandoc —
     satu kali buka-simpan untuk semuanya."""
     document = docx.Document(docx_path)
+    _apply_title_bars(document)  # sebelum center: baris pertama masih utuh per-sel
+    _expand_line_break_markers(document)
     _center_table_headers(document)
     _move_table_captions_below(document)
     _heighten_signature_rows(document)
@@ -614,6 +733,7 @@ def generate_docx(
     project_name: str = "",
     document_metadata: dict[str, Any] | None = None,
     logo_bytes: bytes | None = None,
+    template_id: str = "default",
 ) -> str:
     """
     Entry point utama Peran 3.
@@ -628,12 +748,16 @@ def generate_docx(
     logo_bytes: bytes gambar logo yang SUDAH tervalidasi (lihat decode_logo) —
                 ditanam di header tiap halaman. None = tanpa header logo,
                 persis perilaku sebelum fitur ini ada.
+    template_id: gaya dokumen dari _TEMPLATE_REGISTRY ("default"/"premco") —
+                 lihat komentar registry. Kombinasi yang tidak tersedia =
+                 ValueError.
     Mengembalikan path file .docx yang sudah jadi.
     """
     normalized_type = document_type.upper()
-    template_name = _TEMPLATE_BY_DOC_TYPE.get(normalized_type)
-    if template_name is None:
+    if normalized_type not in ("SDD", "UAT"):
         raise ValueError(f"document_type tidak dikenal: {document_type!r} (harus 'SDD' atau 'UAT')")
+    validate_template(template_id, normalized_type)
+    template_name = _TEMPLATE_REGISTRY[template_id][normalized_type]
 
     context = {
         "project_name": project_name,
