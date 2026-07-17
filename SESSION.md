@@ -37,6 +37,7 @@ bukan membaca XML. 196 test hijau (191+5). Biaya sesi: **$0**.
 | 6 | **Post-process python-docx** (`_postprocess_docx`) | Header tabel dirata-tengah (satu-satunya jalan; lihat "Kejadian") + **caption tabel dipindah ke BAWAH tabelnya** seperti acuan (permintaan lanjutan pemilik; Pandoc memakunya di atas) + **baris tanda tangan ≥1 inci** dan bloknya diikat utuh se-halaman. Probe terakhir: `out/PROBE11_ttd_tinggi_esteler.docx`. |
 | 7 | **Perbandingan berdampingan PREMCO×esteler, 12 pasang halaman** | Dikerjakan sendiri (komposit kiri-kanan per bagian, `pair_*.png` di scratchpad). Verdict: grammar visual setara; gap fungsional tersisa cuma tinggi TTD (→ baris #6) dan logo (→ baris #8). Bonus: Daftar Gambar PREMCO terlihat rusak (semua entri menyebut CORETAD) bersanding dengan punya kita yang benar — bukti visual klaim jualan. |
 | 8 | **Slot upload logo di form** | `logo_base64` di `GenerateDocumentRequest` (BUKAN DocumentMetadata — kontrak kosongnya beda) → `decode_logo` validasi SINKRON di POST (422 sebelum job/LLM) → `_add_header_logo` di post-process: kanan-atas header tiap halaman, tinggi 0,45"/lebar maks 2,4", **tepi transparan dipangkas dulu** (logo Pertamina uji dari pemilik ber-padding 50% — tanpa pemangkasan tampil kerdil 0,22"). Frontend: input file di panel Dokumen. Probe FINAL: `out/PROBE13_logo_pertamina_esteler.docx` — disandingkan PREMCO, ukuran/posisi logo praktis identik. |
+| 9 | **V0 "upload template perusahaan"** (ide pemilik = roadmap tahap c) | Diukur pada docx PREMCO ASLI (40,7 MB di root, gitignored). Hasil: pemetaan bab 16/16 tanpa ambigu isi (4 ambiguitas format); swap `--reference-doc` mentah = RUSAK total (40 MB, Word bilang corrupt — font/media embed ikut kontainer) → jalur benar SINTESIS reference.docx dari properti terukur (dan angka terukurnya PERSIS yang kita hardcode manual minggu ini); template nyata bawa pembusukan sendiri (6 heading kosong, nomor gambar kacau). Laporan: `scripts/validation/V0_TEMPLATE_PREMCO.md`. Verdict: **layak lanjut V1**. |
 
 ## Kejadian yang layak diingat (jebakan Word/Pandoc, semua DIPROBE)
 
@@ -61,6 +62,13 @@ bukan membaca XML. 196 test hijau (191+5). Biaya sesi: **$0**.
   hanya kelihatan di rendering.
 
 ## Kalau melanjutkan besok, mulai dari sini
+
+**Keputusan pemilik yang dibutuhkan: V1 template (tahap c) ATAU UAT (tahap b)?**
+V0 memberi lampu hijau untuk V1 (kompilasi manual template PREMCO jadi template
+kedua + pipeline multi-template) — baca `scripts/validation/V0_TEMPLATE_PREMCO.md`
+dulu, khususnya "Bentuk V1 yang disarankan" + 4 ambiguitas format yang butuh
+keputusan pemilik. Tapi roadmap lama menaruh UAT (b) lebih dulu dan UAT lebih
+kecil. Dua-duanya valid; jangan dikerjakan paralel.
 
 1. **Minta pemilik buka `scripts/validation/out/PROBE13_logo_pertamina_esteler.docx`**
    (706 KB, TERBARU: + logo Pertamina sungguhan di header; PROBE9-12 versi
