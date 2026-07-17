@@ -12,18 +12,22 @@
 
 ## Ringkasan satu paragraf
 
-Sesi satu tema: **redesign visual dokumen SDD** atas permintaan pemilik
-("dibandingkan berdampingan dengan PREMCO harus setara; JANGAN sentuh
-pipeline/Contract A/Contract B") — dan janji itu ditepati: nol perubahan pada
-kontrak, prompt, maupun LLM. Kuncinya: halaman PDF acuan untuk pertama kalinya
-**dilihat sebagai gambar** (sesi-sesi lalu cuma membaca teksnya), dan grammar
-visualnya langsung kelihatan: heading bab di tengah + caps, body justified,
-header tabel hitam dengan teks putih **di tengah**, footer judul-miring +
-nomor-kanan, Daftar Isi ber-dot-leader, dan urutan halaman
-cover→identitas→revisi→persetujuan→daftar-daftar→isi. Semua itu sekarang ada di
-dokumen kita. Diverifikasi 4 putaran dengan **melihat halamannya** (render ulang
-esteler dari Contract B tersimpan → docx → PDF via Word COM → PNG per halaman),
-bukan membaca XML. 196 test hijau (191+5). Biaya sesi: **$0**.
+Sesi maraton tiga babak, seluruhnya lapisan presentasi — **nol sentuhan
+Contract A/B/prompt/LLM**, biaya total **$0** (semua verifikasi render ulang
+dari Contract B esteler tersimpan). **Babak 1 — redesign visual SDD ke bahasa
+visual PDF acuan**: halaman acuan untuk pertama kalinya dilihat SEBAGAI GAMBAR,
+lalu semuanya ditiru (heading tengah+caps, body justified, dot leader, urutan
+halaman cover→revisi→persetujuan→daftar-daftar→isi, caption di bawah tabel,
+kotak TTD 1 inci) dan dibuktikan lewat perbandingan berdampingan 12 pasang
+halaman. **Babak 2 — slot upload logo** (validasi sinkron 422 sebelum bayar,
+pangkas tepi transparan, diuji dengan logo Pertamina sungguhan). **Babak 3 —
+ide pemilik "user upload template sendiri" dieksekusi sampai V1**: V0 mengukur
+docx PREMCO asli (pemetaan bab 16/16 jelas; swap reference-doc = paket CORRUPT
+→ jalur benar SINTESIS; template nyata membawa pembusukan CORETAD), lalu V1
+multi-template: registry `default`/`premco` + `template_id` di form, template
+premco ber-bar-judul-biru dengan kriteria/langkah di dalam sel. Verifikasi
+selalu sama: docx → PDF via Word COM → PNG per halaman → DILIHAT. **212 test
+hijau** (dari 191). 7 commit.
 
 ## Yang diselesaikan (semuanya presentasi, nol pipeline)
 
@@ -58,8 +62,14 @@ bukan membaca XML. 196 test hijau (191+5). Biaya sesi: **$0**.
   `--columns`; ambang diturunkan ke 20.
 - **Rasio dash → lebar kolom** itu fitur Pandoc yang nyata dan terukur
   (5:8:32 dash → 880:1408:5632 twip) — sekarang jadi mekanisme resmi lebar kolom.
+- **Writer docx Pandoc MEMBUANG raw HTML tanpa suara** — `<br/>` di sel pipe
+  table lenyap, item menyambung jadi satu kalimat. Solusi: marker `((BR))` +
+  post-process jadi `<w:br/>` sungguhan.
+- **Pandoc memakai reference-doc sebagai KONTAINER paket** — docx user (40 MB,
+  font ter-embed) sebagai reference menghasilkan output 40 MB yang Word sebut
+  corrupt. Reference harus SELALU disintesis dari kerangka Pandoc yang bersih.
 - Verifikasi visual = **docx → PDF lewat Word COM → PNG per halaman → dilihat**.
-  Membaca XML tidak akan pernah menangkap lima hal di atas; empat di antaranya
+  Membaca XML tidak akan pernah menangkap hal-hal di atas; sebagian besar
   hanya kelihatan di rendering.
 
 ## Kalau melanjutkan besok, mulai dari sini
