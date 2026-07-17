@@ -795,6 +795,13 @@ def test_sanitize_route_param_brackets():
     assert s("pages/[[...all]].vue") == "pages/all.vue"
     assert s("blog/[...slug].vue") == "blog/slug.vue"
     assert s("users/[id]/edit.vue") == "users/id/edit.vue"
+    # Param jadi segmen PERTAMA → label komponen diawali "[[" (kurung komponen +
+    # kurung param). Double-match-dulu mencegah kurung KOMPONEN ikut termakan —
+    # bug yang lolos MyPertamina (param tak pernah segmen pertama) tapi tertangkap
+    # nuxt/movies (`pages/[type]/...`).
+    assert s("[[type]/category/[query].vue]") == "[type/category/query.vue]"
+    assert s("[[id].vue] as X") == "[id.vue] as X"
+    assert s("[[type]/[id].vue]") == "[type/id.vue]"
     # Yang TIDAK boleh disentuh:
     assert s("[login.vue] as Z") == "[login.vue] as Z"   # ber-titik = bukan param
     assert s("State --> [*]") == "State --> [*]"          # token PlantUML

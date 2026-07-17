@@ -240,11 +240,21 @@ def _strip_code_fence(diagram_script: str) -> str:
 # [[...all]].vue. Nama itu masuk ke diagram sebagai [product/[category]/[slug].vue],
 # dan kurung siku BERSARANG merusak sintaks komponen PlantUML [...] → seluruh
 # dokumen gagal (ditemukan pada MyPertamina.id-Clone, 2026-07-18). Cocokkan HANYA
-# segmen route-param (isinya identifier: [\w-], boleh diawali "..."/"[["); nama
-# komponen ber-titik seperti [login.vue] dan token PlantUML khusus [*]/[H] TIDAK
-# tersentuh karena isinya bukan identifier murni.
-_ROUTE_PARAM = r"\[\[?\.{0,3}([\w-]+)\]\]?"
-_TOKEN_GLUE = r"[\w/.]"  # bukti bahwa kurung siku ini BAGIAN nama file, bukan komponen berdiri sendiri (spasi/`as` = komponen)
+# segmen route-param (isinya identifier: [\w-], boleh diawali "..."); nama komponen
+# ber-titik seperti [login.vue] dan token PlantUML khusus [*]/[H] TIDAK tersentuh
+# karena isinya bukan identifier murni.
+#
+# Dua bentuk, dicocokkan BERIMBANG (kurung buka = tutup): single `[id]`/`[...slug]`
+# dan double `[[id]]`/`[[...all]]` (optional route Nuxt). Double dicocokkan DULU —
+# kalau tidak, `[[type]/...]` (kurung KOMPONEN + param single yang jadi segmen
+# pertama) salah dibaca `\[\[?...\]?` sebagai optional-catch-all lalu MEMAKAN kurung
+# komponennya. Bug itu lolos dari MyPertamina (paramnya tak pernah segmen pertama)
+# tapi tertangkap nuxt/movies (`pages/[type]/...` → label diawali `[[type]`).
+_ROUTE_PARAMS = (
+    r"\[\[\.{0,3}([\w-]+)\]\]",   # double: [[id]] [[...all]]
+    r"\[\.{0,3}([\w-]+)\]",       # single: [id] [...slug]
+)
+_TOKEN_GLUE = r"[\w/.]"  # bukti bahwa kurung ini BAGIAN nama file, bukan komponen berdiri sendiri (spasi/`as` = komponen)
 
 
 def _sanitize_route_param_brackets(script: str) -> str:
@@ -255,8 +265,9 @@ def _sanitize_route_param_brackets(script: str) -> str:
     previous = None
     while previous != script:
         previous = script
-        script = re.sub(rf"(?<={_TOKEN_GLUE}){_ROUTE_PARAM}", r"\1", script)
-        script = re.sub(rf"{_ROUTE_PARAM}(?={_TOKEN_GLUE})", r"\1", script)
+        for pattern in _ROUTE_PARAMS:
+            script = re.sub(rf"(?<={_TOKEN_GLUE}){pattern}", r"\1", script)
+            script = re.sub(rf"{pattern}(?={_TOKEN_GLUE})", r"\1", script)
     return script
 
 
