@@ -61,6 +61,15 @@ _TEMPLATE_REGISTRY: dict[str, dict[str, str]] = {
     },
 }
 
+# Template mana yang MEMAKAI diagram Component Integration di badan dokumennya.
+# premco TIDAK (V0: dokumen aslinya cuma satu gambar arsitektur, tak ada bab
+# Integrasi Komponen). Ini bukan sekadar hemat kerja: merender diagram yang tak
+# dipakai membuat dokumen bisa GAGAL gara-gara diagram yang bahkan tak muncul —
+# terbukti pada repo Nuxt MyPertamina.id, nama file dynamic-route `[slug].vue`
+# masuk ke sintaks komponen PlantUML `[...]` lalu merusaknya, dan mematikan
+# SELURUH generate premco. Diagram yang dipakai tetap gagal-berisik seperti dulu.
+_TEMPLATES_USING_COMPONENT_INTEGRATION = {"default"}
+
 
 def validate_template(template_id: str, document_type: str) -> None:
     """Tolak kombinasi template x jenis dokumen yang tidak tersedia — dipanggil
@@ -346,8 +355,9 @@ def _image_attr(image_path: str) -> str:
     return f"{{width={_PAGE_WIDTH_IN}in}}"
 
 
-def _build_sdd_context(data: dict[str, Any]) -> dict[str, Any]:
+def _build_sdd_context(data: dict[str, Any], template_id: str = "default") -> dict[str, Any]:
     diagrams = data["diagrams"]
+    render_integration = template_id in _TEMPLATES_USING_COMPONENT_INTEGRATION
 
     # Ganti newline jadi spasi supaya tidak merusak baris tabel Markdown
     # (satu baris tabel Markdown wajib satu baris teks) — sama seperti
@@ -375,10 +385,16 @@ def _build_sdd_context(data: dict[str, Any]) -> dict[str, Any]:
     ]
     cleaned_flow_steps = [step.replace("\n", " ") for step in data.get("business_flow_steps", [])]
 
-    # Empat diagram tetap diakses dengan diagrams[...] — sengaja KeyError kalau
-    # hilang: dokumen tanpa salah satunya cacat, dan lebih baik gagal berisik.
+    # Diagram yang DIPAKAI template diakses dengan diagrams[...] — sengaja KeyError
+    # kalau hilang: dokumen tanpa salah satunya cacat, dan lebih baik gagal berisik.
+    # component_integration cuma dirender kalau template memakainya (premco tidak),
+    # jadi diagram yang tak dipakai tidak pernah menggagalkan generate.
     architecture = _render_diagram_to_image(diagrams["system_architecture"], IMAGES_DIR)
-    integration = _render_diagram_to_image(diagrams["component_integration"], IMAGES_DIR)
+    integration = (
+        _render_diagram_to_image(diagrams["component_integration"], IMAGES_DIR)
+        if render_integration
+        else None
+    )
     business_flow = _render_diagram_to_image(diagrams["business_process_flow"], IMAGES_DIR)
     use_case = _render_diagram_to_image(diagrams["use_case_diagram"], IMAGES_DIR)
 
@@ -393,7 +409,7 @@ def _build_sdd_context(data: dict[str, Any]) -> dict[str, Any]:
             "system_architecture_image": architecture,
             "system_architecture_attr": _image_attr(architecture),
             "component_integration_image": integration,
-            "component_integration_attr": _image_attr(integration),
+            "component_integration_attr": _image_attr(integration) if integration else "",
             "business_process_flow_image": business_flow,
             "business_process_flow_attr": _image_attr(business_flow),
             "use_case_diagram_image": use_case,
@@ -766,7 +782,7 @@ def generate_docx(
     }
 
     if normalized_type == "SDD":
-        context = {**context, **_build_sdd_context(document_content)}
+        context = {**context, **_build_sdd_context(document_content, template_id)}
     else:
         context = {**context, **_build_uat_context(document_content)}
 

@@ -752,6 +752,39 @@ def test_premco_template_has_no_uat_yet():
         compiler_service.generate_docx("UAT", data, template_id="premco")
 
 
+def test_premco_survives_invalid_component_integration(monkeypatch):
+    """Regresi NYATA dari repo Nuxt MyPertamina.id: nama file dynamic-route
+    `[slug].vue` masuk ke sintaks komponen PlantUML `[...]` dan merusaknya, lalu
+    mematikan SELURUH generate premco — padahal premco tak punya bab Integrasi
+    Komponen (V0) dan diagram itu bahkan tak muncul di dokumennya.
+
+    Dua sisi dibuktikan sekaligus: premco SUKSES (diagram tak dipakai dilewati),
+    default GAGAL-BERISIK (diagram yang DIPAKAI tetap tidak ditelan diam-diam —
+    filosofi fail-loud untuk diagram yang muncul di dokumen tetap utuh)."""
+    sentinel = "SLUGBRACKETSENTINEL"
+    data = _load_fixture("document_content_sdd.json")
+    data = {
+        **data,
+        "diagrams": {
+            **data["diagrams"],
+            "component_integration": f"@startuml\n[{sentinel}]\n@enduml",
+        },
+    }
+
+    def fake_run(script):
+        if sentinel in script:  # hanya component_integration yang membawanya
+            raise DiagramRenderError("PlantUML menolak (simulasi bracket Nuxt)")
+        return _MINIMAL_PNG
+
+    monkeypatch.setattr(compiler_service, "_run_plantuml", fake_run)
+
+    out = compiler_service.generate_docx("SDD", data, template_id="premco")
+    assert Path(out).exists()
+
+    with pytest.raises(DiagramRenderError):
+        compiler_service.generate_docx("SDD", data, template_id="default")
+
+
 def test_premco_use_case_table_gets_blue_title_bar(mock_plantuml_ok):
     """Konvensi paling khas dokumen PREMCO asli: tabel use case/activity
     ber-BAR JUDUL — baris pertama satu sel merged, biru muda 9CC3E5 (warna
