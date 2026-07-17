@@ -31,12 +31,20 @@ Lebar area teks halaman = 8,5" - 2×1" margin = 6,5" = 9360 twip; tab stop kanan
 di 9350 supaya tidak menabrak batas.
 
 Ukuran font mengikuti dokumen acuan, yang diukur langsung dari PDF-nya:
-badan ~13, heading ~19 (rasio ~1,45x), fontnya Calibri — dan Calibri kebetulan
-sudah jadi font tema bawaan Pandoc, jadi tidak perlu diubah.
+badan ~13, heading ~19 (rasio ~1,45x).
+
+FONTNYA CALIBRI, DAN HARUS DISET SENDIRI. Baris di sini dulu berbunyi "fontnya
+Calibri — dan Calibri kebetulan sudah jadi font tema bawaan Pandoc, jadi tidak
+perlu diubah". Itu SALAH: tema bawaan Pandoc adalah Aptos. Karena kalimat itu
+MENALAR alih-alih MENGUKUR, kesimpulannya ("tidak perlu diubah") membuat font
+tidak pernah diset, dan seluruh dokumen keluar ber-Aptos — setiap huruf di setiap
+halaman memakai font yang bukan font acuan. Lihat `_set_theme_fonts`.
 """
 
+import re
 import subprocess
 import sys
+import zipfile
 from pathlib import Path
 
 import docx
@@ -45,6 +53,12 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 
 OUTPUT = Path(__file__).resolve().parent.parent / "app" / "templates" / "reference.docx"
+
+# Font seluruh dokumen. Diukur dari docx acuan, bukan ditebak: `docDefaults`
+# mereka menyetel rFonts ascii="Calibri" EKSPLISIT (sz=22 = 11pt), dan tema
+# mereka pun major="Calibri" — jadi tidak ada satu pun jalur yang merender
+# selain Calibri. Kerangka bawaan Pandoc memakai Aptos; lihat `_set_theme_fonts`.
+BODY_FONT = "Calibri"
 
 BLACK = "000000"
 WHITE = "FFFFFF"
@@ -283,6 +297,44 @@ def _style_table(style):
     element.append(first_row)
 
 
+def _set_theme_fonts(path: Path, font: str = BODY_FONT) -> None:
+    """Paksa font tema paket .docx jadi `font`.
+
+    KENAPA TEMA, BUKAN STYLE: font dokumen tidak datang dari style mana pun.
+    `docDefaults` dan style heading kerangka Pandoc menunjuk ke tema lewat
+    `asciiTheme="minorHAnsi"` / `"majorHAnsi"`, dan temanya (word/theme/theme1.xml)
+    yang memutuskan huruf apa yang dicetak. Selama tema tidak disentuh, seluruh
+    dokumen keluar ber-Aptos berapa pun style-nya diatur — dan itu persis yang
+    terjadi seminggu tanpa ketahuan, karena style-nya memang semua benar.
+
+    Cukup dua elemen: `<a:latin>` di majorFont (heading) dan minorFont (body).
+    `panose` ikut dibuang — itu sidik jari metrik font LAMA; membiarkannya
+    menunjuk Aptos bisa menyesatkan substitusi Word di mesin tanpa Calibri.
+
+    python-docx tidak mengekspos part tema, jadi paketnya ditulis ulang.
+    """
+    theme_part = "word/theme/theme1.xml"
+    with zipfile.ZipFile(path) as package:
+        items = [(info, package.read(info.filename)) for info in package.infolist()]
+    if not any(info.filename == theme_part for info, _ in items):
+        raise RuntimeError(f"{theme_part} tidak ada di kerangka Pandoc — font tidak bisa diset.")
+    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as package:
+        for info, data in items:
+            if info.filename == theme_part:
+                patched, count = re.subn(
+                    r'<a:latin typeface="[^"]*"(?:\s+panose="[^"]*")?\s*/>',
+                    f'<a:latin typeface="{font}"/>',
+                    data.decode("utf-8"),
+                )
+                if count != 2:
+                    raise RuntimeError(
+                        f"Diharapkan 2 <a:latin> di tema (major+minor), ketemu {count} — "
+                        "kerangka Pandoc berubah, periksa sebelum percaya fontnya benar."
+                    )
+                data = patched.encode("utf-8")
+            package.writestr(info, data)
+
+
 def build(destination: Path = OUTPUT) -> Path:
     default = subprocess.run(
         [pypandoc.get_pandoc_path(), "--print-default-data-file", "reference.docx"],
@@ -387,6 +439,7 @@ def build(destination: Path = OUTPUT) -> Path:
         paragraph._p.append(run)
 
     document.save(str(destination))
+    _set_theme_fonts(destination)
     scratch.unlink()
     return destination
 

@@ -41,7 +41,21 @@ class DocumentMetadata(BaseModel):
     collaboration_profile: Optional[str] = None
     technology_capability: Optional[str] = None
 
-    how_to_access: Optional[str] = None
+    # How to Access (bab 5 SDD) — di dokumen acuan ini TABEL checklist 2 baris
+    # tetap (Internal, Published to Internet), tiap baris punya kolom Deskripsi
+    # (YES/NO) + Remark. Diukur dari docx acuan, bukan ditebak. Dulu satu field
+    # teks bebas `how_to_access`, yang tidak pernah bisa menyerupai tabel itu.
+    access_internal: Optional[str] = None
+    access_internal_remark: Optional[str] = None
+    access_published_internet: Optional[str] = None
+    access_published_internet_remark: Optional[str] = None
+
+    # Infrastructure & Capacity Planning (bab 6 SDD). Template `default` memakai
+    # field teks bebas ini. Template `premco` TIDAK: dokumen acuan memakai
+    # kerangka 22 baris dengan taksonomi khas perusahaannya (Akses URL per
+    # environment, Rev. Proxy, Team Foundation Server) yang isinya URL deployment
+    # — tidak diturunkan dari kode dan terlalu spesifik untuk template generik,
+    # jadi di sana ia jadi kerangka kosong seperti Timeline & Cost Estimation.
     infrastructure_capacity: Optional[str] = None
 
     # Checklist Application Security (bab 8 SDD)

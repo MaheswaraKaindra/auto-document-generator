@@ -9,10 +9,10 @@
     Gambar 1-4 tetap : Arsitektur Sistem, Integrasi Komponen, Flow Proses
                        Bisnis, Use Case Diagram
     Gambar 5..N      : activity diagram      -> loop.index + 4
-    Tabel  1-5 tetap : Role Pengguna, Demografi, System Requirement, Security,
-                       Features Requirement
-    Tabel  6..N      : use case per aktor    -> loop.index + 5
-    Tabel  N+1..     : activity diagram      -> loop.index + 5 + use_cases|length
+    Tabel  1-6 tetap : Role Pengguna, Demografi, System Requirement,
+                       How to Access, Security, Features Requirement
+    Tabel  7..N      : use case per aktor    -> loop.index + 6
+    Tabel  N+1..     : activity diagram      -> loop.index + 6 + use_cases|length
 
   Menambah gambar/tabel TETAP berarti offset ikut naik — di SEMUA tempatnya.
   Kalau lupa, penomorannya bentrok tanpa error apa pun.
@@ -204,7 +204,15 @@ Tanda tangan dibubuhkan pada dokumen cetak setelah dokumen ini disetujui — bag
 
 ## 5. How to Access
 
-{{ meta.how_to_access }}
+{# Checklist 2 baris tetap — bentuk ini DIUKUR dari docx acuan (dulu satu field
+   teks bebas, yang tidak pernah menyerupai tabelnya). Sama seperti checklist
+   Application Security di bawah: baris tetap, jawabannya dari form. #}
+| No. | How to Access | Deskripsi | Remark |
+|:---:|--------------|------|--------------------------|
+| 1 | Internal | {{ meta.access_internal }} | {{ meta.access_internal_remark }} |
+| 2 | Published to Internet | {{ meta.access_published_internet }} | {{ meta.access_published_internet_remark }} |
+
+: Tabel 4 How to Access
 
 ## 6. Infrastructure & Capacity Planning
 
@@ -228,7 +236,7 @@ Tanda tangan dibubuhkan pada dokumen cetak setelah dokumen ini disetujui — bag
 | 2 | Secure Coding Practice | {{ meta.security_secure_coding }} |
 | 3 | Reverse Proxy | {{ meta.security_reverse_proxy }} |
 
-: Tabel 4 Application Security
+: Tabel 5 Application Security
 
 ## 9. Application Features Requirement
 
@@ -238,7 +246,7 @@ Tanda tangan dibubuhkan pada dokumen cetak setelah dokumen ini disetujui — bag
 | {{ loop.index }} | {{ feature.feature_name }} | {{ feature.description }} |
 {% endfor %}
 
-: Tabel 5 Application Features Requirement
+: Tabel 6 Application Features Requirement
 
 ## 10. Flow Proses Bisnis
 
@@ -268,7 +276,7 @@ Tahapan alur proses bisnis:
 | Pre-Condition | {{ uc.pre_condition }} |
 | Description | {{ uc.description }} |
 
-: Tabel {{ loop.index + 5 }} Use Case {{ uc.use_case_id }} — {{ uc.actor }}
+: Tabel {{ loop.index + 6 }} Use Case {{ uc.use_case_id }} — {{ uc.actor }}
 
 {# Baris kosong di bawah WAJIB. Markdown mensyaratkan list didahului baris
    kosong; tanpa itu "1." dianggap lanjutan paragraf "Acceptance Criteria:" dan
@@ -307,7 +315,7 @@ Tahapan alur proses bisnis:
 | System | {{ project_name }} |
 | Pre-Condition | {{ activity.pre_condition }} |
 
-: Tabel {{ loop.index + 5 + use_cases | length }} Activity Diagram {{ activity.activity_name }}
+: Tabel {{ loop.index + 6 + use_cases | length }} Activity Diagram {{ activity.activity_name }}
 
 **Description:**
 

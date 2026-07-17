@@ -53,12 +53,22 @@ const SDD_FIELD_GROUPS = [
   {
     legend: 'Akses & Infrastruktur',
     fields: [
-      { key: 'how_to_access', label: 'How to Access', multiline: true, placeholder: 'URL, jaringan, atau cara login' },
+      { key: 'access_internal', label: 'Internal — Deskripsi', options: ['YES', 'NO'] },
+      { key: 'access_internal_remark', label: 'Internal — Remark', placeholder: 'Contoh: Dapat diakses pengguna internal' },
+      { key: 'access_published_internet', label: 'Published to Internet — Deskripsi', options: ['YES', 'NO'] },
+      {
+        key: 'access_published_internet_remark',
+        label: 'Published to Internet — Remark',
+        placeholder: 'Contoh: Tidak dapat diakses pengguna eksternal',
+      },
       {
         key: 'infrastructure_capacity',
         label: 'Infrastructure & Capacity Planning',
         multiline: true,
         placeholder: 'Contoh: 3 VM, 8 vCPU, 16 GB RAM',
+        // Gaya "premco" mengabaikan field ini: di sana bab Infrastructure adalah
+        // kerangka 22 baris yang diisi manual di Word (lihat sdd_premco_template.md).
+        hint: 'Dipakai gaya dokumen "Default". Gaya "PREMCO" memakai kerangka tabel yang diisi manual.',
       },
     ],
   },
@@ -342,6 +352,7 @@ function App() {
           placeholder={field.placeholder}
         />
       )}
+      {field.hint && <p className="hint">{field.hint}</p>}
     </label>
   )
 

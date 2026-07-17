@@ -52,13 +52,20 @@ def _docx_text(path: str) -> str:
     doc.paragraphs saja tidak cukup: hampir semua metadata mendarat di sel tabel
     (Informasi Dokumen, Demografi, checklist Security), dan sel tabel tidak ikut
     di doc.paragraphs -- assertion-nya akan hijau palsu.
+
+    NBSP jadi spasi biasa. Pandoc (smart punctuation) diam-diam mengganti spasi
+    sesudah singkatan dengan NON-BREAKING SPACE supaya "Rev." tidak terpisah dari
+    "Proxy" saat ganti baris -- jadi "Internal Rev. Proxy" yang ditulis di
+    template keluar sebagai "Internal Rev.\xa0Proxy". Terlihat sama persis di
+    layar, tapi `in` gagal. Dinormalkan di sini supaya assertion mencocokkan apa
+    yang DIBACA manusia, bukan byte-nya.
     """
     doc = Document(path)
     parts = [p.text for p in doc.paragraphs]
     for table in doc.tables:
         for row in table.rows:
             parts.extend(cell.text for cell in row.cells)
-    return "\n".join(parts)
+    return "\n".join(parts).replace("\xa0", " ")
 
 
 # Penanda *(diisi manual)* itu Markdown italic -- pandoc mengubah bintangnya jadi
@@ -81,7 +88,10 @@ _FULL_SDD_METADATA = {
     "coverage_area": "Nasional",
     "collaboration_profile": "Internal + vendor",
     "technology_capability": "Web + mobile",
-    "how_to_access": "https://inventaris.internal/login",
+    "access_internal": "YES",
+    "access_internal_remark": "Dapat diakses pengguna internal",
+    "access_published_internet": "NO",
+    "access_published_internet_remark": "Tidak dapat diakses pengguna eksternal",
     "infrastructure_capacity": "3 VM, 8 vCPU, 16 GB RAM",
     "security_penetration_test": "Sudah, 2026-06-30",
     "security_secure_coding": "Mengikuti OWASP ASVS L2",
@@ -381,7 +391,7 @@ def test_sdd_figures_are_numbered_in_document_order(mock_plantuml_ok):
 
 
 def test_sdd_tables_are_numbered_in_document_order(mock_plantuml_ok):
-    """Fixture punya 1 use case + 1 activity -> 5 tabel tetap + 1 + 1 = Tabel 1..7."""
+    """Fixture punya 1 use case + 1 activity -> 6 tabel tetap + 1 + 1 = Tabel 1..8."""
     data = _load_fixture("document_content_sdd.json")
 
     output_path = compiler_service.generate_docx("SDD", data)
@@ -390,10 +400,11 @@ def test_sdd_tables_are_numbered_in_document_order(mock_plantuml_ok):
         "Tabel 1 Informasi Role Pengguna",
         "Tabel 2 Informasi Demografi Aplikasi",
         "Tabel 3 System Requirement",
-        "Tabel 4 Application Security",
-        "Tabel 5 Application Features Requirement",
-        "Tabel 6 Use Case UC-01 — Admin",
-        "Tabel 7 Activity Diagram Proses Tambah Item Inventaris",
+        "Tabel 4 How to Access",
+        "Tabel 5 Application Security",
+        "Tabel 6 Application Features Requirement",
+        "Tabel 7 Use Case UC-01 — Admin",
+        "Tabel 8 Activity Diagram Proses Tambah Item Inventaris",
     ]
 
 
@@ -420,9 +431,9 @@ def test_numbering_offset_holds_when_loop_grows(mock_plantuml_ok):
     table_numbers = [c.split()[1] for c in _captions(output_path, "Table Caption")]
     assert figure_numbers == ["1", "2", "3", "4", "5", "6", "7"]  # 4 tetap + 3 activity
     assert table_numbers == [
-        "1", "2", "3", "4", "5",  # tetap
-        "6", "7",                 # 2 use case
-        "8", "9", "10",           # 3 activity, melanjutkan dari use case
+        "1", "2", "3", "4", "5", "6",  # tetap
+        "7", "8",                      # 2 use case
+        "9", "10", "11",               # 3 activity, melanjutkan dari use case
     ]
 
 
@@ -459,7 +470,7 @@ def test_table_captions_sit_below_their_tables(mock_plantuml_ok):
         style = ppr.find(qn("w:pStyle")) if ppr is not None else None
         if style is not None and style.get(qn("w:val")) == "TableCaption":
             captions.append(paragraph)
-    assert len(captions) == 7, "jumlah caption tabel tidak sesuai fixture"
+    assert len(captions) == 8, "jumlah caption tabel tidak sesuai fixture"
     for caption in captions:
         previous = caption.getprevious()
         assert previous is not None and previous.tag == qn("w:tbl"), (
@@ -719,7 +730,7 @@ def test_pandoc_styles_survive_the_reference_doc(mock_plantuml_ok):
     output_path = compiler_service.generate_docx("SDD", data)
 
     assert len(_captions(output_path, "Image Caption")) == 5
-    assert len(_captions(output_path, "Table Caption")) == 7
+    assert len(_captions(output_path, "Table Caption")) == 8
 
 
 # --- Multi-template (V1: template "premco" hasil kompilasi manual) -------------
@@ -797,6 +808,69 @@ def test_premco_keeps_criteria_and_steps_inside_the_table(mock_plantuml_ok):
     # bab premco tanpa nomor; dua bab mockup
     assert "Mockup Website" in text
     assert "Mockup Aplikasi" in text
+
+
+def test_premco_infrastructure_is_an_empty_skeleton(mock_plantuml_ok):
+    """Bab Infrastructure premco = kerangka 22 baris yang diisi manual di Word,
+    BUKAN field form: isinya URL deployment per environment. Taksonomi barisnya
+    diukur dari docx asli, jadi kalau ada yang menggantinya dengan teks bebas
+    (seperti template default), kerangka itu hilang tanpa error apa pun."""
+    data = _load_fixture("document_content_sdd.json")
+
+    output_path = compiler_service.generate_docx(
+        "SDD", data, document_metadata=_FULL_SDD_METADATA, template_id="premco"
+    )
+
+    text = _docx_text(output_path)
+    for label in (
+        "Infrastructure Technology Requirement",
+        "Akses URL",
+        "Internal Rev. Proxy",
+        "Team Foundation Server",
+    ):
+        assert label in text, f"baris kerangka Infrastructure hilang: {label}"
+    # Field teks bebas default TIDAK boleh bocor ke gaya premco.
+    assert _FULL_SDD_METADATA["infrastructure_capacity"] not in text
+
+
+def test_how_to_access_is_a_two_row_checklist_table(mock_plantuml_ok):
+    """How to Access diukur dari docx acuan: TABEL checklist 2 baris tetap
+    (Internal, Published to Internet) dengan kolom Deskripsi YES/NO + Remark —
+    bukan satu paragraf teks bebas seperti sebelumnya. Berlaku di KEDUA template."""
+    data = _load_fixture("document_content_sdd.json")
+
+    for template_id in ("default", "premco"):
+        output_path = compiler_service.generate_docx(
+            "SDD", data, document_metadata=_FULL_SDD_METADATA, template_id=template_id
+        )
+        text = _docx_text(output_path)
+        assert "Published to Internet" in text, template_id
+        assert _FULL_SDD_METADATA["access_internal_remark"] in text, template_id
+        assert _FULL_SDD_METADATA["access_published_internet_remark"] in text, template_id
+
+
+def test_document_font_is_calibri_not_pandoc_default(mock_plantuml_ok):
+    """Font dokumen datang dari TEMA (word/theme/theme1.xml), bukan dari style —
+    style Pandoc menunjuk ke sana lewat asciiTheme="minorHAnsi"/"majorHAnsi".
+
+    Penjaga ini ada karena bug yang sungguh terjadi: build_reference_docx.py
+    berasumsi "Calibri kebetulan font tema bawaan Pandoc, jadi tidak perlu
+    diubah". Bawaan Pandoc ternyata Aptos, jadi SELURUH dokumen keluar ber-Aptos
+    selama seminggu — tanpa error, tanpa satu test pun gagal, karena semua
+    style-nya memang benar. Yang bisa menangkapnya cuma memeriksa temanya."""
+    import zipfile
+
+    data = _load_fixture("document_content_sdd.json")
+
+    output_path = compiler_service.generate_docx("SDD", data)
+
+    with zipfile.ZipFile(output_path) as package:
+        theme = package.read("word/theme/theme1.xml").decode("utf-8")
+    fonts = re.findall(r'<a:latin typeface="([^"]*)"', theme)
+    assert fonts == ["Calibri", "Calibri"], (
+        f"font tema dokumen = {fonts}, harusnya Calibri (major+minor). "
+        "Dokumen acuan memakai Calibri; kerangka Pandoc memakai Aptos."
+    )
 
 
 def test_default_template_is_untouched_by_premco(mock_plantuml_ok):
