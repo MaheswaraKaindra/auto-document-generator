@@ -38,13 +38,14 @@ taxonomy Next.js `.tsx` — repo kedua mengungkap gap overfit, repo ketiga lolos
 tanpa perubahan kode. Lalu **tes END-TO-END Next.js** (taxonomy penuh lewat LLM,
 ~$0,20) menutup: LLM ALAMI menghasilkan `[...nextauth]` bersarang di label
 komponen (persis pola bug), sanitizer menanganinya, diagram render bersih —
-fix terbukti pada diagram LLM sungguhan, bukan sintetis. Menyingkap keterbatasan
-parser baru (App Router route handler tak terdeteksi endpoint; dampak ringan,
-dokumen tetap berjejak). **218 test hijau**. Commit: `6b6dd12` (font+tabel),
-`663a594` (docs), `1330f9b` (Remark), `9c55248` (premco lewati diagram tak
-dipakai), `7367382` (docs MyPertamina), `0f0866c` (sanitasi Nuxt), `6c66d6c`
-(kurung berimbang nuxt/movies), `93c6264`+`3d3861d`+`1ebfd0a` (validasi + docs)
-+ commit ini.
+fix terbukti pada diagram LLM sungguhan, bukan sintetis. Tes itu **menyingkap
+gap parser** (App Router route handler tak terdeteksi endpoint), yang lalu
+**DIPERBAIKI**: `route.ts` named export → endpoint, taxonomy 0→8. **234 test
+hijau**. Commit: `6b6dd12` (font+tabel), `663a594` (docs), `1330f9b` (Remark),
+`9c55248` (premco lewati diagram tak dipakai), `7367382` (docs MyPertamina),
+`0f0866c` (sanitasi Nuxt), `6c66d6c` (kurung berimbang nuxt/movies),
+`93c6264`+`3d3861d`+`1ebfd0a` (validasi bracket + docs), `6109bce` (docs
+end-to-end), `2ed7a8e` (endpoint App Router) + commit ini.
 
 ## Yang diselesaikan (babak 1-5 presentasi $0; babak 6-10 menyentuh compiler/LLM)
 
@@ -60,6 +61,7 @@ dipakai), `7367382` (docs MyPertamina), `0f0866c` (sanitasi Nuxt), `6c66d6c`
 | 8 | **Tes repo NYATA MyPertamina (Vue/JS)** | Klaim netral-bahasa TERBUKTI: dokumen berjejak (Nuxt/JWT/Express/model dgn bukti kode), aktor bisnis, ~$0,20. Bug Nuxt ditemukan+diperbaiki (bawah). `9c55248`. Probe: `out/PROBE17_mypertamina_premco.docx`. |
 | 9 | **Fix bracket Nuxt/Next + sanitizer** | premco lewati diagram tak dipakai (`9c55248`); default disanitasi (`0f0866c`); kurung berimbang untuk param segmen-pertama (`6c66d6c`). Divalidasi 3 repo sintetis + 1 end-to-end. `_sanitize_route_param_brackets`. |
 | 10 | **Tes END-TO-END Next.js taxonomy** (~$0,20) | Pipeline penuh: konten berjejak (Prisma/NextAuth/Stripe/Contentlayer benar, aktor Guest/Terdaftar), fix bracket terbukti pd diagram LLM SUNGGUHAN (`[...nextauth]` alami → tersanitasi → render bersih). Menyingkap gap parser App Router (0 endpoint, dampak ringan). Probe: `PROBE20_taxonomy_default.docx` (dgn integrasi), `PROBE21_taxonomy_premco.docx`. |
+| 11 | **Deteksi endpoint Next.js App Router** | taxonomy 0→8 endpoint. Named export `GET/POST` di `route.ts`, path dari folder (route group dibuang, `[id]`→`:id`). Ditulis dari AST NYATA. 16 test (`test_parser_app_router.py`, file test TS pertama). `2ed7a8e`. |
 
 ## Kejadian yang layak diingat (jebakan, semua DIPROBE)
 
@@ -110,14 +112,14 @@ demo-ready. Bug Nuxt default SUDAH diperbaiki. Kandidat berikutnya:**
    membuktikannya; deskripsi "fitur utama" redundan dgn bab Features. Sisa yang
    layak SUATU SAAT: flow nested sebagai peningkatan Contract B, diverifikasi
    pada repo yang logika bisnisnya bercabang (BUKAN esteler).
-3. **Deteksi endpoint Next.js/Nuxt route handler** (BARU, dari tes taxonomy).
-   App Router `app/api/**/route.ts` pakai named-export `export async function
-   GET/POST(req)`, Nuxt `server/api/*.ts` pakai `defineEventHandler` — dua-duanya
-   tak dikenali `_ts_endpoints`. taxonomy = 0 endpoint dari 130 file. **Dampak
-   ringan & terbukti** (dokumen tetap berjejak, LLM simpulkan dari nama file),
-   tapi INI SATU-SATUNYA gap endpoint yang bisa dibuktikan END-TO-END (taxonomy
-   muat 20K token) — beda dari Django/Flask yang tak punya kasus terverifikasi.
-   Kalau mau menambah dukungan endpoint, INI kandidat termudah & terverifikasi.
+3. ~~**Deteksi endpoint Next.js App Router**~~ — **SELESAI**: taxonomy 0→8
+   endpoint. `_ts_app_router_endpoints` + `_app_router_path` (route.ts named
+   export, path dari folder, route group dibuang, `[id]`→`:id`). 16 test
+   (`test_parser_app_router.py` — file test TS pertama). Ditulis dari AST NYATA.
+   **Sisa** (lebih jarang): Nuxt `server/api` (`defineEventHandler`) & Next.js
+   Pages Router (`export default`, method tak bisa statis). Belum diuji apakah
+   dokumen jadi lebih baik dgn endpoint eksplisit (~$0,20 regen) — diagram
+   integrasi taxonomy TANPA endpoint pun sudah benar, jadi mungkin marginal.
 4. **UAT premco** (roadmap tahap b) — **BLOCKER: tidak ada acuan UAT Pertamina
    di repo** (dicek: cuma ada `uat_template.md` & output kita sendiri). Registry
    `premco` pun baru SDD. Mengerjakannya sekarang = menebak. Butuh pemilik
