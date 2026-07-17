@@ -802,6 +802,12 @@ def test_sanitize_route_param_brackets():
     assert s("[[type]/category/[query].vue]") == "[type/category/query.vue]"
     assert s("[[id].vue] as X") == "[id.vue] as X"
     assert s("[[type]/[id].vue]") == "[type/id.vue]"
+    # Next.js App Router (ekstensi .tsx, plus konvensi ekstra): route group
+    # `(marketing)` pakai kurung BIASA — JANGAN disentuh; cuma kurung SIKU
+    # route-param yang dilepas. Diverifikasi pada shadcn-ui/taxonomy.
+    assert s("[(marketing)/[...slug]/page.tsx]") == "[(marketing)/slug/page.tsx]"
+    assert s("[docs/[[...slug]]/page.tsx]") == "[docs/slug/page.tsx]"
+    assert s("[api/auth/[...nextauth]/route.ts]") == "[api/auth/nextauth/route.ts]"
     # Yang TIDAK boleh disentuh:
     assert s("[login.vue] as Z") == "[login.vue] as Z"   # ber-titik = bukan param
     assert s("State --> [*]") == "State --> [*]"          # token PlantUML
