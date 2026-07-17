@@ -19,6 +19,8 @@ from typing import Any
 import docx
 import pypandoc
 from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
 from jinja2 import Environment, FileSystemLoader
 from PIL import Image
 
@@ -380,7 +382,7 @@ def _pandoc_args(normalized_type: str, title: str) -> list[str]:
     return args
 
 
-def _center_table_headers(docx_path: str) -> None:
+def _center_table_headers(document) -> None:
     """Ratakan tengah teks baris pertama SETIAP tabel — meniru header tabel
     dokumen acuan.
 
@@ -394,13 +396,61 @@ def _center_table_headers(docx_path: str) -> None:
     per baris. Jadi satu-satunya tempat deterministik yang tersisa adalah sesudah
     docx-nya jadi.
     """
-    document = docx.Document(docx_path)
     for table in document.tables:
         if not table.rows:
             continue
         for cell in table.rows[0].cells:
             for paragraph in cell.paragraphs:
                 paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+
+def _move_table_captions_below(document) -> None:
+    """Pindahkan caption tabel ("Tabel N ...") ke BAWAH tabelnya — posisi yang
+    dipakai dokumen acuan. Pandoc selalu menulis caption SEBELUM tabel dan tidak
+    menyediakan tombol untuk memindahnya, jadi posisinya direbut sesudah docx
+    jadi — mekanisme yang sama dengan _center_table_headers.
+
+    Dua hal yang menjaga caption tidak terpisah dari tabelnya di batas halaman:
+    (1) style "Table Caption" TIDAK lagi membawa keepNext (dulu perlu, saat
+    caption di atas — sekarang malah mengikat caption ke paragraf SESUDAHNYA,
+    arah yang salah); (2) seluruh paragraf di BARIS TERAKHIR tabel diberi
+    keepNext di sini — trik standar Word untuk mengikat tabel ke paragraf yang
+    mengikutinya.
+    """
+    body = document.element.body
+    for table in body.findall(qn("w:tbl")):
+        caption = table.getprevious()
+        if caption is None or caption.tag != qn("w:p"):
+            continue
+        ppr = caption.find(qn("w:pPr"))
+        style = ppr.find(qn("w:pStyle")) if ppr is not None else None
+        if style is None or style.get(qn("w:val")) != "TableCaption":
+            continue
+        table.addnext(caption)
+        rows = table.findall(qn("w:tr"))
+        if not rows:
+            continue
+        for paragraph in rows[-1].iter(qn("w:p")):
+            p_pr = paragraph.find(qn("w:pPr"))
+            if p_pr is None:
+                p_pr = OxmlElement("w:pPr")
+                paragraph.insert(0, p_pr)
+            if p_pr.find(qn("w:keepNext")) is None:
+                keep_next = OxmlElement("w:keepNext")
+                p_style = p_pr.find(qn("w:pStyle"))
+                # urutan schema pPr: pStyle dulu, baru keepNext
+                if p_style is not None:
+                    p_style.addnext(keep_next)
+                else:
+                    p_pr.insert(0, keep_next)
+
+
+def _postprocess_docx(docx_path: str) -> None:
+    """Sentuhan yang tidak bisa dititipkan ke reference.docx maupun Pandoc —
+    satu kali buka-simpan untuk semuanya."""
+    document = docx.Document(docx_path)
+    _center_table_headers(document)
+    _move_table_captions_below(document)
     document.save(docx_path)
 
 
@@ -471,5 +521,5 @@ def generate_docx(
             "`python -c \"import pypandoc; pypandoc.download_pandoc()\"` sekali."
         ) from e
 
-    _center_table_headers(str(output_path))
+    _postprocess_docx(str(output_path))
     return str(output_path)

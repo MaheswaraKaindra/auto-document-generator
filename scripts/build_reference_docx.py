@@ -318,11 +318,15 @@ def build(destination: Path = OUTPUT) -> Path:
              page_break_before=True)
 
     # Caption: kecil, miring, biru-kelabu, di TENGAH — persis caption acuan.
-    # `keep_next` supaya caption tabel tidak pernah terpisah dari tabelnya.
+    # Table Caption sengaja TANPA keep_next: caption tabel kini DI BAWAH
+    # tabelnya (dipindah _move_table_captions_below di compiler, meniru acuan),
+    # jadi keep_next malah mengikatnya ke paragraf sesudahnya — arah yang salah.
+    # Yang menjaga caption menempel tabelnya: keepNext di baris terakhir tabel,
+    # dipasang compiler saat memindahkan.
     _restyle(styles["Image Caption"], size=9, italic=True, align="center",
              color=CAPTION_INK, before=6, after=14)
     _restyle(styles["Table Caption"], size=9, italic=True, align="center",
-             color=CAPTION_INK, before=4, after=14, keep_next=True)
+             color=CAPTION_INK, before=4, after=14)
 
     # Body JUSTIFIED (rata kiri-kanan) dengan spasi baris longgar — dua penanda
     # dokumen resmi yang paling terlihat saat disandingkan dengan acuan.

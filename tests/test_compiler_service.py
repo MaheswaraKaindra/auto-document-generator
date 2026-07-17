@@ -442,6 +442,31 @@ def test_front_matter_tables_are_not_captioned(mock_plantuml_ok):
     assert captions.startswith("Tabel 1 Informasi Role Pengguna")
 
 
+def test_table_captions_sit_below_their_tables(mock_plantuml_ok):
+    """Dokumen acuan menaruh caption tabel DI BAWAH tabelnya; Pandoc selalu
+    menulisnya di atas dan tidak menyediakan tombol untuk memindah — jadi
+    compiler memindahkannya lewat post-process (_move_table_captions_below).
+    Yang dikunci: SETIAP paragraf ber-style TableCaption harus tepat SESUDAH
+    sebuah tabel di urutan body."""
+    data = _load_fixture("document_content_sdd.json")
+
+    output_path = compiler_service.generate_docx("SDD", data)
+
+    body = Document(output_path).element.body
+    captions = []
+    for paragraph in body.findall(qn("w:p")):
+        ppr = paragraph.find(qn("w:pPr"))
+        style = ppr.find(qn("w:pStyle")) if ppr is not None else None
+        if style is not None and style.get(qn("w:val")) == "TableCaption":
+            captions.append(paragraph)
+    assert len(captions) == 7, "jumlah caption tabel tidak sesuai fixture"
+    for caption in captions:
+        previous = caption.getprevious()
+        assert previous is not None and previous.tag == qn("w:tbl"), (
+            f"caption {caption.xpath('string(.)')!r} tidak berada tepat di bawah tabel"
+        )
+
+
 def test_docx_carries_indonesian_list_headings(mock_plantuml_ok):
     """Ketiga judul daftar SDD kini teks template (blok openxml ber-style
     TOCHeading) — bukan lagi hasil `lang=id`/`toc-title`, karena field-nya
