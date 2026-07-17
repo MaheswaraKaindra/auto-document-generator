@@ -32,10 +32,13 @@ netral-bahasa DAN mengungkap bug Nuxt (file `[slug].vue` merusak PlantUML,
 mematikan generate premco lewat diagram yang tak dipakainya) — diperbaiki.
 Lalu **bug default Nuxt diperbaiki di akar** (sanitasi kurung route-param di
 PlantUML, deterministik & $0) — default kini render component_integration
-MyPertamina dengan benar (pemetaan FE↔BE utuh, PROBE18). **218 test hijau**.
-Commit: `6b6dd12` (font+tabel), `663a594` (docs), `1330f9b` (Remark), `9c55248`
-(premco lewati diagram tak dipakai), `7367382` (docs MyPertamina), `0f0866c`
-(sanitasi Nuxt) + commit dokumen ini.
+MyPertamina dengan benar (pemetaan FE↔BE utuh, PROBE18). Fix itu **divalidasi 3
+repo / 2 framework** (MyPertamina + nuxt/movies Nuxt `.vue`, taxonomy Next.js
+`.tsx`) — repo kedua mengungkap gap overfit, repo ketiga lolos tanpa perubahan
+kode; ketiganya $0. **218 test hijau**. Commit: `6b6dd12` (font+tabel), `663a594`
+(docs), `1330f9b` (Remark), `9c55248` (premco lewati diagram tak dipakai),
+`7367382` (docs MyPertamina), `0f0866c` (sanitasi Nuxt), `6c66d6c` (kurung
+berimbang nuxt/movies), `93c6264`+`3d3861d` (validasi + docs) + commit ini.
 
 ## Yang diselesaikan (semuanya presentasi, nol pipeline/Contract/LLM)
 
@@ -78,13 +81,18 @@ Commit: `6b6dd12` (font+tabel), `663a594` (docs), `1330f9b` (Remark), `9c55248`
 **Perbandingan 16 bab SUDAH dilakukan (tak ada gap ketujuh). premco praktis
 demo-ready. Bug Nuxt default SUDAH diperbaiki. Kandidat berikutnya:**
 
-1. ~~**Bug `default` crash pada Nuxt/Next**~~ — **SELESAI & DIKERASKAN 2 repo**:
-   `_sanitize_route_param_brackets` di `_normalize_plantuml` melepas kurung
-   route-param sebelum plantuml.jar (deterministik, $0, diagram TETAP dirender
-   bukan placeholder). Diverifikasi MyPertamina (PROBE18) LALU nuxt/movies —
-   yang langsung mengungkap gap overfit (param jadi segmen pertama `[[type]/...`
-   memakan kurung komponen); diperbaiki dgn cocok kurung berimbang, double dulu
-   (PROBE19). **Pelajaran: 1 repo = fix jalan, 2 repo = fix general.** Sisa yang
+1. ~~**Bug `default` crash pada Nuxt/Next**~~ — **SELESAI & DIVALIDASI 3 repo, 2
+   framework**: `_sanitize_route_param_brackets` di `_normalize_plantuml` melepas
+   kurung route-param sebelum plantuml.jar (deterministik, $0, diagram TETAP
+   dirender bukan placeholder). (1) MyPertamina (Nuxt `.vue`, PROBE18) — fix
+   pertama. (2) nuxt/movies (Nuxt `.vue`) — mengungkap gap overfit (param jadi
+   segmen pertama `[[type]/...` memakan kurung komponen); diperbaiki dgn cocok
+   kurung berimbang, double dulu (PROBE19). (3) shadcn-ui/taxonomy (**Next.js
+   `.tsx`, App Router**) — lolos TANPA perubahan kode; route group `(marketing)`
+   (kurung BIASA) dipertahankan sementara kurung siku dilepas; `[[...slug]]` &
+   `[...nextauth]` bersih. **Pelajaran: 1 repo = fix jalan, 2 repo = fix general,
+   3 repo (framework lain) = fix tak sempit ke satu ekosistem.** Uji ketiganya
+   $0 (tarik nama file asli + render sintetis plantuml.jar, tanpa LLM). Sisa yang
    MUNGKIN suatu saat: resiliensi per-diagram (placeholder untuk PlantUML rusak
    lewat jalur lain) — sengaja belum, menjaga filosofi gagal-berisik.
 2. **3 gap Contract B — SEBAGIAN BESAR DIBATALKAN setelah dibuka** (bukan lagi
