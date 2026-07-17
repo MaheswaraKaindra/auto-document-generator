@@ -722,6 +722,88 @@ def test_pandoc_styles_survive_the_reference_doc(mock_plantuml_ok):
     assert len(_captions(output_path, "Table Caption")) == 7
 
 
+# --- Logo header (slot upload di form) -----------------------------------------
+
+
+def _header_xmls(output_path: str) -> list[str]:
+    import zipfile
+
+    package = zipfile.ZipFile(output_path)
+    return [
+        package.read(name).decode("utf-8", "ignore")
+        for name in package.namelist()
+        if name.startswith("word/header")and name.endswith(".xml")
+    ]
+
+
+def test_decode_logo_accepts_png_with_or_without_data_url_prefix():
+    """FileReader.readAsDataURL di browser menghasilkan prefiks
+    "data:image/png;base64," — backend harus menoleransinya, bukan memaksa
+    frontend membersihkan."""
+    import base64
+
+    png = _white_png(400, 200)
+    plain = base64.b64encode(png).decode()
+
+    assert compiler_service.decode_logo(plain) == png
+    assert compiler_service.decode_logo(f"data:image/png;base64,{plain}") == png
+
+
+def test_decode_logo_rejects_garbage_before_any_paid_work():
+    """decode_logo dipanggil SINKRON di endpoint: file rusak harus jadi
+    ValueError yang jelas (-> 422) sekarang, bukan job gagal 3 menit kemudian
+    SETELAH membayar LLM."""
+    import base64
+
+    with pytest.raises(ValueError, match="base64"):
+        compiler_service.decode_logo("!!!bukan-base64!!!")
+    with pytest.raises(ValueError, match="gambar"):
+        compiler_service.decode_logo(base64.b64encode(b"cuma teks biasa").decode())
+    oversized = base64.b64encode(b"\x00" * (2 * 1024 * 1024 + 1)).decode()
+    with pytest.raises(ValueError, match="2 MB"):
+        compiler_service.decode_logo(oversized)
+
+
+def test_logo_lands_in_the_page_header(mock_plantuml_ok):
+    """Logo dari form harus mendarat sebagai GAMBAR di header dokumen (posisi
+    logo dokumen acuan: kanan atas tiap halaman), dan tanpa logo header harus
+    tetap bersih — bukan menyisakan paragraf/gambar kosong."""
+    data = _load_fixture("document_content_sdd.json")
+
+    with_logo = compiler_service.generate_docx(
+        "SDD", data, logo_bytes=_white_png(400, 200)
+    )
+    assert any("<w:drawing" in xml for xml in _header_xmls(with_logo)), (
+        "logo tidak ditemukan di header mana pun"
+    )
+
+    without_logo = compiler_service.generate_docx("SDD", data)
+    assert not any("<w:drawing" in xml for xml in _header_xmls(without_logo)), (
+        "header dokumen tanpa logo seharusnya tidak membawa gambar"
+    )
+
+
+def test_wide_banner_logo_is_capped_by_width(mock_plantuml_ok):
+    """Logo pita 10:1 yang dipaksa setinggi 0,45 inci jadi selebar 4,5 inci —
+    menabrak area teks. Yang lebar dibatasi LEBARNYA (2,4 inci), yang normal
+    dibatasi TINGGINYA (0,45 inci) — aturan yang sama dengan _image_attr."""
+    data = _load_fixture("document_content_sdd.json")
+    emu_per_inch = 914400
+
+    def _extents(logo):
+        path = compiler_service.generate_docx("SDD", data, logo_bytes=logo)
+        for xml in _header_xmls(path):
+            match = re.search(r'<wp:extent cx="(\d+)" cy="(\d+)"', xml)
+            if match:
+                return int(match.group(1)) / emu_per_inch, int(match.group(2)) / emu_per_inch
+        raise AssertionError("tidak ada gambar di header")
+
+    width, _ = _extents(_white_png(4000, 200))  # pita 20:1
+    assert width == pytest.approx(2.4, abs=0.01)
+    _, height = _extents(_white_png(400, 200))  # logo 2:1 biasa
+    assert height == pytest.approx(0.45, abs=0.01)
+
+
 # --- Kualitas visual ----------------------------------------------------------
 #
 # Semua di bawah ini gagal SUNYI: dokumennya tetap jadi, tetap lengkap, tetap

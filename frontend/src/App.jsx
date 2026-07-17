@@ -163,12 +163,20 @@ function buildMetadataPayload(metadata, documentType) {
   return Object.keys(filled).length > 0 ? filled : null
 }
 
+// Batas yang sama dengan backend (decode_logo): tolak di browser supaya
+// penggunanya tahu detik itu juga, bukan setelah request bolak-balik.
+const LOGO_MAX_BYTES = 2 * 1024 * 1024
+
 function App() {
   const [projectName, setProjectName] = useState('')
   const [documentType, setDocumentType] = useState('SDD')
   const [githubToken, setGithubToken] = useState('')
   const [repositories, setRepositories] = useState([emptyRepo()])
   const [metadata, setMetadata] = useState({})
+  // { name, base64 } | null — base64-nya data URL utuh; backend menoleransi
+  // (dan membuang) prefiks "data:image/...;base64," sendiri.
+  const [logo, setLogo] = useState(null)
+  const [logoError, setLogoError] = useState('')
 
   // Satu run = satu mesin status kecil, BUKAN satu string:
   //   phase   : idle | running | done | failed
@@ -201,6 +209,28 @@ function App() {
   const updateMetadata = (key, value) =>
     setMetadata((prev) => ({ ...prev, [key]: value }))
 
+  const handleLogoChange = (event) => {
+    const file = event.target.files?.[0]
+    setLogoError('')
+    if (!file) {
+      setLogo(null)
+      return
+    }
+    if (file.size > LOGO_MAX_BYTES) {
+      setLogo(null)
+      event.target.value = ''
+      setLogoError(
+        `File ${(file.size / 1024 / 1024).toFixed(1)} MB — maksimum 2 MB. ` +
+          'Logo header tidak butuh resolusi besar; ekspor versi kecilnya.',
+      )
+      return
+    }
+    const reader = new FileReader()
+    reader.onload = () => setLogo({ name: file.name, base64: reader.result })
+    reader.onerror = () => setLogoError('Gagal membaca file logo — coba pilih ulang.')
+    reader.readAsDataURL(file)
+  }
+
   const handleSubmit = async (event) => {
     event.preventDefault()
     setPhase('running')
@@ -219,6 +249,7 @@ function App() {
         branch: repo.branch || null,
       })),
       document_metadata: buildMetadataPayload(metadata, documentType),
+      logo_base64: logo?.base64 || null,
     }
 
     try {
@@ -367,6 +398,27 @@ function App() {
               )}{' '}
               Keduanya dibaca dari repo yang sama — pilih salah satu, jalankan lagi untuk yang
               lain.
+            </p>
+          </div>
+
+          <div className="field">
+            <label>
+              Logo Perusahaan (opsional)
+              <input type="file" accept="image/png,image/jpeg" onChange={handleLogoChange} />
+            </label>
+            {logo && (
+              <p className="hint">
+                <strong>{logo.name}</strong> akan dipasang di header.{' '}
+                <button type="button" className="remove-repo-btn" onClick={() => setLogo(null)}>
+                  ✕
+                </button>
+              </p>
+            )}
+            {logoError && <p className="hint">{logoError}</p>}
+            <p className="hint">
+              PNG/JPEG, maks 2 MB. Muncul di <strong>kanan atas setiap halaman</strong> dokumen —
+              seperti kop dokumen resmi perusahaan. Kosongkan kalau tidak perlu; dokumennya tetap
+              utuh tanpa logo.
             </p>
           </div>
         </section>

@@ -20,7 +20,7 @@ from app.domain.exceptions import (
 )
 from app.domain.models import GithubIngestRequest, SourceType
 from app.services import job_store
-from app.services.compiler_service import generate_docx
+from app.services.compiler_service import decode_logo, generate_docx
 from app.services.ingestion_service import IngestionService
 from app.services.llm_service import DocumentContent, LLMService
 from app.services.parser_service import build_parsed_repo_context
@@ -83,7 +83,9 @@ def generate_uat_from_content(body: DocumentContent):
     return FileResponse(output_path, media_type=_DOCX_MEDIA_TYPE, filename=_FILENAME_BY_TYPE["UAT"])
 
 
-def _run_generation(job_id: str, body: GenerateDocumentRequest) -> None:
+def _run_generation(
+    job_id: str, body: GenerateDocumentRequest, logo_bytes: bytes | None = None
+) -> None:
     """Pipeline penuh, dijalankan di LATAR BELAKANG: ingest -> parse (Peran 1)
     -> generate content (Peran 2) -> render & export docx (Peran 3).
 
@@ -100,7 +102,10 @@ def _run_generation(job_id: str, body: GenerateDocumentRequest) -> None:
     job_store.mark_running(job_id)
     try:
         output_path = _generate_document(
-            doc_type, body, on_progress=lambda text: job_store.set_progress(job_id, text)
+            doc_type,
+            body,
+            logo_bytes=logo_bytes,
+            on_progress=lambda text: job_store.set_progress(job_id, text),
         )
     except SourceProviderError as e:
         job_store.mark_failed(job_id, str(e), 422)
@@ -153,8 +158,18 @@ def generate_document_full_pipeline(
         # ditolak sekarang, bukan jadi job yang gagal 3 menit kemudian.
         raise HTTPException(status_code=422, detail="document_type harus 'SDD' atau 'UAT'")
 
+    # Prinsip yang sama untuk logo: decode + validasi gambar itu murah, jadi
+    # file yang rusak/kebesaran ditolak 422 di sini — SEBELUM job dibuat dan
+    # jauh sebelum ada panggilan LLM berbayar.
+    logo_bytes = None
+    if body.logo_base64:
+        try:
+            logo_bytes = decode_logo(body.logo_base64)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e)) from e
+
     job_id = job_store.create_job(document_type=doc_type, project_name=body.project_name)
-    background_tasks.add_task(_run_generation, job_id, body)
+    background_tasks.add_task(_run_generation, job_id, body, logo_bytes)
     return {
         "job_id": job_id,
         "status": job_store.STATUS_QUEUED,
@@ -227,6 +242,7 @@ def _describe_parsed(parsed_repo_context: dict) -> str:
 def _generate_document(
     doc_type: str,
     body: GenerateDocumentRequest,
+    logo_bytes: bytes | None = None,
     on_progress: Callable[[str], None] = lambda _: None,
 ) -> str:
     """Pipeline murni: tidak tahu-menahu soal job maupun HTTP.
@@ -281,6 +297,7 @@ def _generate_document(
             document_metadata=(
                 body.document_metadata.model_dump() if body.document_metadata else None
             ),
+            logo_bytes=logo_bytes,
         )
     except RuntimeError as e:
         # compiler_service melempar RuntimeError POLOS untuk "pandoc tidak ada".

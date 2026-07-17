@@ -221,6 +221,55 @@ def test_form_metadata_survives_the_whole_async_round_trip(client, mock_plantuml
     assert "Divisi Operasional" in text
 
 
+def test_broken_logo_is_rejected_synchronously_with_422(client):
+    """Logo rusak harus ditolak SAAT POST — sebelum job dibuat, jauh sebelum
+    panggilan LLM berbayar. Prinsip yang sama dengan validasi document_type."""
+    import base64
+
+    response = client.post(
+        "/documents/generate",
+        json={
+            "document_type": "SDD",
+            "repositories": [],
+            "logo_base64": base64.b64encode(b"bukan gambar").decode(),
+        },
+    )
+
+    assert response.status_code == 422
+    assert "gambar" in response.json()["detail"].lower()
+
+
+def test_logo_survives_the_whole_async_round_trip(client, mock_plantuml_ok, tmp_path):
+    """Logo dari form harus menembus POST -> background task -> compiler -> DB ->
+    dan keluar sebagai gambar di HEADER docx yang diunduh. Dikirim sebagai data
+    URL persis seperti yang dihasilkan FileReader di browser."""
+    import base64
+    import zipfile
+
+    content = _load_fixture("document_content_sdd.json")
+    logo_data_url = "data:image/png;base64," + base64.b64encode(_white_png(400, 200)).decode()
+
+    with patch.object(
+        routes_document._llm_service, "generate_document_content", return_value=content
+    ):
+        job = _generate(client, document_type="SDD", logo_base64=logo_data_url)
+
+    assert job["status"] == "done"
+    download = client.get(job["download_url"])
+    assert download.status_code == 200
+    path = tmp_path / "logo.docx"
+    path.write_bytes(download.content)
+    package = zipfile.ZipFile(path)
+    header_xmls = [
+        package.read(n).decode("utf-8", "ignore")
+        for n in package.namelist()
+        if n.startswith("word/header") and n.endswith(".xml")
+    ]
+    assert any("<w:drawing" in xml for xml in header_xmls), (
+        "logo tidak sampai ke header dokumen yang diunduh"
+    )
+
+
 def test_every_meta_field_in_templates_exists_in_schema():
     """Penjaga untuk sisi buruk desain fail-open di _MetadataDict.__missing__:
     field yang tidak dikenal TIDAK error, cuma diam-diam keluar sebagai

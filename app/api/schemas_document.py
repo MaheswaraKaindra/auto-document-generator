@@ -68,3 +68,10 @@ class GenerateDocumentRequest(BaseModel):
     github_token: Optional[str] = None
     repositories: list[GithubRepoIn]
     document_metadata: Optional[DocumentMetadata] = None
+    # Logo perusahaan (PNG/JPEG, base64) — muncul di header TIAP halaman dokumen,
+    # seperti dokumen acuan enterprise. SENGAJA bukan field DocumentMetadata:
+    # kontrak metadata itu "string yang jatuh ke penanda (diisi manual) kalau
+    # kosong", sementara logo itu biner yang jatuh ke "tanpa header" — perilaku
+    # kosongnya beda, jadi jangan dicampur. Divalidasi sinkron di endpoint
+    # (decode_logo) supaya file rusak ditolak 422 SEBELUM ada kerja berbayar.
+    logo_base64: Optional[str] = None

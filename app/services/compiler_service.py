@@ -10,6 +10,8 @@ Tidak menyentuh/menduplikasi logika Peran 1 (parser_service.py) atau
 Peran 2 (llm_service.py) — modul ini murni konsumen dari Contract B.
 """
 
+import base64
+import io
 import subprocess
 import tempfile
 import uuid
@@ -24,7 +26,7 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Inches
 from jinja2 import Environment, FileSystemLoader
-from PIL import Image
+from PIL import Image, UnidentifiedImageError
 
 from app.core import config
 from app.domain.exceptions import DiagramRenderError
@@ -95,6 +97,51 @@ _PAGE_HEIGHT_IN = 8.0
 _DIAGRAM_DISPLAY_DPI = 360
 
 _MANUAL_PLACEHOLDER = "*(diisi manual)*"
+
+# Logo di header: tinggi standar meniru logo dokumen acuan (~0,45 inci di kanan
+# atas tiap halaman). Logo pita yang sangat lebar dibatasi LEBARNYA supaya tidak
+# menabrak area teks — aturan yang sama dengan _image_attr: batasi sisi yang
+# lebih dulu mentok.
+_LOGO_HEIGHT_IN = 0.45
+_LOGO_MAX_WIDTH_IN = 2.4
+
+# Batas ukuran file logo. Logo perusahaan normal itu puluhan KB; 2 MB sudah
+# sangat longgar, dan batasnya ada supaya field base64 di body JSON tidak bisa
+# dipakai mengirim payload raksasa.
+_LOGO_MAX_BYTES = 2 * 1024 * 1024
+
+
+def decode_logo(logo_base64: str) -> bytes:
+    """Base64 dari form -> bytes gambar yang SUDAH tervalidasi.
+
+    Dipanggil endpoint secara SINKRON saat POST diterima: logo yang rusak harus
+    ditolak 422 detik itu juga — bukan jadi job yang gagal tiga menit kemudian
+    SETELAH membayar LLM. Prinsip yang sama dengan validasi document_type.
+
+    Pillow yang memvalidasi isinya, bukan tebakan ekstensi/mime dari klien —
+    pelajaran lama repo ini: header JPEG yang dibaca sebagai PNG menghasilkan
+    angka ngawur tanpa error.
+    """
+    payload = logo_base64.strip()
+    # FileReader.readAsDataURL di browser menghasilkan "data:image/png;base64,..."
+    # — buang prefiksnya kalau ada, supaya frontend tidak wajib membersihkannya.
+    if payload.startswith("data:"):
+        _, _, payload = payload.partition(",")
+    try:
+        # binascii.Error (yang dilempar b64decode) adalah subclass ValueError.
+        raw = base64.b64decode(payload, validate=True)
+    except ValueError as e:
+        raise ValueError("Logo bukan base64 yang valid.") from e
+    if len(raw) > _LOGO_MAX_BYTES:
+        raise ValueError(
+            f"Logo terlalu besar ({len(raw) / 1024 / 1024:.1f} MB) — maksimum 2 MB."
+        )
+    try:
+        with Image.open(io.BytesIO(raw)) as image:
+            image.verify()
+    except (UnidentifiedImageError, OSError) as e:
+        raise ValueError("Logo bukan file gambar yang dikenali (pakai PNG atau JPEG).") from e
+    return raw
 
 
 class _MetadataDict(dict):
@@ -487,13 +534,44 @@ def _heighten_signature_rows(document) -> None:
             _set_keep_next(label)
 
 
-def _postprocess_docx(docx_path: str) -> None:
+def _add_header_logo(document, logo_bytes: bytes) -> None:
+    """Tanam logo di kanan atas header SETIAP halaman — posisi logo dokumen
+    acuan enterprise.
+
+    Kenapa di post-process, bukan di reference.docx: reference.docx itu statis
+    dan dibangun sekali oleh script, sementara logo datang PER REQUEST dari
+    form. Satu-satunya tempat mempertemukan keduanya adalah sesudah docx jadi.
+
+    Ukuran tampil dihitung dari piksel aslinya: tinggi standar 0,45 inci, tapi
+    logo pita yang sangat lebar dibatasi LEBARNYA — logo 10:1 yang dipaksa
+    setinggi 0,45 inci berarti selebar 4,5 inci, menabrak area teks.
+    """
+    with Image.open(io.BytesIO(logo_bytes)) as image:
+        width_px, height_px = image.size
+    if width_px / height_px > _LOGO_MAX_WIDTH_IN / _LOGO_HEIGHT_IN:
+        size = {"width": Inches(_LOGO_MAX_WIDTH_IN)}
+    else:
+        size = {"height": Inches(_LOGO_HEIGHT_IN)}
+
+    for section in document.sections:
+        header = section.header
+        # Dokumen dari Pandoc tidak punya header part sama sekali — akses lewat
+        # is_linked_to_previous membuat part kosongnya dulu.
+        header.is_linked_to_previous = False
+        paragraph = header.paragraphs[0] if header.paragraphs else header.add_paragraph()
+        paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+        paragraph.add_run().add_picture(io.BytesIO(logo_bytes), **size)
+
+
+def _postprocess_docx(docx_path: str, logo_bytes: bytes | None = None) -> None:
     """Sentuhan yang tidak bisa dititipkan ke reference.docx maupun Pandoc —
     satu kali buka-simpan untuk semuanya."""
     document = docx.Document(docx_path)
     _center_table_headers(document)
     _move_table_captions_below(document)
     _heighten_signature_rows(document)
+    if logo_bytes:
+        _add_header_logo(document, logo_bytes)
     document.save(docx_path)
 
 
@@ -512,6 +590,7 @@ def generate_docx(
     document_content: dict[str, Any],
     project_name: str = "",
     document_metadata: dict[str, Any] | None = None,
+    logo_bytes: bytes | None = None,
 ) -> str:
     """
     Entry point utama Peran 3.
@@ -523,6 +602,9 @@ def generate_docx(
     document_metadata: isian manusia dari form (nomor RFC, demografi, dst).
                        None/kosong = template pakai penanda *(diisi manual)*
                        seperti sebelum form ini ada.
+    logo_bytes: bytes gambar logo yang SUDAH tervalidasi (lihat decode_logo) —
+                ditanam di header tiap halaman. None = tanpa header logo,
+                persis perilaku sebelum fitur ini ada.
     Mengembalikan path file .docx yang sudah jadi.
     """
     normalized_type = document_type.upper()
@@ -564,5 +646,5 @@ def generate_docx(
             "`python -c \"import pypandoc; pypandoc.download_pandoc()\"` sekali."
         ) from e
 
-    _postprocess_docx(str(output_path))
+    _postprocess_docx(str(output_path), logo_bytes)
     return str(output_path)
