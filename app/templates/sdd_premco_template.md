@@ -167,12 +167,19 @@ Tanda tangan dibubuhkan pada dokumen cetak setelah dokumen ini disetujui — bag
 
 : Tabel 2 Informasi Demografi Aplikasi
 
+{# Kolom Remark ditambahkan supaya 4-kolom seperti dokumen asli (di sana kolom
+   Remark memang mayoritas kosong — cuma terisi di 2 dari 7 baris). SATU tabel,
+   BUKAN dua: dokumen asli memecah jadi "Server Side 1" (backend/runtime) &
+   "Server Side 2" (kompatibilitas Browser/Android), tapi tabel kedua itu ISINYA
+   TIDAK DAPAT diturunkan dari kode — kompatibilitas browser/OS itu keputusan
+   deployment, bukan sesuatu yang ada di source. Aturan V1 (mengisi, bukan
+   mengarang; slot tanpa data DI-DROP) → tabel kedua tidak dibuat. #}
 ## System Requirement
 
-| No. | System Requirement | Uraian |
-|:---:|----------|--------------------|
+| No. | System Requirement | Uraian | Remark |
+|:---:|----------|------------------|-----|
 {% for requirement in system_requirements -%}
-| {{ loop.index }} | {{ requirement.name }} | {{ requirement.detail }} |
+| {{ loop.index }} | {{ requirement.name }} | {{ requirement.detail }} | |
 {% endfor %}
 
 : Tabel 3 System Requirement
