@@ -467,6 +467,37 @@ def test_table_captions_sit_below_their_tables(mock_plantuml_ok):
         )
 
 
+def test_signature_rows_are_tall_enough_to_sign(mock_plantuml_ok):
+    """Dokumen acuan memberi kotak tanda tangan ±4 cm untuk tanda tangan BASAH;
+    baris tabel biasa cuma setinggi satu baris teks — tidak bisa ditandatangani.
+    Baris kosong tabel ber-kolom "Tanda Tangan" harus minimal 1 inci, dan tabel
+    lain tidak boleh ikut meninggi."""
+    from docx.shared import Inches
+
+    data = _load_fixture("document_content_sdd.json")
+
+    document = Document(compiler_service.generate_docx("SDD", data))
+
+    # document.tables membuat wrapper BARU tiap diakses (perbandingan `in`
+    # selalu meleset) — klasifikasikan sekali jalan dari satu daftar.
+    tables = list(document.tables)
+    signature_tables = [
+        t for t in tables
+        if t.rows and "Tanda Tangan" in {c.text.strip() for c in t.rows[0].cells}
+    ]
+    other_tables = [t for t in tables if all(t is not s for s in signature_tables)]
+    assert len(signature_tables) == 2, "tabel Perwakilan User & Pengembang tidak ketemu"
+    for table in signature_tables:
+        for row in list(table.rows)[1:]:
+            assert row.height is not None and row.height >= Inches(1), (
+                "baris tanda tangan tidak cukup tinggi untuk ditandatangani"
+            )
+    assert all(
+        row.height is None or row.height < Inches(1)
+        for t in other_tables for row in t.rows
+    ), "tabel non-tanda-tangan ikut meninggi"
+
+
 def test_docx_carries_indonesian_list_headings(mock_plantuml_ok):
     """Ketiga judul daftar SDD kini teks template (blok openxml ber-style
     TOCHeading) — bukan lagi hasil `lang=id`/`toc-title`, karena field-nya

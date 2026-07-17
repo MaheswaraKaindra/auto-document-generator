@@ -34,7 +34,8 @@ bukan membaca XML. 196 test hijau (191+5). Biaya sesi: **$0**.
 | 3 | **Tabel** | Padding sel naik (80/115 twip), tinggi baris minimum, vAlign center, `cantSplit` (baris tak lagi terbelah antar halaman), header hitam dengan teks putih **di tengah**, lebar kolom proporsional dari rasio dash separator (`--columns=20`). |
 | 4 | **Diagram** | dpi 200→300, `-DPLANTUML_LIMIT_SIZE=16384` (PlantUML memotong diam-diam >4096px), `_image_attr` berhenti meng-upscale (ukuran tampil = piksel/360 → teks diagram konsisten ~9pt antar diagram, tajam). |
 | 5 | **Footer & cover** | Footer = judul dokumen miring 9pt kiri + nomor halaman kanan (field kompleks, format selamat dari update Word). Cover = judul + 3 tabel identitas, lega; Tim & Peran pindah ke hal. 2 (di cover dia terbelah jelek — diukur dari probe visual). |
-| 6 | **Post-process python-docx** (`_postprocess_docx`) | Header tabel dirata-tengah (satu-satunya jalan; lihat "Kejadian") + **caption tabel dipindah ke BAWAH tabelnya** seperti acuan (permintaan lanjutan pemilik; Pandoc memakunya di atas). Caption dijaga menempel tabel lewat keepNext di baris terakhir tabel. Probe: `out/PROBE10_caption_bawah_esteler.docx`. |
+| 6 | **Post-process python-docx** (`_postprocess_docx`) | Header tabel dirata-tengah (satu-satunya jalan; lihat "Kejadian") + **caption tabel dipindah ke BAWAH tabelnya** seperti acuan (permintaan lanjutan pemilik; Pandoc memakunya di atas) + **baris tanda tangan ≥1 inci** dan bloknya diikat utuh se-halaman. Probe terakhir: `out/PROBE11_ttd_tinggi_esteler.docx`. |
+| 7 | **Perbandingan berdampingan PREMCO×esteler, 12 pasang halaman** | Dikerjakan sendiri (komposit kiri-kanan per bagian, `pair_*.png` di scratchpad). Verdict: grammar visual setara; gap fungsional tersisa cuma tinggi TTD (→ langsung diperbaiki, baris #6) dan logo (tidak punya aset). Bonus: Daftar Gambar PREMCO terlihat rusak (semua entri menyebut CORETAD) bersanding dengan punya kita yang benar — bukti visual klaim jualan. |
 
 ## Kejadian yang layak diingat (jebakan Word/Pandoc, semua DIPROBE)
 
@@ -60,9 +61,10 @@ bukan membaca XML. 196 test hijau (191+5). Biaya sesi: **$0**.
 
 ## Kalau melanjutkan besok, mulai dari sini
 
-1. **Minta pemilik buka `scripts/validation/out/PROBE10_caption_bawah_esteler.docx`**
-   (675 KB, yang terbaru — PROBE9 belum punya caption di bawah tabel) di Word,
-   sandingkan dengan PDF PREMCO halaman per halaman. Kalau
+1. **Minta pemilik buka `scripts/validation/out/PROBE11_ttd_tinggi_esteler.docx`**
+   (675 KB, yang terbaru — PROBE9/10 belum punya caption bawah + kotak TTD) di
+   Word. Perbandingan berdampingan dengan PREMCO sudah dikerjakan (baris #7);
+   yang tersisa untuk mata pemilik: setuju/tidak dengan verdict-nya. Kalau
    masih ada gap visual, itu daftar kerja berikutnya. (Logo perusahaan di header
    tiap halaman = satu-satunya elemen acuan yang sengaja tidak ditiru — kita
    tidak punya logo; kandidat: slot upload logo di form.)

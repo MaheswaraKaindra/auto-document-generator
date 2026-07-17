@@ -18,9 +18,11 @@ from typing import Any
 
 import docx
 import pypandoc
+from docx.enum.table import WD_ROW_HEIGHT_RULE
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
+from docx.shared import Inches
 from jinja2 import Environment, FileSystemLoader
 from PIL import Image
 
@@ -404,6 +406,21 @@ def _center_table_headers(document) -> None:
                 paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
 
+def _set_keep_next(paragraph_element) -> None:
+    """Pasang w:keepNext pada satu elemen w:p (urutan schema pPr: pStyle dulu)."""
+    p_pr = paragraph_element.find(qn("w:pPr"))
+    if p_pr is None:
+        p_pr = OxmlElement("w:pPr")
+        paragraph_element.insert(0, p_pr)
+    if p_pr.find(qn("w:keepNext")) is None:
+        keep_next = OxmlElement("w:keepNext")
+        p_style = p_pr.find(qn("w:pStyle"))
+        if p_style is not None:
+            p_style.addnext(keep_next)
+        else:
+            p_pr.insert(0, keep_next)
+
+
 def _move_table_captions_below(document) -> None:
     """Pindahkan caption tabel ("Tabel N ...") ke BAWAH tabelnya — posisi yang
     dipakai dokumen acuan. Pandoc selalu menulis caption SEBELUM tabel dan tidak
@@ -431,18 +448,43 @@ def _move_table_captions_below(document) -> None:
         if not rows:
             continue
         for paragraph in rows[-1].iter(qn("w:p")):
-            p_pr = paragraph.find(qn("w:pPr"))
-            if p_pr is None:
-                p_pr = OxmlElement("w:pPr")
-                paragraph.insert(0, p_pr)
-            if p_pr.find(qn("w:keepNext")) is None:
-                keep_next = OxmlElement("w:keepNext")
-                p_style = p_pr.find(qn("w:pStyle"))
-                # urutan schema pPr: pStyle dulu, baru keepNext
-                if p_style is not None:
-                    p_style.addnext(keep_next)
-                else:
-                    p_pr.insert(0, keep_next)
+            _set_keep_next(paragraph)
+
+
+def _heighten_signature_rows(document) -> None:
+    """Baris kosong tabel tanda tangan ditinggikan jadi ruang tanda tangan
+    basah (min. 1 inci) — di dokumen acuan kotak tanda tangannya setinggi
+    ±4 cm, sementara baris tabel biasa cuma setinggi satu baris teks.
+
+    Tabelnya dikenali dari isinya (ada sel header "Tanda Tangan"), bukan dari
+    posisinya: template boleh berpindah-pindah susunan tanpa merusak ini, dan
+    tabel lain tidak mungkin kena karena tidak ada yang memakai judul kolom itu.
+    Style tabel tidak bisa menolong di sini — tinggi baris dari style berlaku
+    ke SEMUA tabel, padahal yang butuh tinggi cuma baris tanda tangan.
+
+    Bloknya juga diikat supaya UTUH pindah halaman: begitu barisnya setinggi
+    1 inci, tabelnya gampang patah tepat sesudah header — label "Perwakilan X"
+    + header yatim di dasar halaman, isinya di halaman berikut (kejadian di
+    probe). keepNext dipasang di label pengantar + semua baris kecuali terakhir,
+    persis blok tanda tangan acuan yang selalu utuh satu halaman.
+    """
+    for table in document.tables:
+        if not table.rows:
+            continue
+        header_texts = {cell.text.strip() for cell in table.rows[0].cells}
+        if "Tanda Tangan" not in header_texts:
+            continue
+        rows = list(table.rows)
+        for row in rows[1:]:
+            row.height = Inches(1)
+            row.height_rule = WD_ROW_HEIGHT_RULE.AT_LEAST
+        for row in rows[:-1]:
+            for cell in row.cells:
+                for paragraph in cell.paragraphs:
+                    _set_keep_next(paragraph._p)
+        label = table._tbl.getprevious()
+        if label is not None and label.tag == qn("w:p"):
+            _set_keep_next(label)
 
 
 def _postprocess_docx(docx_path: str) -> None:
@@ -451,6 +493,7 @@ def _postprocess_docx(docx_path: str) -> None:
     document = docx.Document(docx_path)
     _center_table_headers(document)
     _move_table_captions_below(document)
+    _heighten_signature_rows(document)
     document.save(docx_path)
 
 
