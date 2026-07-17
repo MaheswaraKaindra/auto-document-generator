@@ -1,5 +1,6 @@
 import json
 import os
+import re
 from dataclasses import asdict, dataclass, field
 from typing import Optional
 
@@ -422,6 +423,78 @@ def _ts_endpoint_from_call(call_node) -> Optional[EndpointInfo]:
     return EndpointInfo(method=method_name.upper(), path=path)
 
 
+# --- Next.js App Router --------------------------------------------------------
+#
+# Konvensi App Router TIDAK memakai pemanggilan router (`app.get('/x', ...)`) yang
+# ditangkap _ts_endpoint_from_call. Handler-nya = NAMED EXPORT `GET/POST/...` di
+# file bernama `route.ts`, dan URL-nya datang dari STRUKTUR FOLDER, bukan argumen.
+# Ditemukan lewat tes end-to-end taxonomy (0 endpoint dari 130 file). Next.js
+# MEWAJIBKAN nama method huruf besar, jadi set ini huruf besar (beda dari
+# HTTP_METHODS yang huruf kecil untuk pencocokan call Express).
+APP_ROUTER_METHODS = {"GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"}
+# Hanya `route.*` yang PERSIS ini yang route (App Router mengabaikan `_route.ts`
+# ber-underscore, dan itu otomatis tak cocok di sini).
+_APP_ROUTER_ROUTE_FILES = {"route.ts", "route.js", "route.tsx", "route.jsx", "route.mjs"}
+
+
+def _app_router_path(file_path: str) -> Optional[str]:
+    """Turunkan URL route dari path file App Router; None kalau bukan (tak ada
+    segmen `app/`). Aturan Next.js: segmen sesudah `app/`, dengan route group
+    `(grup)` & parallel slot `@slot` DIBUANG (tak muncul di URL), dan dynamic
+    segment `[id]`/`[...slug]`/`[[...slug]]` jadi `:id`/`:slug`.
+
+    app/api/posts/[postId]/route.ts -> /api/posts/:postId
+    app/(marketing)/api/x/route.ts  -> /api/x
+    """
+    segments = file_path.replace("\\", "/").split("/")[:-1]  # buang nama file
+    if "app" not in segments:
+        return None
+    segments = segments[segments.index("app") + 1:]
+    out: list[str] = []
+    for seg in segments:
+        if seg.startswith("(") and seg.endswith(")"):
+            continue  # route group: pengelompokan folder, tak muncul di URL
+        if seg.startswith("@"):
+            continue  # parallel route slot
+        match = re.fullmatch(r"\[\[?\.{0,3}([\w-]+)\]\]?", seg)
+        out.append(f":{match.group(1)}" if match else seg)
+    return "/" + "/".join(out)
+
+
+def _ts_app_router_endpoints(root, file_name: str, file_path: str) -> list[EndpointInfo]:
+    """Endpoint gaya App Router (named export method di `route.ts`). Melengkapi
+    _ts_endpoint_from_call yang menangani gaya Express; keduanya bisa hidup
+    berdampingan di repo yang sama."""
+    if file_name not in _APP_ROUTER_ROUTE_FILES:
+        return []
+    path = _app_router_path(file_path)
+    if path is None:
+        return []
+    endpoints: list[EndpointInfo] = []
+    for child in root.named_children:
+        if child.type != "export_statement":
+            continue
+        decl = child.child_by_field_name("declaration")
+        if decl is None:
+            continue
+        names: list[str] = []
+        if decl.type == "function_declaration":
+            name_node = decl.child_by_field_name("name")
+            if name_node is not None:
+                names.append(name_node.text.decode())
+        elif decl.type in ("lexical_declaration", "variable_declaration"):
+            # export const GET = async (req) => {...}
+            for declarator in decl.named_children:
+                if declarator.type == "variable_declarator":
+                    name_node = declarator.child_by_field_name("name")
+                    if name_node is not None:
+                        names.append(name_node.text.decode())
+        for name in names:
+            if name.upper() in APP_ROUTER_METHODS:
+                endpoints.append(EndpointInfo(method=name.upper(), path=path))
+    return endpoints
+
+
 def _parse_ts_js(root) -> tuple[list[str], list[ClassInfo], list[FunctionInfo], list[EndpointInfo]]:
     dependencies: list[str] = []
     classes: list[ClassInfo] = []
@@ -788,6 +861,11 @@ def parse_file(file_name: str, file_path: str, content: str) -> Optional[FileMet
         dependencies, classes, functions, endpoints = _parse_python(tree.root_node)
     elif language in ("javascript", "typescript", "tsx"):
         dependencies, classes, functions, endpoints = _parse_ts_js(tree.root_node)
+        # App Router: konvensi tanpa pemanggilan router, path dari struktur folder
+        # — butuh file_path, jadi ditambahkan di sini (bukan di _parse_ts_js yang
+        # cuma punya AST). Digabung supaya _guess_file_type melihatnya juga
+        # (route.ts -> controller).
+        endpoints = endpoints + _ts_app_router_endpoints(tree.root_node, file_name, file_path)
     elif language == "java":
         dependencies, classes, functions, endpoints = _parse_java(tree.root_node)
     else:
