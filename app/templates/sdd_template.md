@@ -21,40 +21,59 @@
   (KeyError kalau hilang) dan render yang gagal melempar DiagramRenderError, jadi
   dokumen yang jadi pasti punya keempatnya — tidak ada Gambar 2 tanpa Gambar 1.
 
-  Tabel front-matter (Informasi Dokumen, Revision History, Timeline, Cost,
+  Tabel front-matter (identitas cover, Revision History, Timeline, Cost,
   tanda tangan) sengaja TIDAK di-caption: dokumen acuan pun tidak menomorinya —
   penomoran isinya dimulai dari tabel role pengguna di Deskripsi Aplikasi.
-#}
-## Informasi Dokumen
 
+  URUTAN HALAMAN meniru dokumen acuan: cover (judul + identitas), riwayat
+  revisi, persetujuan, LALU Daftar Isi/Gambar/Tabel, baru isi. Karena Pandoc
+  memaku --toc/--lof/--lot tepat sesudah judul (sebelum body), ketiga daftar
+  itu ditanam DI SINI sebagai field code Word (blok {=openxml} di bawah) dan
+  Word mengisinya saat dokumen dibuka (updateFields dibawa reference.docx).
+  Style "TOCHeading" membawa pageBreakBefore, jadi tiap daftar otomatis mulai
+  di halaman baru — tidak perlu page break manual di sekitarnya.
+
+  LEBAR KOLOM tabel diatur RASIO DASH pada separator row (dibaca Pandoc karena
+  --columns=30 di compiler): dash lebih banyak = kolom lebih lebar; `:---:` =
+  kolom rata tengah. Mengubah jumlah dash mengubah proporsi kolom — itu fitur,
+  bukan kebetulan.
+#}
 | Field | Isi |
-| --- | --- |
+|----------|--------------------|
 | Nama Project | {{ project_name }} |
 | No. Solution Design | {{ meta.solution_design_no }} |
 | RFC # | {{ meta.rfc_number }} |
 | Versi | {{ meta.version }} |
 | Document Classification | {{ meta.document_classification }} |
 
-{# Tiga tabel di bawah meniru halaman muka dokumen acuan (Fungsi/Kodifikasi,
+{# Tiga tabel di bawah meniru halaman cover dokumen acuan (Fungsi/Kodifikasi,
    Katalog Proses Bisnis, tabel tim). Sel-selnya sengaja KOSONG — bukan penanda
    "(diisi manual)" — karena nilainya tidak ditanyakan di form; konvensinya sama
    dengan Revision History yang di dokumen acuan pun berupa baris kosong.
    Menambahkan penanda di sini akan menggagalkan
    test_sdd_metadata_leaves_no_manual_placeholder. #}
 | Fungsi | No Kodifikasi |
-| --- | --- |
+|--------|------------|
 | Business Relationship | |
 | Business IT Solution | |
 
 | Katalog Proses Bisnis | Kategori |
-| --- | --- |
+|--------|------------|
 | Proses Value Chain | |
 | Application Landscape | |
 
+```{=openxml}
+<w:p><w:r><w:br w:type="page"/></w:r></w:p>
+```
+
+{# Tim & Peran sengaja DI HALAMAN 2, bukan di cover: diukur dari probe visual,
+   cover + 3 tabel identitas + tabel tim = ~21 baris tidak muat satu halaman dan
+   tabel tim terbelah jelek melintasi halaman. Cover cukup memuat identitas
+   dokumen; tim & riwayat revisi satu halaman sesudahnya. #}
 **Tim & Peran**
 
 | Jabatan / Peran | Nama |
-| --- | --- |
+|--------|------------|
 | Application Requestor | |
 | Business Process Owner | |
 | PIC | |
@@ -66,14 +85,18 @@
 ## Document Revision History
 
 | No. | Version | Revision Date | Changed By | Summary of Changes |
-| --- | --- | --- | --- | --- |
+|:---:|------|---------|---------|------------------|
 | | | | | |
 
 ## Application Revision History
 
 | No. | Version | Revision Date | Changed By | Summary of Changes |
-| --- | --- | --- | --- | --- |
+|:---:|------|---------|---------|------------------|
 | | | | | |
+
+```{=openxml}
+<w:p><w:r><w:br w:type="page"/></w:r></w:p>
+```
 
 ## Persetujuan Dokumen
 
@@ -85,7 +108,7 @@ Dokumen ini dibuat sebagai dasar pengembangan {{ project_name }}. Jika ada perub
 **Timeline:**
 
 | No. | Aktivitas | Mulai | Selesai | Deliverable |
-| --- | --- | --- | --- | --- |
+|:---:|------------------|-------|-------|----------|
 | 1 | Gathering Requirement | | | |
 | 2 | Development | | | |
 | 3 | Testing | | | |
@@ -95,31 +118,44 @@ Dokumen ini dibuat sebagai dasar pengembangan {{ project_name }}. Jika ada perub
 **Cost Estimation:**
 
 | Project Code | Amount (IDR) |
-| --- | --- |
+|--------|--------|
 | | |
 
 **Perwakilan User**
 
 | Nama | Jabatan | Tanda Tangan |
-| --- | --- | --- |
+|--------|--------|--------|
 | | | |
 | | | |
 
 **Perwakilan Pengembang**
 
 | Nama | Jabatan | Tanda Tangan |
-| --- | --- | --- |
+|--------|--------|--------|
 | | | |
 | | | |
 
 Tanda tangan dibubuhkan pada dokumen cetak setelah dokumen ini disetujui — bagian ini tidak dapat dihasilkan oleh sistem.
 
-{# Pemisah halaman muka (identitas, riwayat revisi, persetujuan) dari isi
-   dokumen. Pandoc tidak punya sintaks page break lintas-format, jadi dipakai
-   blok mentah OpenXML — diuji, dan memang diteruskan apa adanya ke docx.
-   SATU-SATUNYA page break yang dipasang: bagian lain dibiarkan mengalir. Page
-   break di tiap bab akan menyisakan halaman setengah kosong di mana-mana, dan
-   dokumen acuan pun tidak melakukannya. #}
+{# Daftar Isi/Gambar/Tabel: field code Word yang sama persis dengan yang dulu
+   ditulis Pandoc lewat --toc/--lof/--lot (instruksinya disalin apa adanya,
+   sudah terbukti diisi Word saat dibuka) — cuma posisinya sekarang di sini,
+   sesudah persetujuan, seperti dokumen acuan. Teks di dalam field adalah
+   placeholder yang terlihat hanya kalau dokumen dibuka di pembaca yang tidak
+   menjalankan field (bukan Word). #}
+```{=openxml}
+<w:p><w:pPr><w:pStyle w:val="TOCHeading"/></w:pPr><w:r><w:t>Daftar Isi</w:t></w:r></w:p>
+<w:p><w:fldSimple w:instr=" TOC \o &quot;1-3&quot; \h \z \u "><w:r><w:t>Daftar ini diisi otomatis saat dokumen dibuka di Microsoft Word.</w:t></w:r></w:fldSimple></w:p>
+<w:p><w:pPr><w:pStyle w:val="TOCHeading"/></w:pPr><w:r><w:t>Daftar Gambar</w:t></w:r></w:p>
+<w:p><w:fldSimple w:instr=" TOC \h \z \t &quot;Image Caption&quot; \c "><w:r><w:t>Daftar ini diisi otomatis saat dokumen dibuka di Microsoft Word.</w:t></w:r></w:fldSimple></w:p>
+<w:p><w:pPr><w:pStyle w:val="TOCHeading"/></w:pPr><w:r><w:t>Daftar Tabel</w:t></w:r></w:p>
+<w:p><w:fldSimple w:instr=" TOC \h \z \t &quot;Table Caption&quot; \c "><w:r><w:t>Daftar ini diisi otomatis saat dokumen dibuka di Microsoft Word.</w:t></w:r></w:fldSimple></w:p>
+```
+
+{# Pemisah daftar-daftar dari isi dokumen. SATU-SATUNYA page break manual
+   sesudah daftar: bab-bab isi dibiarkan mengalir. Page break di tiap bab akan
+   menyisakan halaman setengah kosong di mana-mana, dan dokumen acuan pun tidak
+   melakukannya. #}
 ```{=openxml}
 <w:p><w:r><w:br w:type="page"/></w:r></w:p>
 ```
@@ -131,7 +167,7 @@ Tanda tangan dibubuhkan pada dokumen cetak setelah dokumen ini disetujui — bag
 {# Tabel role meniru acuan: penomoran tabel isi dimulai DI SINI (Tabel 1),
    bukan di Demografi — acuan pun begitu. #}
 | No. | Nama Role | Keterangan |
-| --- | --- | --- |
+|:---:|--------|------------------|
 {% for role in user_roles -%}
 | {{ loop.index }} | {{ role.role_name }} | {{ role.description }} |
 {% endfor %}
@@ -145,7 +181,7 @@ Tanda tangan dibubuhkan pada dokumen cetak setelah dokumen ini disetujui — bag
 ## 3. Informasi Demografi Aplikasi
 
 | No. | Subject | Uraian | Remark |
-| --- | --- | --- | --- |
+|:---:|----------|--------------------|-----|
 | 1 | Business Requestor | {{ meta.business_requestor }} | |
 | 2 | Business User | {{ meta.business_user }} | |
 | 3 | Projected User Number | {{ meta.projected_user_number }} | |
@@ -159,7 +195,7 @@ Tanda tangan dibubuhkan pada dokumen cetak setelah dokumen ini disetujui — bag
 ## 4. System Requirement
 
 | No. | System Requirement | Uraian |
-| --- | --- | --- |
+|:---:|----------|--------------------|
 {% for requirement in system_requirements -%}
 | {{ loop.index }} | {{ requirement.name }} | {{ requirement.detail }} |
 {% endfor %}
@@ -187,7 +223,7 @@ Tanda tangan dibubuhkan pada dokumen cetak setelah dokumen ini disetujui — bag
 ## 8. Application Security
 
 | No. | Check List | Remark |
-| --- | --- | --- |
+|:---:|------------|------------|
 | 1 | Penetration Test | {{ meta.security_penetration_test }} |
 | 2 | Secure Coding Practice | {{ meta.security_secure_coding }} |
 | 3 | Reverse Proxy | {{ meta.security_reverse_proxy }} |
@@ -197,7 +233,7 @@ Tanda tangan dibubuhkan pada dokumen cetak setelah dokumen ini disetujui — bag
 ## 9. Application Features Requirement
 
 | No. | Fitur Aplikasi | Deskripsi Fitur |
-| --- | --- | --- |
+|:---:|----------|----------------------|
 {% for feature in feature_requirements -%}
 | {{ loop.index }} | {{ feature.feature_name }} | {{ feature.description }} |
 {% endfor %}
@@ -226,7 +262,7 @@ Tahapan alur proses bisnis:
 ### 11.{{ loop.index }} Use Case {{ uc.use_case_id }} — {{ uc.actor }}
 
 | Field | Isi |
-| --- | --- |
+|------|--------------------|
 | No. Use Case | {{ uc.use_case_id }} |
 | Actor | {{ uc.actor }} |
 | Pre-Condition | {{ uc.pre_condition }} |
@@ -265,7 +301,7 @@ Tahapan alur proses bisnis:
    yang bisa dikarang dari penomoran, dan urutannya dijamin sinkron dengan
    heading 12.N di atasnya. #}
 | Field | Isi |
-| --- | --- |
+|------|--------------------|
 | No. Activity Diagram | ACT{{ "%03d" | format(loop.index) }} |
 | Actor | {{ activity.actor }} |
 | System | {{ project_name }} |

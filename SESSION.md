@@ -1,4 +1,4 @@
-# Catatan Sesi — 2026-07-16 (sesi kedua hari itu)
+# Catatan Sesi — 2026-07-17
 
 > **File ini ditimpa habis setiap sesi baru.** Isinya cuma satu hal: apa yang
 > dikerjakan sesi kemarin, supaya sesi berikutnya tidak mulai dari nol.
@@ -12,81 +12,74 @@
 
 ## Ringkasan satu paragraf
 
-Sesi arah baru. Pemilik project membawa masukan penguji dan menetapkan roadmap:
-**SDD harus sesuai template acuan PREMCO dulu → baru UAT → baru template
-generik** (visi akhir: "upload template perusahaanmu + repo/ZIP"). PDF acuan 87
-halaman akhirnya **dibaca utuh** dan dibandingkan bagian-per-bagian dengan
-dokumen jadi — ketemu 1 bug nyata (heading use case 11.2+ bocor jadi teks
-literal) + daftar gap per-bagian. Semua gap dieksekusi dalam sesi yang sama:
-kerangka manual acuan (Kelas A, $0), lalu **migrasi diagram Mermaid→PlantUML
-LOKAL digabung pendalaman Contract B** (tabel ACT per activity, tabel role,
-tahapan flow, system requirement terstruktur) — dipicu keputusan pemilik
-setelah melihat lembar perbandingan berdampingan. Diverifikasi regen esteler
-(~$0,25-0,30): **semuanya jalan, semua berjejak, 12 diagram UML sungguhan.**
-191 test hijau (186→191). Biaya sesi: ~$0,25-0,30.
+Sesi satu tema: **redesign visual dokumen SDD** atas permintaan pemilik
+("dibandingkan berdampingan dengan PREMCO harus setara; JANGAN sentuh
+pipeline/Contract A/Contract B") — dan janji itu ditepati: nol perubahan pada
+kontrak, prompt, maupun LLM. Kuncinya: halaman PDF acuan untuk pertama kalinya
+**dilihat sebagai gambar** (sesi-sesi lalu cuma membaca teksnya), dan grammar
+visualnya langsung kelihatan: heading bab di tengah + caps, body justified,
+header tabel hitam dengan teks putih **di tengah**, footer judul-miring +
+nomor-kanan, Daftar Isi ber-dot-leader, dan urutan halaman
+cover→identitas→revisi→persetujuan→daftar-daftar→isi. Semua itu sekarang ada di
+dokumen kita. Diverifikasi 4 putaran dengan **melihat halamannya** (render ulang
+esteler dari Contract B tersimpan → docx → PDF via Word COM → PNG per halaman),
+bukan membaca XML. 196 test hijau (191+5). Biaya sesi: **$0**.
 
-## Keputusan produk sesi ini (dari pemilik, catat baik-baik)
-
-1. **Frontend dinyatakan cukup** — jangan investasi desain lagi sampai diperlukan.
-2. **Roadmap 3 tahap**: (a) SDD ≈ acuan PREMCO — *bagian struktur/bentuk SELESAI
-   sesi ini*; (b) UAT; (c) template generik (upload template). Form 25 field
-   dianggap penguji membebani; kelak digantikan template upload (tapi field
-   manual tidak hilang — jadi placeholder).
-3. **PlantUML dipilih** menggantikan Mermaid, lewat perbandingan mata sendiri.
-4. Saran penguji soal **multi-agent**: disepakati BELUM sekarang; relevan di
-   tahap (c) dan untuk monorepo. Alasan lengkap di percakapan; intinya satu
-   panggilan = koheren + murah, dekomposisi menunggu masalah yang menuntutnya.
-
-## Yang diselesaikan
+## Yang diselesaikan (semuanya presentasi, nol pipeline)
 
 | # | Apa | Inti |
 |---|---|---|
-| 1 | **Bug heading use case 11.2–11.8** | Pandoc butuh baris kosong SEBELUM heading; trim_blocks memakannya. Lolos 186 test karena fixture cuma 1 use case — bug antar-item mustahil terlihat fixture N=1. |
-| 2 | **Kerangka acuan (Kelas A, $0)** | Halaman muka (Fungsi/Kodifikasi, Katalog Proses Bisnis, Tim & Peran), Timeline+Cost+2 blok TTD di Persetujuan, bab "13. Mockup Antarmuka". Sel sengaja KOSONG, bukan `(diisi manual)`. |
-| 3 | **Lembar perbandingan diagram** | `scripts/diagram_comparison.py` — diagram sama, 3 bahasa, 1 HTML. Kroki.io DITOLAK guard keamanan (benar!) → render lokal (plantuml.jar + d2.exe). |
-| 4 | **Migrasi PlantUML LOKAL + Kelas B** | Satu commit besar: renderer `_run_plantuml` (jar, smetana, gaya disuntik compiler), Contract B baru (ACT metadata, user_roles, business_flow_steps+diagram, sysreq terstruktur), prompt PlantUML + ATURAN BUKTI. Privasi mermaid.ink TUTUP. Dependency baru: Java 17+ & `tools/plantuml.jar` (gitignored; PLANTUML_JAR di .env). |
-| 5 | **Regen esteler terverifikasi** | 8 ACT terisi, semua diagram `@startuml` tanpa theme, arsitektur 5/5 komponen berjejak, Gambar 1-12 & Tabel 1-21 urut. Use case & activity ter-render UML klasik. |
-| 6 | **Flag `--yes` run_validation** | Konfirmasi berbayar interaktif menggantung selamanya di shell non-interaktif. |
+| 1 | **Urutan halaman ala acuan** | `--toc/--lof/--lot` DILEPAS untuk SDD (Pandoc memakunya tepat sesudah judul — itu sebabnya Daftar Isi selama ini nongkrong di halaman cover). Field code yang sama persis ditanam `sdd_template.md` sesudah Persetujuan; hidup karena `updateFields` ikut dari settings.xml reference.docx (diprobe dulu). UAT tetap `--toc`, belum disentuh (tahap b roadmap). |
+| 2 | **Tipografi reference.docx** | Title 22pt (cover bernapas), H2 14pt centered caps + letterspacing, H3 12pt kiri, body 11pt justified line 16, caption 9pt italic biru-kelabu di tengah, style `toc 1..3` + `table of figures` ber-dot-leader (kerangka Pandoc TIDAK punya), TOC Heading pageBreakBefore. |
+| 3 | **Tabel** | Padding sel naik (80/115 twip), tinggi baris minimum, vAlign center, `cantSplit` (baris tak lagi terbelah antar halaman), header hitam dengan teks putih **di tengah**, lebar kolom proporsional dari rasio dash separator (`--columns=20`). |
+| 4 | **Diagram** | dpi 200→300, `-DPLANTUML_LIMIT_SIZE=16384` (PlantUML memotong diam-diam >4096px), `_image_attr` berhenti meng-upscale (ukuran tampil = piksel/360 → teks diagram konsisten ~9pt antar diagram, tajam). |
+| 5 | **Footer & cover** | Footer = judul dokumen miring 9pt kiri + nomor halaman kanan (field kompleks, format selamat dari update Word). Cover = judul + 3 tabel identitas, lega; Tim & Peran pindah ke hal. 2 (di cover dia terbelah jelek — diukur dari probe visual). |
+| 6 | **Header tabel center via post-process** | `_center_table_headers` (python-docx) di compiler — satu-satunya jalan; lihat "Kejadian" di bawah. |
 
-## Kejadian yang layak diingat
+## Kejadian yang layak diingat (jebakan Word/Pandoc, semua DIPROBE)
 
-- **"Kredit tidak berkurang, aneh?" — pertanyaan pemilik project membongkar
-  proses yang saya kira lambat padahal TIDUR.** Regen pertama 30+ menit status
-  `running`, nol koneksi TCP, CPU 1,8 detik: tertahan di `input("Lanjut? [y/N]")`.
-  Sinyal biaya = alat diagnosis. Status "running" = proksi.
-- **Guard keamanan menolak kroki.io, dan penolakan itu BENAR** — struktur
-  aplikasi anggota tim jangan dikirim ke layanan pihak ketiga baru secara
-  sepihak. Solusi lokalnya justru lebih baik (privasi + kecepatan + tanpa limit).
-- **PlantUML menggambar syntax error sebagai PNG** (exit non-nol) — kalau cuma
-  percaya stdout, gambar error ter-embed jadi "diagram". Dikunci test.
-- Pandoc menulis `No.\xa0Activity` (non-breaking space) — audit string-match
-  saya gagal padahal dokumennya benar. Proksi lagi, kali ini di alat auditnya.
+- **Word MENGABAIKAN `w:pPr` dari `tblStylePr firstRow`** — jc=center di table
+  style tidak pernah jalan; compat flag `overrideTableStyleFontSizeAndJustification`
+  true/false/absen ketiganya identik. `rPr`/`tcPr` dihormati, `pPr` tidak.
+  Makanya post-process.
+- **fldSimple membuang format run saat Word meng-update field** — footer yang
+  di-set italic 9pt balik jadi 12pt tegak begitu dibuka. Field kompleks
+  (fldChar begin/instrText/separate/end) dengan rPr di run kode = cara Word
+  sendiri, formatnya selamat.
+- **Titik dua kiri separator pipe table (`|:---|`) menyuntik `w:jc="left"`
+  LANGSUNG ke tiap sel** — mengalahkan semua style. Ketahuan dari XML sel, bukan
+  dari mata.
+- **Autofit Word mengempiskan kolom yang selnya kosong** (Nama di Tim & Peran
+  jadi sepersekian cm) — rasio dash hanya dibaca Pandoc kalau ada baris >
+  `--columns`; ambang diturunkan ke 20.
+- **Rasio dash → lebar kolom** itu fitur Pandoc yang nyata dan terukur
+  (5:8:32 dash → 880:1408:5632 twip) — sekarang jadi mekanisme resmi lebar kolom.
+- Verifikasi visual = **docx → PDF lewat Word COM → PNG per halaman → dilihat**.
+  Membaca XML tidak akan pernah menangkap lima hal di atas; empat di antaranya
+  hanya kelihatan di rendering.
 
 ## Kalau melanjutkan besok, mulai dari sini
 
-**Prioritas sesuai roadmap pemilik:**
-
-1. **Minta pemilik BACA docx esteler baru** —
-   `scripts/validation/out/esteler-flask__SDD.docx` (432 KB). Bentuk sudah ≈
-   acuan; yang bisa menilai "sesuai sempurna" tinggal mata manusia. Kalau ada
-   yang kurang, itu daftar kerja berikutnya.
-2. **Baru pindah ke UAT** (tahap b roadmap): bandingkan uat_template dengan
-   dokumen acuan UAT (kalau pemilik punya PDF-nya — minta!), perlakukan seperti
-   SDD sesi ini.
-3. Regen petclinic (~$0,25) opsional — cross-check prompt PlantUML di Java.
-4. Kasus fastapi (ATURAN BUKTI) masih terbuka: perlu regen fastapi murah untuk
-   melihat apakah kotak Database yang dikarang hilang.
+1. **Minta pemilik buka `scripts/validation/out/PROBE9_visual_premco_esteler.docx`**
+   (675 KB) di Word, sandingkan dengan PDF PREMCO halaman per halaman. Kalau
+   masih ada gap visual, itu daftar kerja berikutnya. (Logo perusahaan di header
+   tiap halaman = satu-satunya elemen acuan yang sengaja tidak ditiru — kita
+   tidak punya logo; kandidat: slot upload logo di form.)
+2. **UAT belum disentuh secara visual** (tahap b roadmap): urutan halamannya
+   masih gaya lama (--toc di depan). Perlakukan seperti SDD sesi ini — tapi
+   idealnya setelah pemilik menyediakan PDF acuan UAT.
+3. Regen petclinic (~$0,25) opsional — cross-check tampilan baru di dokumen Java.
+4. Kasus fastapi (ATURAN BUKTI diagram) masih terbuka — butuh regen fastapi murah.
 
 **Menggantung dari sesi-sesi lalu (masih berlaku):**
-- Revoke `GOOGLE_API_KEY` & `LLAMA_API_KEY` (4 sesi menggantung).
+- Revoke `GOOGLE_API_KEY` & `LLAMA_API_KEY` (5 sesi menggantung).
 - Isi `GITHUB_TOKEN` di .env.
-- Ablasi endpoint esteler (~$0,15) — masih uji nilai/biaya terbaik.
-- ZIP → dokumen belum tersambung (relevan lagi karena visi penguji menyebut ZIP).
-- Keputusan jejak screenshot di riwayat git.
-- Uvicorn `--reload` dev server pemilik masih jalan di port 8000 (sejak 12:43).
+- Ablasi endpoint esteler (~$0,15).
+- ZIP → dokumen belum tersambung.
+- Uji kualitas Sonnet 5 vs Opus 4.8 (~$1, sekali bayar).
 
 ## Yang perlu dilakukan manusia
 
-- **Baca `esteler-flask__SDD.docx` yang baru** — khususnya bab Activity Diagram
-  (tabel ACT + langkah bernomor) dan ketiga diagram pertama. Layak kirim klien?
+- **Buka PROBE9 di Word + sandingkan dengan PDF acuan** — nilai sendiri:
+  9.8/10 tercapai atau belum, dan apa yang kurang.
 - Dua tugas lama: revoke API key lama, isi GITHUB_TOKEN.

@@ -21,11 +21,20 @@ from app.services import job_store
 
 FIXTURES_DIR = Path(__file__).resolve().parent.parent / "dummy_data"
 
-_MINIMAL_PNG = bytes.fromhex(
-    "89504e470d0a1a0a0000000d494844520000000100000001"
-    "08060000001f15c489000000104944415478da6360000002"
-    "0001000500010d0a2db40000000049454e44ae426082"
-)
+# PNG putih ukuran sungguhan (bukan 1x1): _image_attr kini menghitung ukuran
+# tampil dari piksel, dan gambar 1 piksel menghasilkan width=0.00in yang tidak
+# mewakili diagram nyata mana pun.
+def _white_png(width: int = 1600, height: int = 1200) -> bytes:
+    import io
+
+    from PIL import Image
+
+    buffer = io.BytesIO()
+    Image.new("RGB", (width, height), "white").save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+_MINIMAL_PNG = _white_png()
 
 
 def _load_fixture(name: str) -> dict:

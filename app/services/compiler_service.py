@@ -16,7 +16,9 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+import docx
 import pypandoc
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 from jinja2 import Environment, FileSystemLoader
 from PIL import Image
 
@@ -56,9 +58,15 @@ REFERENCE_DOCX = TEMPLATES_DIR / "reference.docx"
 
 # Ketajaman render PlantUML. Default PlantUML 96 dpi — cukup untuk layar, buram
 # untuk cetak (pelajaran yang sama dengan mermaid.ink dulu: layak cetak butuh
-# ≥150 dpi, dan produk lama memakai ~246 dpi lewat width=1600). 200 dpi ~2x
-# ukuran piksel default: tajam di kertas tanpa membengkakkan docx.
-_PLANTUML_DPI = 200
+# ≥150 dpi, dan produk lama memakai ~246 dpi lewat width=1600). 300 dpi = tajam
+# di kertas; membengkakkan PNG, tapi docx esteler tetap di kisaran ratusan KB.
+_PLANTUML_DPI = 300
+
+# PlantUML diam-diam MEMOTONG gambar yang melebihi 4096 px (default
+# PLANTUML_LIMIT_SIZE) — pada 300 dpi, activity diagram yang panjang gampang
+# menembusnya, dan hasilnya diagram terpenggal TANPA error. Batasnya dinaikkan
+# lewat flag JVM (harus SEBELUM -jar).
+_PLANTUML_LIMIT_SIZE = 16384
 
 # Gaya visual diagram disuntik DI SINI, bukan ditulis LLM — filosofi yang sama
 # dengan reference.docx: rupa dokumen diatur dari satu tempat yang deterministik,
@@ -73,6 +81,14 @@ _PLANTUML_STYLE_PREAMBLE = ("!theme plain", f"skinparam dpi {_PLANTUML_DPI}")
 # lebih kecil daripada tumpah ke halaman berikutnya.
 _PAGE_WIDTH_IN = 6.5
 _PAGE_HEIGHT_IN = 8.0
+
+# Berapa piksel PNG per inci TAMPIL di dokumen. Ini kunci dua cacat visual
+# sekaligus: (1) diagram kecil yang DIRENTANGKAN selebar halaman jadi buram +
+# hurufnya raksasa — jangan pernah upscale; (2) teks diagram harus seragam antar
+# diagram. 360 px/inci pada render 300 dpi ≈ teks ~9pt di kertas (sedikit di
+# bawah body 11pt, seperti diagram dokumen acuan) dengan ketajaman efektif
+# 360 dpi. Menaikkan angka ini = teks lebih kecil & lebih tajam.
+_DIAGRAM_DISPLAY_DPI = 360
 
 _MANUAL_PLACEHOLDER = "*(diisi manual)*"
 
@@ -167,7 +183,8 @@ def _run_plantuml(plantuml_source: str) -> bytes:
 
     try:
         result = subprocess.run(
-            ["java", "-jar", str(jar), "-pipe", "-tpng",
+            ["java", f"-DPLANTUML_LIMIT_SIZE={_PLANTUML_LIMIT_SIZE}",
+             "-jar", str(jar), "-pipe", "-tpng",
              "-charset", "UTF-8", "-Playout=smetana"],
             input=plantuml_source.encode("utf-8"),
             capture_output=True,
@@ -208,14 +225,16 @@ def _render_diagram_to_image(diagram_script: str, images_dir: Path) -> str:
 def _image_attr(image_path: str) -> str:
     """Atribut ukuran Pandoc (`{width=...}` / `{height=...}`) untuk satu diagram.
 
-    Tanpa ini semua gambar direntangkan selebar halaman, dan activity diagram itu
-    TINGGI DAN SEMPIT — terukur pada esteler: 5 dari 11 diagram ditanam setinggi
-    9,7 sampai 17,2 inci di halaman yang ruang pakainya cuma ~9 inci. Tumpah
-    keluar halaman.
+    Dua aturan, dua cacat yang dicegah:
 
-    Aturannya satu kalimat: batasi sisi yang lebih dulu mentok. Diagram lebar
-    dibatasi LEBARNYA, diagram tinggi dibatasi TINGGINYA — sisi satunya ikut
-    proporsional, jadi tidak ada yang gepeng.
+    1. JANGAN UPSCALE. Ukuran tampil alami = piksel / _DIAGRAM_DISPLAY_DPI.
+       Aturan lama merentangkan SEMUA diagram selebar halaman — diagram kecil
+       (mis. component diagram 3 kotak) jadi buram dengan huruf raksasa, dan
+       ukuran teks antar diagram tidak konsisten. Kalau muat, pakai ukuran alami.
+    2. Kalau tidak muat, ciutkan di sisi yang lebih dulu mentok: diagram lebar
+       dibatasi LEBARNYA, diagram tinggi dibatasi TINGGINYA — sisi satunya ikut
+       proporsional, jadi tidak ada yang gepeng. (Kasus lama yang terukur pada
+       esteler: 5 dari 11 diagram setinggi 9,7-17,2 inci di halaman 11 inci.)
 
     Pillow, bukan parsing header PNG manual: JPEG yang dibaca sebagai PNG
     menghasilkan angka ngawur TANPA error (65536 x 4293001688 — betulan terjadi
@@ -223,6 +242,10 @@ def _image_attr(image_path: str) -> str:
     """
     with Image.open(image_path) as image:
         width, height = image.size
+    natural_width_in = width / _DIAGRAM_DISPLAY_DPI
+    natural_height_in = height / _DIAGRAM_DISPLAY_DPI
+    if natural_width_in <= _PAGE_WIDTH_IN and natural_height_in <= _PAGE_HEIGHT_IN:
+        return f"{{width={natural_width_in:.2f}in}}"
     if height / width > _PAGE_HEIGHT_IN / _PAGE_WIDTH_IN:
         return f"{{height={_PAGE_HEIGHT_IN}in}}"
     return f"{{width={_PAGE_WIDTH_IN}in}}"
@@ -319,39 +342,66 @@ def _pandoc_args(normalized_type: str, title: str) -> list[str]:
     bertuliskan "14", jadi pembaca harus menghitung dari depan. Indeksnya tidak
     bisa dipakai. Lihat `scripts/build_reference_docx.py`.
 
-    Judul daftar dibuat Indonesia lewat DUA mekanisme Pandoc yang BERBEDA — bukan
-    gaya-gayaan, memang begitu writer docx-nya:
-      `lang=id`   -> "Daftar Gambar" / "Daftar Tabel" (terjemahan bawaan;
-                     `lof-title`/`lot-title` DIABAIKAN oleh writer docx — diuji)
-      `toc-title` -> "Daftar Isi" (yang ini justru TIDAK ikut `lang`)
+    SDD sengaja TANPA `--toc`/`--lof`/`--lot` (sejak 2026-07-16): Pandoc memaku
+    posisi ketiga daftar itu TEPAT sesudah judul — sebelum body — sehingga
+    Daftar Isi mendarat di halaman cover, sementara dokumen acuan menaruh cover +
+    identitas + revisi + persetujuan DULU dan daftar-daftar menyusul di halaman
+    5-7. Field TOC yang sama persis (`TOC \\o "1-3" \\h \\z \\u`, `TOC \\h \\z
+    \\t "Image Caption" \\c`, dst) kini ditanam langsung di sdd_template.md pada
+    posisi yang benar, dan Word tetap mengisinya saat dibuka karena
+    `updateFields` dibawa reference.docx (diprobe: Pandoc menyalin settings.xml
+    dari reference doc). WORD yang menghitung nomor halamannya — kita tetap
+    tidak perlu tahu pagination dari sisi Markdown.
 
-    `--lof`/`--lot` (Daftar Gambar & Daftar Tabel) khusus SDD, dan itu bukan
-    kemalasan: UAT punya NOL gambar dan cuma satu tabel isi (Case Pengujian) —
-    sisanya front-matter yang memang tidak di-caption. Memasangnya di UAT
-    menghasilkan dua halaman indeks KOSONG di tiap dokumen. Halaman hampa lebih
-    buruk daripada tidak ada halamannya sama sekali.
+    UAT tetap memakai `--toc` + `toc-title`: urutan halamannya belum jadi target
+    (roadmap tahap b), dan `--lof`/`--lot` memang tidak boleh ada di sana — UAT
+    punya NOL gambar, dua daftar itu cuma jadi halaman indeks kosong.
 
-    Pandoc menulis kedua daftar itu sebagai FIELD CODE Word
-    (`TOC \\h \\z \\t "Image Caption" \\c`), bukan teks jadi — jadi WORD yang
-    menghitung nomor halamannya saat dokumen dibuka, dan kita tidak perlu tahu
-    pagination sama sekali dari sisi Markdown. Diverifikasi dengan MEMBUKA docx di
-    Word sungguhan (11 baris + nomor halaman, tanpa refresh manual); membaca
-    XML-nya saja tidak akan pernah membuktikan itu.
+    `lang=id` dipertahankan untuk locale dokumen; `--columns=20` menurunkan
+    ambang "baris tabel dianggap panjang" sehingga SEMUA pipe table template
+    memakai LEBAR KOLOM PROPORSIONAL dari rasio dash di separator row
+    (diprobe: 5:8:32 dash → 880:1408:5632 twip). Tanpa itu tabel pendek jatuh ke
+    autofit Word, dan kolom yang selnya kosong (Nama di Tim & Peran, No
+    Kodifikasi) MENYUSUT sampai sepersekian sentimeter — terlihat di probe.
+    Ambangnya 20, bukan 30: baris terpendek yang masih perlu rasio ("| Business
+    IT Solution | |") cuma 26 karakter.
     """
     args = [
         "--standalone",
-        "--toc",
+        "--columns=20",
         "-M",
         "lang=id",
-        "-M",
-        "toc-title=Daftar Isi",
         "-M",
         f"title={title}",
         f"--reference-doc={REFERENCE_DOCX}",
     ]
-    if normalized_type == "SDD":
-        args += ["--lof", "--lot"]
+    if normalized_type == "UAT":
+        args += ["--toc", "-M", "toc-title=Daftar Isi"]
     return args
+
+
+def _center_table_headers(docx_path: str) -> None:
+    """Ratakan tengah teks baris pertama SETIAP tabel — meniru header tabel
+    dokumen acuan.
+
+    Kenapa post-process, bukan style: Word MENGABAIKAN w:pPr (termasuk
+    jc=center) yang datang dari conditional formatting `tblStylePr firstRow` di
+    table style — diprobe langsung 2026-07-16 lewat export Word sungguhan,
+    dengan compat flag overrideTableStyleFontSizeAndJustification true/false/
+    absen: ketiganya identik, teks header tetap rata kiri. rPr (bold, warna) dan
+    tcPr (latar hitam) dihormati, pPr tidak. Pandoc juga tidak bisa menolong:
+    alignment kolom pipe table berlaku SATU KOLOM penuh (header + isi), bukan
+    per baris. Jadi satu-satunya tempat deterministik yang tersisa adalah sesudah
+    docx-nya jadi.
+    """
+    document = docx.Document(docx_path)
+    for table in document.tables:
+        if not table.rows:
+            continue
+        for cell in table.rows[0].cells:
+            for paragraph in cell.paragraphs:
+                paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    document.save(docx_path)
 
 
 def _build_uat_context(data: dict[str, Any]) -> dict[str, Any]:
@@ -421,4 +471,5 @@ def generate_docx(
             "`python -c \"import pypandoc; pypandoc.download_pandoc()\"` sekali."
         ) from e
 
+    _center_table_headers(str(output_path))
     return str(output_path)

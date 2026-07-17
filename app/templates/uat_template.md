@@ -1,7 +1,10 @@
 ## Informasi Dokumen
 
+{# LEBAR KOLOM tabel diatur RASIO DASH pada separator row (dibaca Pandoc karena
+   --columns=30 di compiler): dash lebih banyak = kolom lebih lebar; `:---:` =
+   kolom rata tengah. Sama dengan konvensi di sdd_template.md. #}
 | Field | Isi |
-| --- | --- |
+|---------|--------------------|
 | Nama Project | {{ project_name }} |
 | Related RFC # | {{ meta.related_rfc_number }} |
 | Related Work Order # | {{ meta.related_work_order }} |
@@ -50,14 +53,14 @@ UAT hanya akan dianggap berhasil jika semua permasalahan yang timbul selama pela
 Setiap kasus pengujian yang diselesaikan oleh penguji akan didokumentasikan dengan salah satu dari status berikut.
 
 | Status | Deskripsi |
-| --- | --- |
+|:------:|------------------|
 | Lolos | Diterima apa adanya |
 | Gagal | Tidak diterima dengan klarifikasi |
 
 Semua kasus pengujian yang berstatus Gagal lebih lanjut harus dijelaskan dalam kolom Komentar, dan harus diberi kode kegagalan sebagai berikut:
 
 | Kode Kegagalan | Deskripsi |
-| --- | --- |
+|:------:|--------------------------|
 | A | Kecacatan besar atau kesalahan desain, kesalahan pada operasi software atau hardware. |
 | B | Kelanjutan dari pengujian kasus tidak dapat dilakukan lagi. |
 | C | Pengujian dapat terus dilakukan namun dengan beberapa keterbatasan. |
@@ -74,7 +77,7 @@ Pada saat eksekusi semua kasus pengujian telah diselesaikan, Sertifikasi Keberha
 Kolom **Penguji**, **Tanggal Pengujian**, **Status**, dan **Komentar** diisi manual oleh tim penguji setelah pengujian benar-benar dilaksanakan — kolom ini tidak bisa dihasilkan otomatis dari kode.
 
 | No | Role | Kegiatan | Langkah-Langkah Pengujian | Hasil yang Diharapkan | Penguji | Tanggal Pengujian | Status | Komentar |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+|:---:|-----|---------|--------------------|--------------------|-----|------|-----|--------|
 {% for tc in uat_test_cases -%}
 | {{ tc.test_id }} | {{ tc.role }} | {{ tc.activity }} | {{ tc.steps }} | {{ tc.expected_result }} | | | | |
 {% endfor %}

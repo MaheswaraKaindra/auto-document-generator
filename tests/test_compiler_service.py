@@ -20,13 +20,26 @@ from app.services import compiler_service
 
 FIXTURES_DIR = Path(__file__).resolve().parent.parent / "dummy_data"
 
-# PNG 1x1 minimal yang valid, supaya pandoc bisa benar-benar embed gambarnya
-# ke docx (bukan cuma byte sembarang).
-_MINIMAL_PNG = bytes.fromhex(
-    "89504e470d0a1a0a0000000d494844520000000100000001"
-    "08060000001f15c489000000104944415478da6360000002"
-    "0001000500010d0a2db40000000049454e44ae426082"
-)
+def _white_png(width: int, height: int) -> bytes:
+    """PNG putih valid berukuran sungguhan, dibangkitkan Pillow.
+
+    Dulu fixture-nya PNG 1x1 hex-embedded — tapi sejak _image_attr menghitung
+    ukuran tampil dari piksel (aturan jangan-upscale), gambar 1 piksel
+    menghasilkan width=0.00in yang tidak mewakili diagram nyata mana pun.
+    PlantUML pada 300 dpi tidak pernah menghasilkan gambar sekecil itu.
+    """
+    import io
+
+    from PIL import Image
+
+    buffer = io.BytesIO()
+    Image.new("RGB", (width, height), "white").save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+# Ukuran khas diagram PlantUML nyata pada 300 dpi: muat di halaman tanpa perlu
+# diciutkan (1600/360 x 1200/360 = 4,44 x 3,33 inci).
+_MINIMAL_PNG = _white_png(1600, 1200)
 
 
 def _load_fixture(name: str) -> dict:
@@ -430,10 +443,10 @@ def test_front_matter_tables_are_not_captioned(mock_plantuml_ok):
 
 
 def test_docx_carries_indonesian_list_headings(mock_plantuml_ok):
-    """Judulnya Indonesia lewat DUA mekanisme Pandoc yang berbeda: `lang=id`
-    menerjemahkan Daftar Gambar/Tabel (`lof-title`/`lot-title` DIABAIKAN writer
-    docx), sementara Daftar Isi justru cuma bisa lewat `toc-title` dan tidak ikut
-    `lang`. Kalau salah satu argumen hilang, judulnya balik jadi Inggris."""
+    """Ketiga judul daftar SDD kini teks template (blok openxml ber-style
+    TOCHeading) — bukan lagi hasil `lang=id`/`toc-title`, karena field-nya
+    ditanam template sejak posisi daftar dipindah meniru acuan. Yang dijaga
+    tetap sama: pembaca melihat judul Indonesia, bukan Inggris."""
     data = _load_fixture("document_content_sdd.json")
 
     # Yang diperiksa TEKS YANG TERLIHAT (isi <w:t>), bukan XML mentah: string
@@ -470,10 +483,12 @@ def test_uat_has_no_empty_figure_and_table_lists(mock_plantuml_ok):
 
 
 def test_docx_embeds_word_field_codes_for_the_lists(mock_plantuml_ok):
-    """Daftar Gambar/Tabel ditulis sebagai FIELD CODE, bukan teks jadi — itu yang
-    membuat WORD menghitung nomor halamannya sendiri, sehingga kita tidak perlu
-    tahu pagination dari sisi Markdown. Sudah diverifikasi manual di Word: 11
-    baris + nomor halaman muncul tanpa refresh."""
+    """Daftar Isi/Gambar/Tabel ditulis sebagai FIELD CODE, bukan teks jadi — itu
+    yang membuat WORD menghitung nomor halamannya sendiri, sehingga kita tidak
+    perlu tahu pagination dari sisi Markdown. Sejak 2026-07-16 field-nya ditanam
+    sdd_template.md (bukan --toc/--lof/--lot) supaya posisinya meniru acuan:
+    sesudah persetujuan, bukan menempel judul. Instruksinya disalin persis dari
+    yang dulu ditulis Pandoc — sudah diverifikasi terisi di Word tanpa refresh."""
     data = _load_fixture("document_content_sdd.json")
 
     xml = _document_xml(compiler_service.generate_docx("SDD", data))
@@ -481,8 +496,77 @@ def test_docx_embeds_word_field_codes_for_the_lists(mock_plantuml_ok):
     # r-string wajib: `\t` di string biasa jadi karakter TAB, sementara
     # `\h`/`\z`/`\c` kebetulan bukan escape sehingga lolos apa adanya — jadi satu
     # dari empat backslash berubah diam-diam dan assertion-nya tidak pernah cocok.
+    assert r'TOC \o &quot;1-3&quot; \h \z \u' in xml
     assert r'TOC \h \z \t &quot;Image Caption&quot; \c' in xml
     assert r'TOC \h \z \t &quot;Table Caption&quot; \c' in xml
+
+
+def test_sdd_carries_updatefields_so_word_fills_the_lists(mock_plantuml_ok):
+    """Pasangan test di atas, sisi satunya: field yang ditanam template hanya
+    hidup kalau settings.xml membawa updateFields (SDD tidak lagi memakai --toc,
+    jadi Pandoc tidak memasangnya sendiri — dia harus datang dari reference.docx,
+    yang settings-nya disalin Pandoc ke setiap dokumen; diprobe 2026-07-16).
+    Tanpa ini daftar-daftarnya SUNYI: dokumen tetap jadi, field tidak pernah
+    terisi, dan pembaca cuma melihat placeholder."""
+    import zipfile
+
+    data = _load_fixture("document_content_sdd.json")
+
+    output_path = compiler_service.generate_docx("SDD", data)
+
+    settings = zipfile.ZipFile(output_path).read("word/settings.xml").decode("utf-8", "ignore")
+    assert "updateFields" in settings
+
+
+def test_sdd_lists_come_after_persetujuan_like_the_reference(mock_plantuml_ok):
+    """Alasan seluruh mekanisme field-di-template: dokumen acuan menaruh cover +
+    revisi + persetujuan DULU, daftar-daftar menyusul. --toc memaku Daftar Isi
+    tepat sesudah judul (halaman cover) dan tidak bisa dipindah. Kunci urutannya
+    lewat teks yang terlihat: 'Persetujuan Dokumen' harus muncul SEBELUM
+    'Daftar Isi'."""
+    data = _load_fixture("document_content_sdd.json")
+
+    xml = _document_xml(compiler_service.generate_docx("SDD", data))
+    visible = " ".join(re.findall(r"<w:t[^>]*>([^<]*)</w:t>", xml))
+
+    assert visible.index("Persetujuan Dokumen") < visible.index("Daftar Isi")
+
+
+def test_table_headers_are_centered(mock_plantuml_ok):
+    """Teks header tabel dirata-tengah lewat post-process python-docx — Word
+    MENGABAIKAN w:pPr (jc) dari tblStylePr firstRow di table style (diprobe
+    dengan compat flag true/false/absen, ketiganya identik), jadi ini tidak bisa
+    dititipkan ke reference.docx seperti bold/warna/latar."""
+    from docx import Document
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+
+    data = _load_fixture("document_content_sdd.json")
+
+    document = Document(compiler_service.generate_docx("SDD", data))
+
+    assert document.tables, "tidak ada tabel di dokumen"
+    for table in document.tables:
+        for cell in table.rows[0].cells:
+            for paragraph in cell.paragraphs:
+                assert paragraph.alignment == WD_ALIGN_PARAGRAPH.CENTER, (
+                    f"header {paragraph.text!r} tidak rata tengah"
+                )
+
+
+def test_reference_docx_carries_dot_leader_toc_styles():
+    """Style "toc 1..3" + "table of figures" TIDAK ada di kerangka bawaan Pandoc
+    (diperiksa) — tanpa mendefinisikannya, rupa Daftar Isi (titik-titik sampai
+    nomor halaman rata kanan) tergantung selera versi Word pembaca."""
+    import zipfile
+
+    styles = (
+        zipfile.ZipFile(compiler_service.REFERENCE_DOCX)
+        .read("word/styles.xml")
+        .decode("utf-8", "ignore")
+    )
+    for style_id in ("TOC1", "TOC2", "TOC3", "TableofFigures"):
+        assert f'w:styleId="{style_id}"' in styles, f"style {style_id} hilang"
+    assert 'w:leader="dot"' in styles
 
 
 # --- Tampilan dokumen (reference.docx) ----------------------------------------
@@ -634,21 +718,28 @@ def test_tall_diagram_is_capped_by_height_not_width(tmp_path):
     """Activity diagram itu TINGGI DAN SEMPIT. Kalau semua gambar direntangkan
     selebar halaman, yang tinggi jadi setinggi 17 inci di halaman 11 inci —
     terukur pada esteler: 5 dari 11 diagram tumpah keluar halaman."""
-    from PIL import Image
-
     tall = tmp_path / "tall.png"
-    Image.new("RGB", (400, 2000), "white").save(tall)
+    tall.write_bytes(_white_png(4000, 20000))
 
     assert compiler_service._image_attr(str(tall)) == "{height=8.0in}"
 
 
 def test_wide_diagram_is_capped_by_width(tmp_path):
-    from PIL import Image
-
     wide = tmp_path / "wide.png"
-    Image.new("RGB", (1600, 500), "white").save(wide)
+    wide.write_bytes(_white_png(20000, 4000))
 
     assert compiler_service._image_attr(str(wide)) == "{width=6.5in}"
+
+
+def test_small_diagram_is_never_upscaled(tmp_path):
+    """Diagram kecil yang DIRENTANGKAN selebar halaman jadi buram dengan huruf
+    raksasa — dan ukuran teks antar diagram jadi tidak konsisten. Kalau muat,
+    pakai ukuran tampil alami (piksel / _DIAGRAM_DISPLAY_DPI), jangan upscale."""
+    small = tmp_path / "small.png"
+    small.write_bytes(_white_png(1800, 900))
+
+    expected_in = 1800 / compiler_service._DIAGRAM_DISPLAY_DPI
+    assert compiler_service._image_attr(str(small)) == f"{{width={expected_in:.2f}in}}"
 
 
 def test_every_diagram_fits_on_the_page(mock_plantuml_ok):
