@@ -534,6 +534,29 @@ def _heighten_signature_rows(document) -> None:
             _set_keep_next(label)
 
 
+def _trim_transparent_edges(logo_bytes: bytes) -> tuple[bytes, tuple[int, int]]:
+    """Pangkas tepi TRANSPARAN logo; kembalikan (bytes, ukuran) hasilnya.
+
+    File logo dunia nyata sering berupa gambar kecil di tengah kanvas besar —
+    kasus nyata yang memicu ini: logo 964x288 di kanvas 1024x576, padding
+    transparan 144 px atas-bawah. Ditanam apa adanya "setinggi 0,45 inci",
+    yang KELIHATAN cuma 0,22 inci — kerdil, dan meleset dari posisi.
+
+    Hanya alpha yang dipangkas: memangkas "tepi putih" JPEG itu tebak-tebakan
+    (putih bisa bagian logonya), sementara piksel ber-alpha-nol memang
+    dinyatakan kosong oleh file-nya sendiri.
+    """
+    with Image.open(io.BytesIO(logo_bytes)) as image:
+        if "A" in image.getbands():
+            content_box = image.getchannel("A").getbbox()
+            if content_box and content_box != (0, 0, image.width, image.height):
+                cropped = image.crop(content_box)
+                buffer = io.BytesIO()
+                cropped.save(buffer, format="PNG")
+                return buffer.getvalue(), cropped.size
+        return logo_bytes, image.size
+
+
 def _add_header_logo(document, logo_bytes: bytes) -> None:
     """Tanam logo di kanan atas header SETIAP halaman — posisi logo dokumen
     acuan enterprise.
@@ -542,12 +565,12 @@ def _add_header_logo(document, logo_bytes: bytes) -> None:
     dan dibangun sekali oleh script, sementara logo datang PER REQUEST dari
     form. Satu-satunya tempat mempertemukan keduanya adalah sesudah docx jadi.
 
-    Ukuran tampil dihitung dari piksel aslinya: tinggi standar 0,45 inci, tapi
-    logo pita yang sangat lebar dibatasi LEBARNYA — logo 10:1 yang dipaksa
-    setinggi 0,45 inci berarti selebar 4,5 inci, menabrak area teks.
+    Ukuran tampil dihitung dari piksel KONTENNYA (sesudah tepi transparan
+    dipangkas): tinggi standar 0,45 inci, tapi logo pita yang sangat lebar
+    dibatasi LEBARNYA — logo 10:1 yang dipaksa setinggi 0,45 inci berarti
+    selebar 4,5 inci, menabrak area teks.
     """
-    with Image.open(io.BytesIO(logo_bytes)) as image:
-        width_px, height_px = image.size
+    logo_bytes, (width_px, height_px) = _trim_transparent_edges(logo_bytes)
     if width_px / height_px > _LOGO_MAX_WIDTH_IN / _LOGO_HEIGHT_IN:
         size = {"width": Inches(_LOGO_MAX_WIDTH_IN)}
     else:

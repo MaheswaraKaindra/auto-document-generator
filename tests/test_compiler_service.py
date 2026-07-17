@@ -783,6 +783,34 @@ def test_logo_lands_in_the_page_header(mock_plantuml_ok):
     )
 
 
+def test_logo_transparent_padding_is_trimmed(mock_plantuml_ok):
+    """File logo dunia nyata sering gambar kecil di tengah kanvas besar (kasus
+    nyata: logo 964x288 di kanvas 1024x576 ber-padding transparan). Ukuran
+    tampil harus dihitung dari KONTENNYA — logo kanvas persegi berisi pita 4:1
+    harus ter-embed beraspek 4:1, bukan 1:1 kerdil."""
+    import io
+
+    from PIL import Image
+
+    data = _load_fixture("document_content_sdd.json")
+    canvas = Image.new("RGBA", (400, 400), (0, 0, 0, 0))
+    canvas.paste(Image.new("RGBA", (400, 100), (200, 30, 30, 255)), (0, 150))
+    buffer = io.BytesIO()
+    canvas.save(buffer, format="PNG")
+
+    path = compiler_service.generate_docx("SDD", data, logo_bytes=buffer.getvalue())
+
+    for xml in _header_xmls(path):
+        match = re.search(r'<wp:extent cx="(\d+)" cy="(\d+)"', xml)
+        if match:
+            aspect = int(match.group(1)) / int(match.group(2))
+            assert aspect == pytest.approx(4.0, abs=0.05), (
+                "aspek logo ter-embed mengikuti kanvas, bukan kontennya — padding tidak dipangkas"
+            )
+            return
+    raise AssertionError("tidak ada gambar di header")
+
+
 def test_wide_banner_logo_is_capped_by_width(mock_plantuml_ok):
     """Logo pita 10:1 yang dipaksa setinggi 0,45 inci jadi selebar 4,5 inci —
     menabrak area teks. Yang lebar dibatasi LEBARNYA (2,4 inci), yang normal
