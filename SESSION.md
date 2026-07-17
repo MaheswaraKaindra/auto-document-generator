@@ -30,8 +30,12 @@ list redundan). Cuma kolom Remark SysReq yang benar & $0 (dikerjakan). Terakhir
 **tes repo NYATA `MyPertamina.id-Clone` (Vue/JS, ~$0,20)** membuktikan klaim
 netral-bahasa DAN mengungkap bug Nuxt (file `[slug].vue` merusak PlantUML,
 mematikan generate premco lewat diagram yang tak dipakainya) — diperbaiki.
-**216 test hijau**. Commit: `6b6dd12` (font+tabel), `663a594` (docs), `1330f9b`
-(Remark), `9c55248` (fix Nuxt) + commit dokumen ini.
+Lalu **bug default Nuxt diperbaiki di akar** (sanitasi kurung route-param di
+PlantUML, deterministik & $0) — default kini render component_integration
+MyPertamina dengan benar (pemetaan FE↔BE utuh, PROBE18). **218 test hijau**.
+Commit: `6b6dd12` (font+tabel), `663a594` (docs), `1330f9b` (Remark), `9c55248`
+(premco lewati diagram tak dipakai), `7367382` (docs MyPertamina), `0f0866c`
+(sanitasi Nuxt) + commit dokumen ini.
 
 ## Yang diselesaikan (semuanya presentasi, nol pipeline/Contract/LLM)
 
@@ -72,14 +76,14 @@ mematikan generate premco lewat diagram yang tak dipakainya) — diperbaiki.
 ## Kalau melanjutkan besok, mulai dari sini
 
 **Perbandingan 16 bab SUDAH dilakukan (tak ada gap ketujuh). premco praktis
-demo-ready. Kandidat berikutnya:**
+demo-ready. Bug Nuxt default SUDAH diperbaiki. Kandidat berikutnya:**
 
-1. **Bug `default` crash pada Nuxt/Next** (BARU, dari tes MyPertamina). default
-   memakai component_integration; nama file `[slug].vue` merusak PlantUML →
-   seluruh dokumen gagal. premco sudah kebal. Perbaikan: pengerasan prompt (LLM
-   hindari `[]` di label) / sanitasi `_normalize_plantuml` / resiliensi per-diagram
-   — butuh regen untuk verifikasi. Repo Nuxt/Next umum, jadi ini nyata. Detail di
-   Keterbatasan CLAUDE.md.
+1. ~~**Bug `default` crash pada Nuxt/Next**~~ — **SELESAI**: `_sanitize_route_param_brackets`
+   di `_normalize_plantuml` melepas kurung route-param sebelum plantuml.jar
+   (deterministik, $0, diagram TETAP dirender bukan placeholder). Diverifikasi
+   visual (PROBE18). Sisa yang MUNGKIN suatu saat: resiliensi per-diagram
+   (placeholder untuk PlantUML rusak lewat jalur lain) — sengaja belum, menjaga
+   filosofi gagal-berisik.
 2. **3 gap Contract B — SEBAGIAN BESAR DIBATALKAN setelah dibuka** (bukan lagi
    "~$0,25 regen"): SysReq table-2 = kompatibilitas Browser/Android = deployment,
    TAK code-derivable (kolom Remark sudah ditambah $0, tabel kedua di-drop); flow
