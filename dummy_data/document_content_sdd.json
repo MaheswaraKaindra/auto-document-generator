@@ -74,6 +74,7 @@
     {
       "test_id": "UAT-01",
       "role": "Admin",
+      "module": "Manajemen Inventaris",
       "activity": "Menambah Item Inventaris",
       "steps": "1. Buka halaman Inventaris\n2. Klik tombol Tambah Item\n3. Isi nama, jumlah, dan satuan\n4. Klik Simpan",
       "expected_result": "Item baru muncul di daftar inventaris dan tersimpan di database"

@@ -56,6 +56,12 @@ MAX_OUTPUT_TOKENS = 32_000
 class UATTestCase(BaseModel):
     test_id: str = Field(description="ID unik untuk test case, misal: UAT-01")
     role: str = Field(description="Peran user yang melakukan test, misal: Admin atau User")
+    module: str = Field(
+        description="Nama layar/halaman atau modul/fitur yang diuji, misal: "
+        "'Halaman Login Website' atau 'Manajemen Inventaris'. Test case yang menguji "
+        "layar/fitur yang SAMA HARUS memakai nilai `module` yang SAMA PERSIS — test case "
+        "dikelompokkan per `module` di dokumen (satu tabel per modul)."
+    )
     activity: str = Field(description="Aktivitas utama yang diuji")
     steps: str = Field(description="Langkah-langkah pengujian (bernomor)")
     expected_result: str = Field(description="Hasil sistem yang diharapkan")
@@ -145,6 +151,14 @@ ALOKASI FOKUS BERDASARKAN JENIS DOKUMEN YANG DIMINTA (target_doc_type):
 - Jika target_doc_type == "UAT": prioritaskan kedalaman pada `uat_test_cases` — buat test case untuk
   SETIAP fitur/endpoint/UI component utama yang ditemukan di metadata, bukan cuma beberapa. Untuk
   `diagrams` dan `use_cases`, cukup buat versi ringkas/high-level (tetap harus valid, jangan kosong).
+
+ATURAN UAT TEST CASES (uat_test_cases):
+1. Isi `module` dengan nama layar/halaman atau fitur yang diuji. Test case yang menguji layar/fitur
+   yang SAMA WAJIB memakai nilai `module` yang SAMA PERSIS (huruf demi huruf) — dokumen
+   mengelompokkan test case per `module` jadi satu tabel per layar, jadi konsistensi nilai ini penting.
+2. URUTKAN test case sehingga yang ber-`module` sama berdampingan (jangan diselang-seling), dan
+   kelompokkan secara logis (mis. semua layar milik satu peran/aplikasi berdekatan).
+3. `steps` = langkah bernomor/berbaris; tiap langkah pada barisnya sendiri (pisahkan dengan newline).
 - Field lain (`app_description`, `system_requirements`, `business_flow_description`) tetap diisi
   lengkap terlepas dari target_doc_type.
 

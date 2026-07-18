@@ -73,6 +73,13 @@ class DocumentMetadata(BaseModel):
     review_date: Optional[str] = None
     distribution_list: Optional[str] = None
 
+    # Document Information tambahan yang muncul di UAT PREMCO asli (template
+    # `premco` UAT). Semua data manusia — tak diturunkan dari kode; kosong =
+    # jatuh ke penanda *(diisi manual)* seperti field metadata lain.
+    quality_review_method: Optional[str] = None
+    document_version_no: Optional[str] = None
+    document_version_date: Optional[str] = None
+
 
 class GenerateDocumentRequest(BaseModel):
     """Body untuk endpoint orkestrator penuh: POST /documents/generate."""

@@ -25,9 +25,12 @@ PERAN1_NOTES.md
 # bagian dari repo. Yang di-commit cuma harness dan daftar kasusnya.
 scripts/validation/out/
 
-# Dokumen referensi internal (mis. SDD contoh dari perusahaan) — repo ini
-# ditujukan jadi produk publik, jangan sampai ikut ter-commit.
+# Dokumen referensi internal (mis. SDD contoh dari perusahaan, plus template
+# SDD/UAT dari vendor lain yang dikumpulkan untuk V2) — repo ini ditujukan jadi
+# produk publik, jangan sampai ikut ter-commit. `.doc` (format biner Word lama)
+# ditutup terpisah karena pola `*.docx` di atas TIDAK mencocokkannya.
 *.pdf
+*.doc
 
 # Database SQLite (status job + dokumen hasil) — dibuat otomatis saat runtime.
 data/

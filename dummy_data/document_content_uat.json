@@ -56,6 +56,7 @@
     {
       "test_id": "UAT-01",
       "role": "Admin",
+      "module": "Halaman Login",
       "activity": "Akses Halaman Login",
       "steps": "1. Buka URL aplikasi\n2. Masukkan email & password\n3. Klik tombol Login",
       "expected_result": "Sistem menampilkan pesan Login berhasil dan mengarahkan ke Dashboard"
@@ -63,6 +64,7 @@
     {
       "test_id": "UAT-02",
       "role": "Admin",
+      "module": "Manajemen Inventaris",
       "activity": "Menambah Item Inventaris",
       "steps": "1. Buka halaman Inventaris\n2. Klik tombol Tambah Item\n3. Isi nama, jumlah, dan satuan\n4. Klik Simpan",
       "expected_result": "Item baru muncul di daftar inventaris"

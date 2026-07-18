@@ -221,22 +221,27 @@ def test_form_metadata_survives_the_whole_async_round_trip(client, mock_plantuml
     assert "Divisi Operasional" in text
 
 
-def test_unavailable_template_combo_is_rejected_synchronously_with_422(client):
-    """Kombinasi template x jenis dokumen yang tidak tersedia ditolak SAAT POST
-    — sebelum job dibuat, sebelum LLM dibayar. premco baru menyediakan SDD."""
-    response = client.post(
-        "/documents/generate",
-        json={"document_type": "UAT", "repositories": [], "template_id": "premco"},
-    )
-
-    assert response.status_code == 422
-    assert "belum menyediakan" in response.json()["detail"]
-
+def test_unknown_template_id_is_rejected_synchronously_with_422(client):
+    """template_id tak dikenal ditolak SAAT POST — sebelum job dibuat, sebelum
+    LLM dibayar. (premco kini menyediakan SDD & UAT, jadi tak ada lagi kombinasi
+    template-terdaftar yang 'belum tersedia'; yang tersisa ditolak = id ngawur.)"""
     response = client.post(
         "/documents/generate",
         json={"document_type": "SDD", "repositories": [], "template_id": "ngawur"},
     )
     assert response.status_code == 422
+    assert "tidak dikenal" in response.json()["detail"]
+
+
+def test_premco_uat_combo_is_accepted_synchronously(client):
+    """premco kini menyediakan UAT: kombinasi premco+UAT lolos validasi sinkron
+    dan menghasilkan job (202), bukan ditolak 422 seperti dulu."""
+    response = client.post(
+        "/documents/generate",
+        json={"document_type": "UAT", "repositories": [], "template_id": "premco"},
+    )
+    assert response.status_code == 202
+    assert "job_id" in response.json()
 
 
 def test_premco_template_survives_the_async_round_trip(client, mock_plantuml_ok, tmp_path):

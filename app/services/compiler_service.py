@@ -11,6 +11,7 @@ Peran 2 (llm_service.py) — modul ini murni konsumen dari Contract B.
 """
 
 import base64
+import copy
 import io
 import re
 import subprocess
@@ -21,6 +22,7 @@ from typing import Any
 
 import docx
 import pypandoc
+from docx.enum.section import WD_ORIENT
 from docx.enum.table import WD_ROW_HEIGHT_RULE
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
@@ -59,6 +61,7 @@ _TEMPLATE_REGISTRY: dict[str, dict[str, str]] = {
     },
     "premco": {
         "SDD": "sdd_premco_template.md",
+        "UAT": "uat_premco_template.md",
     },
 }
 
@@ -151,6 +154,22 @@ _TITLE_BAR_FILL = "9CC3E5"
 # "login.2. Admin ..."). Template menulis marker ini; post-process menukarnya
 # dengan <w:br/> sungguhan.
 _LINE_BREAK_MARKER = "((BR))"
+
+# Header HIJAU tabel test-case gaya UAT PREMCO. Marker ini ditaruh di sel PERTAMA
+# baris header oleh uat_premco_template.md; post-process mengubah baris header jadi
+# hijau. Warna a8d08d TERUKUR dari header tabel test-case docx UAT asli — bukan
+# ditebak. Header hitam bawaan reference (tblStylePr firstRow) dimatikan khusus
+# tabel ini, karena teks putih di atas hijau muda kurang terbaca.
+_GREEN_HEADER_MARKER = "((GH))"
+_GREEN_HEADER_FILL = "a8d08d"
+
+# Pemicu section LANDSCAPE. Tabel test-case UAT PREMCO ada di section landscape
+# (diukur langsung dari docx asli: section 2 landscape, tabel 10,9 inci lebar) —
+# 9 kolom mustahil muat rapi di potret. Template premco UAT menaruh marker ini
+# sebagai paragraf tersendiri tepat sebelum Case Pengujian; post-process
+# memecah section di situ dan memutar sisanya jadi landscape. Pandoc tidak punya
+# konsep "section landscape sebagian", jadi ini satu-satunya tempat deterministik.
+_LANDSCAPE_MARKER = "((LANDSCAPE))"
 
 # Logo di header: tinggi standar meniru logo dokumen acuan (~0,45 inci di kanan
 # atas tiap halaman). Logo pita yang sangat lebar dibatasi LEBARNYA supaya tidak
@@ -479,7 +498,7 @@ def _document_title(normalized_type: str, project_name: str) -> str:
     return f"{label} — {project_name}" if project_name.strip() else label
 
 
-def _pandoc_args(normalized_type: str, title: str) -> list[str]:
+def _pandoc_args(normalized_type: str, title: str, template_id: str = "default") -> list[str]:
     """Argumen Pandoc per jenis dokumen.
 
     `--reference-doc` membawa TAMPILAN: font, gaya heading, dan yang paling
@@ -500,9 +519,12 @@ def _pandoc_args(normalized_type: str, title: str) -> list[str]:
     dari reference doc). WORD yang menghitung nomor halamannya — kita tetap
     tidak perlu tahu pagination dari sisi Markdown.
 
-    UAT tetap memakai `--toc` + `toc-title`: urutan halamannya belum jadi target
-    (roadmap tahap b), dan `--lof`/`--lot` memang tidak boleh ada di sana — UAT
-    punya NOL gambar, dua daftar itu cuma jadi halaman indeks kosong.
+    UAT `default` memakai `--toc` + `toc-title`: urutan halamannya belum jadi
+    target, dan `--lof`/`--lot` memang tidak boleh ada di sana — UAT punya NOL
+    gambar, dua daftar itu cuma jadi halaman indeks kosong. UAT `premco` justru
+    TANPA `--toc`: dokumen UAT PREMCO asli tidak punya Daftar Isi sama sekali
+    (diukur langsung — nol field TOC), dan template-nya pun flat tanpa heading,
+    jadi Daftar Isi malah kosong.
 
     `lang=id` dipertahankan untuk locale dokumen; `--columns=20` menurunkan
     ambang "baris tabel dianggap panjang" sehingga SEMUA pipe table template
@@ -522,7 +544,7 @@ def _pandoc_args(normalized_type: str, title: str) -> list[str]:
         f"title={title}",
         f"--reference-doc={REFERENCE_DOCX}",
     ]
-    if normalized_type == "UAT":
+    if normalized_type == "UAT" and template_id != "premco":
         args += ["--toc", "-M", "toc-title=Daftar Isi"]
     return args
 
@@ -573,6 +595,39 @@ def _apply_title_bars(document) -> None:
             for cell in row.cells:
                 for cell_paragraph in cell.paragraphs:
                     _set_keep_next(cell_paragraph._p)
+
+
+def _apply_green_headers(document) -> None:
+    """Warnai HIJAU baris header tabel yang sel pertamanya ditandai
+    _GREEN_HEADER_MARKER — konvensi tabel test-case UAT PREMCO.
+
+    Beda dari _apply_title_bars: baris header TIDAK di-merge (tetap 9 kolom),
+    cuma diberi latar hijau + bold. Header hitam kondisional (firstRow) dimatikan
+    untuk tabel ini saja supaya latar hijau tidak tertimpa hitam; perataan tengah
+    tetap ditangani _center_table_headers (yang meratakan baris pertama tiap tabel).
+    """
+    for table in document.tables:
+        if not table.rows:
+            continue
+        header = table.rows[0]
+        if not header.cells[0].text.startswith(_GREEN_HEADER_MARKER):
+            continue
+        header.cells[0].text = header.cells[0].text[len(_GREEN_HEADER_MARKER):].strip()
+
+        # Matikan header hitam kondisional (firstRow) untuk tabel INI saja.
+        tbl_look = table._tbl.tblPr.find(qn("w:tblLook"))
+        if tbl_look is not None:
+            tbl_look.set(qn("w:firstRow"), "0")
+
+        for cell in header.cells:
+            shading = OxmlElement("w:shd")
+            shading.set(qn("w:val"), "clear")
+            shading.set(qn("w:color"), "auto")
+            shading.set(qn("w:fill"), _GREEN_HEADER_FILL)
+            cell._tc.get_or_add_tcPr().append(shading)
+            for cell_paragraph in cell.paragraphs:
+                for run in cell_paragraph.runs:
+                    run.bold = True
 
 
 def _expand_line_break_markers(document) -> None:
@@ -755,26 +810,117 @@ def _add_header_logo(document, logo_bytes: bytes) -> None:
         paragraph.add_run().add_picture(io.BytesIO(logo_bytes), **size)
 
 
+def _landscape_after_marker(document) -> None:
+    """Pecah dokumen di paragraf _LANDSCAPE_MARKER: bagian SEBELUMnya tetap
+    potret, bagian SESUDAHnya (Case Pengujian UAT premco) jadi LANDSCAPE.
+
+    Mekanisme OOXML: properti sebuah section disimpan di sectPr yang MENGAKHIRI-
+    nya. Jadi: (1) salin sectPr body (potret) ke pPr paragraf marker → itu
+    menutup section potret di sana; (2) putar sectPr body sendiri jadi landscape
+    → itu jadi section terakhir, memayungi Case Pengujian sampai akhir dokumen.
+    Marker-driven supaya template lain tak tersentuh; hanya premco UAT yang
+    memancarkannya. Dijalankan sebelum _add_header_logo agar logo (yang meloop
+    document.sections) menjangkau KEDUA section."""
+    body = document.element.body
+    marker_p = None
+    for paragraph in body.findall(qn("w:p")):
+        text = "".join(t.text or "" for t in paragraph.iter(qn("w:t")))
+        if text.strip() == _LANDSCAPE_MARKER:
+            marker_p = paragraph
+            break
+    if marker_p is None:
+        return
+
+    section_props = body.findall(qn("w:sectPr"))
+    if not section_props:
+        return
+    body_sectpr = section_props[-1]
+
+    # (1) sectPr potret (salinan) → menutup section potret di paragraf marker.
+    #     Salinan ini SENGAJA tanpa pgSz (reference.docx tak punya) → mewarisi
+    #     Letter potret default, persis halaman depan sekarang.
+    portrait = copy.deepcopy(body_sectpr)
+    p_pr = marker_p.find(qn("w:pPr"))
+    if p_pr is None:
+        p_pr = OxmlElement("w:pPr")
+        marker_p.insert(0, p_pr)
+    p_pr.append(portrait)
+
+    # Kosongkan teks marker — paragrafnya jadi penutup section (tak terlihat).
+    for run in list(marker_p.findall(qn("w:r"))):
+        marker_p.remove(run)
+
+    # (2) Section terakhir (sectPr body) → landscape. Lewat API python-docx,
+    #     BUKAN tukar atribut mentah: reference.docx tak punya <w:pgSz> sama
+    #     sekali (page size-nya default), jadi tidak ada yang bisa ditukar —
+    #     setter page_width/height membuat pgSz-nya. Letter landscape (11x8,5),
+    #     margin 1 inci → area teks 9 inci untuk 9 kolom.
+    landscape_section = document.sections[-1]
+    landscape_section.orientation = WD_ORIENT.LANDSCAPE
+    landscape_section.page_width = Inches(11)
+    landscape_section.page_height = Inches(8.5)
+    landscape_section.left_margin = Inches(1)
+    landscape_section.right_margin = Inches(1)
+
+
 def _postprocess_docx(docx_path: str, logo_bytes: bytes | None = None) -> None:
     """Sentuhan yang tidak bisa dititipkan ke reference.docx maupun Pandoc —
     satu kali buka-simpan untuk semuanya."""
     document = docx.Document(docx_path)
     _apply_title_bars(document)  # sebelum center: baris pertama masih utuh per-sel
+    _apply_green_headers(document)  # header hijau tabel test-case UAT premco
     _expand_line_break_markers(document)
     _center_table_headers(document)
     _move_table_captions_below(document)
     _heighten_signature_rows(document)
+    _landscape_after_marker(document)  # Case Pengujian UAT premco → landscape
     if logo_bytes:
         _add_header_logo(document, logo_bytes)
     document.save(docx_path)
 
 
-def _build_uat_context(data: dict[str, Any]) -> dict[str, Any]:
-    # Ganti newline jadi "; " supaya tidak merusak baris tabel Markdown
-    # (satu baris tabel Markdown wajib satu baris teks).
+def _steps_to_br(text: str) -> str:
+    """Ubah teks multi-baris jadi satu string ber-marker ((BR)) — dipakai template
+    premco untuk menaruh langkah pengujian bernomor DI DALAM sel tabel. Baris
+    kosong dibuang; satu baris tetap satu baris (tanpa marker)."""
+    lines = [ln.strip() for ln in str(text).splitlines() if ln.strip()]
+    return _LINE_BREAK_MARKER.join(lines)
+
+
+def _group_test_cases(cases: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Kelompokkan test case per `module`, mempertahankan urutan kemunculan.
+    Kalau tidak ada test case yang punya `module` (mis. Contract B belum
+    memuat field itu), hasilnya SATU grup tanpa nama — template merender satu
+    tabel hijau tanpa sub-judul modul (fallback aman)."""
+    groups: list[dict[str, Any]] = []
+    by_key: dict[str | None, dict[str, Any]] = {}
+    for tc in cases:
+        key = (str(tc.get("module") or "")).strip() or None
+        if key not in by_key:
+            by_key[key] = {"group_name": key, "test_cases": []}
+            groups.append(by_key[key])
+        by_key[key]["test_cases"].append(tc)
+    return groups
+
+
+def _build_uat_context(data: dict[str, Any], template_id: str = "default") -> dict[str, Any]:
+    cases = data.get("uat_test_cases", [])
+    if template_id == "premco":
+        # Langkah & hasil jadi multi-baris di dalam sel (marker ((BR))), lalu
+        # dikelompokkan per modul → tabel test-case per-layar ala UAT PREMCO.
+        prepared = [
+            {
+                **tc,
+                "steps": _steps_to_br(tc.get("steps", "")),
+                "expected_result": _steps_to_br(tc.get("expected_result", "")),
+            }
+            for tc in cases
+        ]
+        return {**data, "uat_test_groups": _group_test_cases(prepared)}
+    # default: satu baris tabel Markdown wajib satu baris teks → newline jadi "; ".
     cleaned_cases = [
         {**tc, "steps": tc["steps"].replace("\n", "; ")}
-        for tc in data.get("uat_test_cases", [])
+        for tc in cases
     ]
     return {**data, "uat_test_cases": cleaned_cases}
 
@@ -820,7 +966,7 @@ def generate_docx(
     if normalized_type == "SDD":
         context = {**context, **_build_sdd_context(document_content, template_id)}
     else:
-        context = {**context, **_build_uat_context(document_content)}
+        context = {**context, **_build_uat_context(document_content, template_id)}
 
     template = _jinja_env.get_template(template_name)
     rendered_markdown = template.render(**context)
@@ -835,7 +981,9 @@ def generate_docx(
             format="md",
             outputfile=str(output_path),
             extra_args=_pandoc_args(
-                normalized_type, _document_title(normalized_type, project_name)
+                normalized_type,
+                _document_title(normalized_type, project_name),
+                template_id,
             ),
         )
     except OSError as e:

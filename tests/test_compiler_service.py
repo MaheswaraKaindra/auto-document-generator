@@ -743,13 +743,129 @@ def test_unknown_template_is_rejected():
         compiler_service.generate_docx("SDD", data, template_id="tidak-ada")
 
 
-def test_premco_template_has_no_uat_yet():
-    """Template premco baru menyediakan SDD — kombinasi yang tidak tersedia
-    harus gagal DENGAN PESAN yang menyebut apa yang tersedia, bukan KeyError."""
+def test_generate_docx_rejects_unavailable_doc_type_with_message(monkeypatch):
+    """Kombinasi template x jenis dokumen yang tidak tersedia harus gagal DENGAN
+    PESAN yang menyebut apa yang tersedia, bukan KeyError. premco kini menyediakan
+    SDD & UAT, jadi cabang ini diuji lewat registry sintetis (template hanya-SDD)."""
+    monkeypatch.setitem(
+        compiler_service._TEMPLATE_REGISTRY, "hanya_sdd", {"SDD": "sdd_template.md"}
+    )
     data = _load_fixture("document_content_uat.json")
-
     with pytest.raises(ValueError, match="belum menyediakan dokumen UAT"):
-        compiler_service.generate_docx("UAT", data, template_id="premco")
+        compiler_service.generate_docx("UAT", data, template_id="hanya_sdd")
+
+
+def _uat_premco_content(with_module=True):
+    """Contract B UAT sintetis meniru struktur PREMCO: layar ADMIN-Website +
+    EOS-app. `with_module=False` mensimulasikan Contract B yang belum memuat
+    field `module` (fallback satu tabel)."""
+    def tc(tid, role, module, activity, steps, expected):
+        d = {"test_id": tid, "role": role, "activity": activity,
+             "steps": steps, "expected_result": expected}
+        if with_module:
+            d["module"] = module
+        return d
+    return {
+        "document_type": "UAT",
+        "app_description": "Aplikasi manajemen SPBU.",
+        "uat_test_cases": [
+            tc("UAT-01", "ADMIN", "Halaman Login Website", "Akses Login",
+               "Buka halaman\nMasukkan email & password\nKlik Login",
+               "Diarahkan ke Dashboard"),
+            tc("UAT-02", "ADMIN", "Halaman Login Website", "Login gagal",
+               "Buka halaman\nMasukkan password salah\nKlik Login",
+               "Ditolak dengan pesan kesalahan"),
+            tc("UAT-03", "ADMIN", "Halaman Dashboard Website", "Akses Dashboard",
+               "Login sebagai Admin", "Dashboard tampil"),
+            tc("UAT-04", "EOS", "Halaman Login Aplikasi SPBU", "Akses Login App",
+               "Buka aplikasi\nMasukkan kredensial", "Masuk ke Beranda"),
+        ],
+    }
+
+
+def _row0_fill(table):
+    tcpr = table.rows[0].cells[0]._tc.find(qn("w:tcPr"))
+    if tcpr is None:
+        return None
+    shd = tcpr.find(qn("w:shd"))
+    return shd.get(qn("w:fill")) if shd is not None else None
+
+
+def test_premco_uat_renders_grouped_green_tables():
+    """premco UAT mengelompokkan test case per `module`, tiap grup satu tabel 9
+    kolom ber-header HIJAU (a8d08d), langkah pengujian multi-baris DI DALAM sel,
+    dan tidak ada marker (((GH))/((BR))) yang bocor ke teks."""
+    out = compiler_service.generate_docx(
+        "UAT", _uat_premco_content(with_module=True),
+        project_name="PREMCO", template_id="premco",
+    )
+    doc = Document(out)
+
+    green = [t for t in doc.tables if _row0_fill(t) == compiler_service._GREEN_HEADER_FILL]
+    assert len(green) == 3  # 3 modul: Login Website, Dashboard, Login App
+
+    # Semua tabel hijau berkolom 9 (No..Komentar) & header-nya sudah bersih marker.
+    for t in green:
+        assert len(t.rows[0].cells) == 9
+        assert t.rows[0].cells[0].text.strip() == "No"
+
+    paras = "\n".join(p.text for p in doc.paragraphs)
+    assert "Case Pengujian: Halaman Login Website" in paras
+    assert "Case Pengujian: Halaman Dashboard Website" in paras
+
+    # Langkah multi-baris jadi <w:br/> sungguhan (bukan "((BR))" literal).
+    all_cell_text = " ".join(
+        c.text for t in doc.tables for r in t.rows for c in r.cells
+    )
+    assert "((BR))" not in all_cell_text
+    assert "((GH))" not in all_cell_text
+    breaks = sum(len(t._tbl.findall(".//" + qn("w:br"))) for t in green)
+    assert breaks > 0  # langkah bernomor ganda menghasilkan line break
+
+
+def test_premco_uat_falls_back_to_single_table_without_module():
+    """Tanpa field `module` (Contract B lama), premco UAT tetap valid: SATU tabel
+    hijau, tanpa sub-judul modul — bukan error."""
+    out = compiler_service.generate_docx(
+        "UAT", _uat_premco_content(with_module=False),
+        project_name="PREMCO", template_id="premco",
+    )
+    doc = Document(out)
+    green = [t for t in doc.tables if _row0_fill(t) == compiler_service._GREEN_HEADER_FILL]
+    assert len(green) == 1
+    assert len(green[0].rows) == 1 + 4  # header + 4 test case
+
+
+def test_premco_uat_has_no_toc_but_default_does():
+    """UAT PREMCO asli tak punya Daftar Isi (nol field TOC, template flat tanpa
+    heading), jadi premco UAT melewati --toc; default UAT tetap memakainya."""
+    assert "--toc" not in compiler_service._pandoc_args("UAT", "T", "premco")
+    assert "--toc" in compiler_service._pandoc_args("UAT", "T", "default")
+
+
+def test_premco_uat_case_pengujian_section_is_landscape():
+    """Case Pengujian di UAT PREMCO asli berada di section LANDSCAPE (diukur: 9
+    kolom, tabel 10,9 inci). premco UAT memecah dokumen — front-matter potret,
+    Case Pengujian landscape — dan marker ((LANDSCAPE)) tidak bocor jadi teks.
+    default UAT tetap potret sepenuhnya (marker itu tak ada di template-nya)."""
+    from docx.enum.section import WD_ORIENT
+
+    out = compiler_service.generate_docx(
+        "UAT", _uat_premco_content(with_module=True),
+        project_name="PREMCO", template_id="premco",
+    )
+    doc = Document(out)
+    assert len(doc.sections) >= 2
+    assert doc.sections[-1].orientation == WD_ORIENT.LANDSCAPE
+    assert doc.sections[0].orientation == WD_ORIENT.PORTRAIT
+    assert "((LANDSCAPE))" not in "\n".join(p.text for p in doc.paragraphs)
+
+    default = Document(
+        compiler_service.generate_docx(
+            "UAT", _load_fixture("document_content_uat.json"), template_id="default"
+        )
+    )
+    assert all(s.orientation == WD_ORIENT.PORTRAIT for s in default.sections)
 
 
 def test_premco_survives_invalid_component_integration(monkeypatch):
