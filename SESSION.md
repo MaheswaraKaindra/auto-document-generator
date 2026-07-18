@@ -28,7 +28,9 @@ luas-vs-fokus. **Arsitektur diputus: X = kompilasi upload jadi template terdafta
 (A/B tipografi terbukti render); (3) prototipe loop penuh pada `04`
 (outline→generate template→isi→render dokumen `04`-style). Laporan durable
 `scripts/validation/V2_TEMPLATE_MULTISOURCE.md`; PROBE26/27. **V2 de-risked —
-sisa = IMPLEMENTASI, bukan kelayakan.**
+sisa = IMPLEMENTASI, bukan kelayakan.** Implementasi lalu DIMULAI: **increment 1
+(`TemplateSpec`) dikonsolidasi dari scratchpad jadi `app/services/template_spec_service.py`
++ 2 tes fixture sintetis, ter-commit (`6f69ff4`), 241 test hijau.**
 
 ## Yang diselesaikan
 
@@ -72,17 +74,32 @@ prioritas yang pemilik perlu putuskan:
   bukan overfit halus. Keragaman input yang menaikkan keyakinan — bukan lebih
   banyak kode. Implementasi kerja repo-only yang TAK kedaluwarsa.
 
-**#2 (implementasi, kapan saja — gaya V1, MENYENTUH kode ter-commit → checkpoint
-dgn pemilik dulu):**
-- Konsolidasi increment 1-3 dari scratchpad → kode `app/` + tes fixture sintetis
-  (`TemplateSpec` → sintesis reference → generator template). Kode riset ada di
-  scratchpad sesi ini (throwaway) — logikanya di `V2_TEMPLATE_MULTISOURCE.md`.
-- Lalu: sintesis **landscape/orientasi per-section**; **warna tabel khusus
-  spec-driven** (ganti pendekatan marker hijau); **LLM auto-usul peta bab** (untuk
-  template asing spt IEEE SDD); **UI tinjauan pemetaan** manusia.
+**#2 (implementasi Trek B — SUDAH DIMULAI, gaya V1). SAMPAI MANA & LANJUT DARI MANA:**
+- ✅ **Increment 1 SELESAI & ter-commit** (`6f69ff4`): `app/services/template_spec_service.py`
+  (`build_template_spec(docx)→dict`) + `tests/test_template_spec_service.py` (fixture
+  sintetis python-docx). 241 test hijau. Aditif — nol sentuh kode lama.
+- ⏭ **Increment 2 = LANGKAH BERIKUTNYA: sintesis reference.docx dari spec.**
+  **Pendekatan sudah diputuskan = A**: perluas `scripts/build_reference_docx.py`
+  dgn param `spec=None`. `None` = perilaku PREMCO sekarang, **byte-identik** (JANGAN
+  regenerasi `app/templates/reference.docx` yang ter-commit → 239 test lama aman);
+  spec terisi = override sumber-spesifik (tema major/minor terpisah, Title/Heading
+  size/bold/caps/align, warna fill+teks header via kontras luminance). Logika
+  TERBUKTI di scratchpad sesi ini (`synth_reference.py` — A/B tipografi `04` vs
+  PREMCO, PROBE27) — ini porting kode-terbukti, bukan refactor ke ketidakpastian.
+  Verifikasi: byte-compare default hasil regenerasi vs `reference.docx` ter-commit,
+  + render spec-driven → lihat (docx→PDF via Word COM→PNG→Read).
+- Lalu increment 3 (lebih besar, checkpoint lagi): generator template Jinja dari
+  outline (prototipe `full_loop_04.py` di scratchpad) → kode `app/` + registry
+  `_TEMPLATE_REGISTRY`; sintesis **landscape/orientasi per-section**; **warna tabel
+  khusus spec-driven** (ganti marker hijau premco); **LLM auto-usul peta bab**
+  (template asing spt IEEE SDD); **UI tinjauan pemetaan** manusia.
 
-**JANGAN** mulai implementasi besar tanpa memutuskan #1 vs #2 dulu — half-built
-feature = state buruk.
+Catatan: kode riset increment 2-3 masih di scratchpad SESI KEMARIN (throwaway,
+mungkin sudah terhapus) — kalau perlu, logikanya terekam di
+`V2_TEMPLATE_MULTISOURCE.md` dan bisa ditulis ulang dari sana.
+
+**JANGAN** lupa: #1 (kumpulkan template sumber lain — Trek A, di tangan pemilik)
+tetap prioritas selagi magang; #2 berjalan paralel.
 
 **Utang lama (cepat):** revoke `GOOGLE_API_KEY` & `LLAMA_API_KEY`; isi `GITHUB_TOKEN`.
 
