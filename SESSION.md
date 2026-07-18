@@ -88,52 +88,37 @@ end-to-end), `2ed7a8e` (endpoint App Router) + commit ini.
 
 ## Kalau melanjutkan besok, mulai dari sini
 
-**Perbandingan 16 bab SUDAH dilakukan (tak ada gap ketujuh). premco praktis
-demo-ready. Bug Nuxt default SUDAH diperbaiki. Kandidat berikutnya:**
+**Semua pekerjaan repo-only sesi ini SELESAI** (bracket fix 3 repo + end-to-end,
+App Router endpoint, A/B — detail di CLAUDE.md Riwayat 2026-07-18). Yang penting
+untuk sesi berikutnya bukan daftar sisa teknis, tapi ARAH — dan arahnya berubah.
 
-1. ~~**Bug `default` crash pada Nuxt/Next**~~ — **SELESAI & DIVALIDASI 3 repo, 2
-   framework**: `_sanitize_route_param_brackets` di `_normalize_plantuml` melepas
-   kurung route-param sebelum plantuml.jar (deterministik, $0, diagram TETAP
-   dirender bukan placeholder). (1) MyPertamina (Nuxt `.vue`, PROBE18) — fix
-   pertama. (2) nuxt/movies (Nuxt `.vue`) — mengungkap gap overfit (param jadi
-   segmen pertama `[[type]/...` memakan kurung komponen); diperbaiki dgn cocok
-   kurung berimbang, double dulu (PROBE19). (3) shadcn-ui/taxonomy (**Next.js
-   `.tsx`, App Router**) — lolos TANPA perubahan kode; route group `(marketing)`
-   (kurung BIASA) dipertahankan sementara kurung siku dilepas; `[[...slug]]` &
-   `[...nextauth]` bersih. **Pelajaran: 1 repo = fix jalan, 2 repo = fix general,
-   3 repo (framework lain) = fix tak sempit ke satu ekosistem.** Uji ketiganya
-   $0 (tarik nama file asli + render sintetis plantuml.jar, tanpa LLM). Sisa yang
-   MUNGKIN suatu saat: resiliensi per-diagram (placeholder untuk PlantUML rusak
-   lewat jalur lain) — sengaja belum, menjaga filosofi gagal-berisik.
-2. **3 gap Contract B — SEBAGIAN BESAR DIBATALKAN setelah dibuka** (bukan lagi
-   "~$0,25 regen"): SysReq table-2 = kompatibilitas Browser/Android = deployment,
-   TAK code-derivable (kolom Remark sudah ditambah $0, tabel kedua di-drop); flow
-   nested redundan dgn diagram flow + esteler tak bercabang jadi regen tak akan
-   membuktikannya; deskripsi "fitur utama" redundan dgn bab Features. Sisa yang
-   layak SUATU SAAT: flow nested sebagai peningkatan Contract B, diverifikasi
-   pada repo yang logika bisnisnya bercabang (BUKAN esteler).
-3. ~~**Deteksi endpoint Next.js App Router**~~ — **SELESAI**: taxonomy 0→8
-   endpoint. `_ts_app_router_endpoints` + `_app_router_path` (route.ts named
-   export, path dari folder, route group dibuang, `[id]`→`:id`). 16 test
-   (`test_parser_app_router.py` — file test TS pertama). Ditulis dari AST NYATA.
-   **Sisa** (lebih jarang): Nuxt `server/api` (`defineEventHandler`) & Next.js
-   Pages Router (`export default`, method tak bisa statis). Belum diuji apakah
-   dokumen jadi lebih baik dgn endpoint eksplisit (~$0,20 regen) — diagram
-   integrasi taxonomy TANPA endpoint pun sudah benar, jadi mungkin marginal.
-4. **UAT premco** (roadmap tahap b) — **BLOCKER: tidak ada acuan UAT Pertamina
-   di repo** (dicek: cuma ada `uat_template.md` & output kita sendiri). Registry
-   `premco` pun baru SDD. Mengerjakannya sekarang = menebak. Butuh pemilik
-   membawa dokumen UAT dari kantor.
+**TEMUAN STRATEGIS (baca ini sebelum memutuskan kerja apa): sumur pekerjaan
+bernilai-tinggi yang bisa dikerjakan DARI REPO SAJA mulai kering.** A/B endpoint
+(v2 regen ~$0,20) membuktikan LLM sudah pandai menyimpulkan struktur dari nama
+file — endpoint eksplisit MERAMBAT (v2 pakai notasi parser `:postId`, v1 nebak
+`{postId}`) tapi peningkatan kualitasnya MARGINAL karena v1 pun sudah akurat.
+Implikasinya: **menambah bahasa/presisi parser (Nuxt server-routes, Pages Router,
+Go, Kotlin) kemungkinan besar juga marginal** untuk kualitas dokumen — satu-satunya
+nilai jual. Itu kerja NYAMAN (centang hijau, bisa dari repo), bukan kerja
+BERHARGA. Jangan tambah bahasa parser lagi tanpa alasan kualitas yang jelas.
 
-**Yang cuma bisa diambil pemilik SELAGI magang** (kedaluwarsa saat magang
-selesai, beda dari kerja poles yang bisa kapan saja): (a) dokumen **UAT**
-Pertamina, (b) 1-2 template dari **sumber lain** (vendor/divisi lain) untuk
-membuka V2, (c) penilaian engineer Pertamina atas PROBE16/PROBE15.
+**Dua hal yang benar-benar menggerakkan produk terhalang input yang CUMA PEMILIK
+bisa bawa** (bukan masalah coding, dan KEDALUWARSA saat magang selesai):
+1. **Dokumen UAT Pertamina** → membuka roadmap tahap (b), pekerjaan terbesar yang
+   tersisa. Registry premco baru SDD; mengerjakan UAT tanpa acuan = menebak (cuma
+   ada `uat_template.md` & output sendiri). **Prioritas: ambil selagi di sana.**
+2. **1-2 template dari sumber LAIN** (vendor/divisi lain) → membuka V2 (upload
+   template sembarang). V0/V1 baru terbukti pada SATU sumber PREMCO.
 
-**Menggantung dari sesi-sesi lalu (masih berlaku):**
-- Revoke `GOOGLE_API_KEY` & `LLAMA_API_KEY` (menggantung berkali-kali).
-- Isi `GITHUB_TOKEN` di .env.
-- ZIP → dokumen belum tersambung.
+**Kalau input eksternal BELUM ada, kerja repo-only yang masih BERHARGA (bukan
+marginal) = tepi DEPLOYMENT, bukan fitur baru:**
+- Job mati saat proses restart (belum ada reaper untuk `running` basi).
+- Jalur ZIP → dokumen belum tersambung (`GenerateDocumentRequest` cuma terima repo GitHub).
+- OAuth GitHub baru scaffold (belum ada OAuth App terdaftar).
+- Dokumen tumbuh selamanya (belum ada TTL/pembersihan).
+
+**Utang lama (masih berlaku, cepat):** revoke `GOOGLE_API_KEY` & `LLAMA_API_KEY`;
+isi `GITHUB_TOKEN` di .env.
 
 ## Yang perlu dilakukan manusia
 
@@ -148,4 +133,11 @@ membuka V2, (c) penilaian engineer Pertamina atas PROBE16/PROBE15.
 - Untuk demo ke mentor: pakai PROBE17 (repo relevan Pertamina) atau PROBE16;
   sebut sendiri 3 beda yang tersisa (SysReq client-compat, kolom Entitas Tim,
   flow flat) sebagai "sengaja tak dikarang dari kode", bukan tunggu ditemukan.
-- Dua tugas lama: revoke API key lama, isi GITHUB_TOKEN.
+- **Bukti pipeline netral-bahasa (Next.js/TSX):** `PROBE20_taxonomy_default.docx`
+  (dgn diagram Integrasi Komponen) & `PROBE22_taxonomy_default_v2.docx` (versi
+  dengan endpoint eksplisit). Buka kalau mau lihat produk jalan di luar Vue/Python.
+- **PALING PENTING selagi masih magang** (kata Claude sesi ini, disetujui alur):
+  bawa **dokumen UAT Pertamina** dan **1-2 template dokumen dari sumber/vendor
+  lain**. Itu satu-satunya yang membuka pekerjaan besar berikutnya dan tak bisa
+  diambil setelah keluar. Kerja poles bisa kapan saja; akses tidak.
+- Dua tugas lama: revoke API key lama (`GOOGLE_API_KEY`/`LLAMA_API_KEY`), isi `GITHUB_TOKEN`.
