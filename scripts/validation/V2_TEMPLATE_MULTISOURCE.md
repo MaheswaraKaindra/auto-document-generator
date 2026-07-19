@@ -165,7 +165,7 @@ sekali → template terdaftar di `_TEMPLATE_REGISTRY`. Alasan:
 |---|---|---|
 | 1 | `TemplateSpec` (ukur → JSON) | ✅ **KODE app + tes** (`app/services/template_spec_service.py`, 2026-07-18) |
 | 2 | Sintesis reference.docx dari spec | ✅ **KODE + tes** (`build_reference_docx.py` param `spec`, 2026-07-19) |
-| 3 | Peta bab→Contract B + generasi template Jinja + isi + render | 🟨 **generator + pendaftaran + storage = KODE + tes** (`template_generator_service.py` + `template_compiler_service.py` + registry dinamis di `compiler_service.py`, 2026-07-19); jalur produksi penuh terbukti (PROBE30). Sisa = endpoint upload, LLM auto-usul peta, UI tinjauan, landscape |
+| 3 | Peta bab→Contract B + generasi template Jinja + isi + render | 🟨 **generator + pendaftaran + storage + endpoint upload = KODE + tes** (`template_generator_service.py` + `template_compiler_service.py` + registry dinamis + `routes_template.py`, 2026-07-19); jalur produksi penuh terbukti (PROBE30), `POST /templates` bisa dipakai. Sisa = LLM auto-usul peta, UI tinjauan+upload frontend, landscape |
 
 **Riset V2 SELESAI** — ketiga increment terbukti sebagai satu rantai pada
 template non-PREMCO. Sisa = IMPLEMENTASI, bukan lagi kelayakan.

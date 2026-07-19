@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.routes_auth import router as auth_router
 from app.api.routes_document import router as document_router
 from app.api.routes_ingestion import router as ingestion_router
+from app.api.routes_template import router as template_router
 from app.services import job_store
 
 app = FastAPI(title="Auto Document Generator")
@@ -36,6 +37,7 @@ app.add_middleware(
 app.include_router(ingestion_router)
 app.include_router(auth_router)
 app.include_router(document_router)
+app.include_router(template_router)
 
 
 @app.get("/health")

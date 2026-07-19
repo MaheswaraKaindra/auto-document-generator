@@ -115,3 +115,21 @@ def compile_template_from_docx(docx_path, name: str | None = None, doc_types=Non
     → `compile_template`. `.doc` biner harus dikonversi ke `.docx` dulu."""
     spec = build_template_spec(docx_path)
     return compile_template(spec, name or Path(docx_path).stem, doc_types, template_id)
+
+
+def load_compiled_detail(template_id: str) -> dict:
+    """Manifest + rencana peta bab per doc_type untuk template terkompilasi —
+    dipakai respons upload & UI tinjauan pemetaan. `mappings` = `{DOC:
+    [{level,text,binding}]}`, isian yang kelak diedit manusia sebelum generate.
+    ValueError kalau `template_id` bukan template hasil-kompilasi (mis. built-in)."""
+    base = compiler_service.TEMPLATES_STORE / template_id
+    manifest_path = base / "template.json"
+    if not manifest_path.exists():
+        raise ValueError(f"Template terkompilasi tidak ditemukan: {template_id!r}")
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    mappings = {}
+    for dt in manifest.get("doc_types", {}):
+        mapping_path = base / f"mapping_{dt}.json"
+        if mapping_path.exists():
+            mappings[dt] = json.loads(mapping_path.read_text(encoding="utf-8"))
+    return {"manifest": manifest, "mappings": mappings}
