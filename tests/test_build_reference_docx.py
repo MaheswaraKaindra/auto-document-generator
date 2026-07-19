@@ -8,10 +8,10 @@
    vs body terpisah), warna header tabel + teks kontras, caps/rata heading —
    semuanya dari spec, bukan PREMCO.
 
-`build_reference_docx.py` ada di `scripts/` (bukan paket app), jadi dimuat lewat
-importlib dari path — tanpa mengotori sys.path global.
+Logika sintesis ada di `app.services.reference_synthesis_service` (dipindah dari
+`scripts/` saat runtime V2 mulai membutuhkannya); CLI `scripts/build_reference_docx.py`
+kini cuma pembungkus tipis.
 """
-import importlib.util
 import re
 import zipfile
 from pathlib import Path
@@ -19,12 +19,9 @@ from pathlib import Path
 from docx import Document
 from docx.oxml.ns import qn
 
-_ROOT = Path(__file__).resolve().parent.parent
-_loader_spec = importlib.util.spec_from_file_location(
-    "build_reference_docx", _ROOT / "scripts" / "build_reference_docx.py")
-brd = importlib.util.module_from_spec(_loader_spec)
-_loader_spec.loader.exec_module(brd)
+from app.services import reference_synthesis_service as rs
 
+_ROOT = Path(__file__).resolve().parent.parent
 COMMITTED = _ROOT / "app" / "templates" / "reference.docx"
 
 
@@ -60,7 +57,7 @@ def test_spec_none_is_content_identical_to_committed_reference(tmp_path):
     (Ini juga menautkan reference.docx ter-commit ke pandoc environment ini: bila
     versi pandoc berubah sehingga kerangka bawaannya berbeda, test ini gagal dan
     memberi tahu bahwa reference.docx memang perlu diregenerasi.)"""
-    rebuilt = brd.build(tmp_path / "ref_none.docx", spec=None)
+    rebuilt = rs.build_reference(tmp_path / "ref_none.docx", spec=None)
     committed = _members(COMMITTED)
     got = _members(rebuilt)
     assert list(committed) == list(got), "daftar/urutan member zip berubah"
@@ -82,7 +79,7 @@ def test_spec_drives_theme_fonts_heading_and_table_header(tmp_path):
         },
         "table_header_fill": "A4A4A4",
     }}
-    out = brd.build(tmp_path / "ref_spec.docx", spec=spec)
+    out = rs.build_reference(tmp_path / "ref_spec.docx", spec=spec)
 
     with zipfile.ZipFile(out) as package:
         theme = package.read("word/theme/theme1.xml").decode("utf-8")
@@ -106,7 +103,7 @@ def test_spec_drives_theme_fonts_heading_and_table_header(tmp_path):
 def test_premco_default_keeps_caps_and_black_header(tmp_path):
     """Sisi sebaliknya: tanpa spec, heading DIPAKSA huruf besar + perenggangan
     dan header tabel HITAM teks putih — identitas PREMCO tetap utuh."""
-    out = brd.build(tmp_path / "ref_premco.docx", spec=None)
+    out = rs.build_reference(tmp_path / "ref_premco.docx", spec=None)
     doc = Document(str(out))
 
     h2_rpr = _style_element(doc, "Heading 2").find(qn("w:rPr"))
@@ -124,18 +121,18 @@ def test_empty_spec_falls_back_to_premco(tmp_path):
     """Spec kosong / tanpa field visual tidak boleh melempar dan harus jatuh ke
     PREMCO — jalur 'template miskin' (V0: sebagian docx cuma 4/14 style)."""
     for empty in ({}, {"visual": {}}):
-        cfg = brd._resolve_style(empty)
-        assert cfg["heading_font"] == brd.BODY_FONT
-        assert cfg["header_fill"] == brd.BLACK
-        assert cfg["header_text"] == brd.WHITE
+        cfg = rs._resolve_style(empty)
+        assert cfg["heading_font"] == rs.BODY_FONT
+        assert cfg["header_fill"] == rs.BLACK
+        assert cfg["header_text"] == rs.WHITE
         assert cfg["heading1"]["caps"] is True
 
 
 def test_contrast_text_picks_readable_ink():
     """Teks header dihitung dari luminansi: fill gelap → putih, terang → hitam,
     dan prefiks '#' ditoleransi."""
-    assert brd._contrast_text("000000") == "FFFFFF"
-    assert brd._contrast_text("1F3864") == "FFFFFF"    # biru tua
-    assert brd._contrast_text("A4A4A4") == "000000"    # abu 04
-    assert brd._contrast_text("D9D9D9") == "000000"    # abu IEEE
-    assert brd._contrast_text("#9CC3E5") == "000000"   # biru muda + prefiks '#'
+    assert rs._contrast_text("000000") == "FFFFFF"
+    assert rs._contrast_text("1F3864") == "FFFFFF"    # biru tua
+    assert rs._contrast_text("A4A4A4") == "000000"    # abu 04
+    assert rs._contrast_text("D9D9D9") == "000000"    # abu IEEE
+    assert rs._contrast_text("#9CC3E5") == "000000"   # biru muda + prefiks '#'

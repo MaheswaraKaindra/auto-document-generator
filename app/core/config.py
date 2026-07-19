@@ -22,6 +22,12 @@ LLM_MODEL = os.getenv("LLM_MODEL", "claude-sonnet-5")
 # meninggalkan riwayat yang menunjuk ke file yang sudah tidak ada.
 DATABASE_PATH = os.getenv("DATABASE_PATH", "data/jobs.db")
 
+# Direktori tempat template hasil-KOMPILASI upload user disimpan (V2). Persisten
+# seperti DATABASE_PATH — template terdaftar (template Jinja hasil-generate +
+# reference.docx tersintesis + manifest) harus bertahan melewati restart, sama
+# alasannya dengan DB job. Kosong = data/templates (di-gitignore lewat data/).
+TEMPLATES_STORE_PATH = os.getenv("TEMPLATES_STORE_PATH", "data/templates")
+
 # Path ke plantuml.jar untuk merender diagram secara LOKAL (butuh Java 17+ di
 # PATH). Rendering diagram pindah dari mermaid.ink (layanan hosted) ke PlantUML
 # lokal pada 2026-07-16: (1) isi diagram — nama endpoint, struktur komponen —

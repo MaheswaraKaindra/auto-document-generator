@@ -838,9 +838,11 @@ def test_premco_uat_falls_back_to_single_table_without_module():
 
 def test_premco_uat_has_no_toc_but_default_does():
     """UAT PREMCO asli tak punya Daftar Isi (nol field TOC, template flat tanpa
-    heading), jadi premco UAT melewati --toc; default UAT tetap memakainya."""
-    assert "--toc" not in compiler_service._pandoc_args("UAT", "T", "premco")
-    assert "--toc" in compiler_service._pandoc_args("UAT", "T", "default")
+    heading), jadi premco UAT melewati --toc; default UAT tetap memakainya.
+    Sejak _pandoc_args memakai flag uat_toc (bukan template_id) — flag itu
+    diresolve dari template oleh _resolve_template."""
+    assert "--toc" not in compiler_service._pandoc_args("UAT", "T", uat_toc=False)
+    assert "--toc" in compiler_service._pandoc_args("UAT", "T", uat_toc=True)
 
 
 def test_premco_uat_case_pengujian_section_is_landscape():

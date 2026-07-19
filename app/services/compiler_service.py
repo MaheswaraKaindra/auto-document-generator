@@ -13,10 +13,12 @@ Peran 2 (llm_service.py) — modul ini murni konsumen dari Contract B.
 import base64
 import copy
 import io
+import json
 import re
 import subprocess
 import tempfile
 import uuid
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -37,6 +39,11 @@ from app.domain.exceptions import DiagramRenderError
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
 OUTPUT_DIR = Path(tempfile.gettempdir()) / "auto_document_generator"
 IMAGES_DIR = OUTPUT_DIR / "images"
+
+# Template hasil-KOMPILASI upload user (V2): data/templates/<id>/ berisi manifest
+# template.json, template Jinja per-doc_type (.md), dan reference.docx tersintesis.
+# Persisten (bukan temp) — lihat config.TEMPLATES_STORE_PATH.
+TEMPLATES_STORE = Path(config.TEMPLATES_STORE_PATH)
 
 # autoescape=False karena output-nya Markdown, bukan HTML — auto-escaping
 # justru akan merusak karakter Markdown biasa (*, _, |, dst).
@@ -78,17 +85,25 @@ _TEMPLATES_USING_COMPONENT_INTEGRATION = {"default"}
 def validate_template(template_id: str, document_type: str) -> None:
     """Tolak kombinasi template x jenis dokumen yang tidak tersedia — dipanggil
     SINKRON oleh endpoint (422 sebelum job dibuat) DAN oleh generate_docx
-    (pertahanan kalau dipanggil dari jalur lain)."""
-    doc_types = _TEMPLATE_REGISTRY.get(template_id)
-    if doc_types is None:
-        raise ValueError(
-            f"template_id tidak dikenal: {template_id!r} "
-            f"(tersedia: {', '.join(sorted(_TEMPLATE_REGISTRY))})"
-        )
-    if document_type.upper() not in doc_types:
+    (pertahanan kalau dipanggil dari jalur lain).
+
+    Menerima built-in (`_TEMPLATE_REGISTRY`) DAN template hasil-kompilasi upload
+    (V2, `data/templates/<id>/template.json`)."""
+    normalized = document_type.upper()
+    if template_id in _TEMPLATE_REGISTRY:
+        doc_types = set(_TEMPLATE_REGISTRY[template_id])
+    else:
+        manifest = _load_compiled_manifest(template_id)
+        if manifest is None:
+            raise ValueError(
+                f"template_id tidak dikenal: {template_id!r} "
+                f"(tersedia: {', '.join(list_template_ids())})"
+            )
+        doc_types = set(manifest["doc_types"])
+    if normalized not in doc_types:
         raise ValueError(
             f"Template {template_id!r} belum menyediakan dokumen "
-            f"{document_type.upper()} (tersedia: {', '.join(sorted(doc_types))})."
+            f"{normalized} (tersedia: {', '.join(sorted(doc_types))})."
         )
 
 # Judul dokumen — masuk ke halaman pertama DAN ke kaki tiap halaman. Sengaja di
@@ -103,6 +118,78 @@ _TITLE_BY_DOC_TYPE = {
 # Kerangka tampilan: font, gaya heading, dan kaki halaman bernomor. Dibangun oleh
 # scripts/build_reference_docx.py — bukan file biner misterius.
 REFERENCE_DOCX = TEMPLATES_DIR / "reference.docx"
+
+# Perilaku per built-in yang TIDAK bisa dilihat dari nama template saja. Template
+# hasil-kompilasi upload membawa flag ini di manifest-nya.
+_BUILTIN_GROUPS_TEST_CASES = {"premco"}   # sisanya (default) pakai tabel test flat
+_BUILTIN_UAT_TOC = {"default"}            # sisanya (premco) tanpa Daftar Isi
+
+
+@dataclass(frozen=True)
+class _ResolvedTemplate:
+    """Semua yang dibutuhkan compiler untuk merender satu template — dari built-in
+    ATAU dari template hasil-kompilasi upload. Satu tempat yang menyembunyikan
+    perbedaan sumbernya."""
+    template_id: str
+    template: Any                     # jinja2.Template siap .render()
+    reference_docx: Path
+    uses_component_integration: bool  # render diagram Component Integration?
+    groups_test_cases: bool           # UAT: kelompokkan test-case per modul?
+    uat_toc: bool                     # UAT: pasang --toc?
+
+
+def _load_compiled_manifest(template_id: str) -> dict | None:
+    """Manifest template hasil-kompilasi upload, atau None kalau bukan template
+    terkompilasi (mis. built-in atau id tak dikenal)."""
+    manifest = TEMPLATES_STORE / template_id / "template.json"
+    if not manifest.exists():
+        return None
+    return json.loads(manifest.read_text(encoding="utf-8"))
+
+
+def _compiled_template_ids() -> set[str]:
+    if not TEMPLATES_STORE.exists():
+        return set()
+    return {p.name for p in TEMPLATES_STORE.iterdir()
+            if (p / "template.json").exists()}
+
+
+def list_template_ids() -> list[str]:
+    """Semua template_id yang bisa dipakai: built-in + hasil-kompilasi upload.
+    Publik: dipakai orkestrator kompilasi (cek keunikan id) & bisa dipakai
+    frontend untuk mengisi dropdown gaya dokumen."""
+    return sorted(set(_TEMPLATE_REGISTRY) | _compiled_template_ids())
+
+
+def _resolve_template(template_id: str, normalized_type: str) -> _ResolvedTemplate:
+    """template_id + jenis dokumen → sumber Jinja + reference.docx + flag perilaku.
+    Built-in muat dari app/templates/ + reference.docx ter-commit; template
+    hasil-kompilasi upload muat dari data/templates/<id>/ + reference tersintesisnya
+    sendiri. Prakondisi: kombinasi sudah lolos `validate_template`."""
+    if template_id in _TEMPLATE_REGISTRY:
+        name = _TEMPLATE_REGISTRY[template_id][normalized_type]
+        return _ResolvedTemplate(
+            template_id=template_id,
+            template=_jinja_env.get_template(name),
+            reference_docx=REFERENCE_DOCX,
+            uses_component_integration=template_id in _TEMPLATES_USING_COMPONENT_INTEGRATION,
+            groups_test_cases=template_id in _BUILTIN_GROUPS_TEST_CASES,
+            uat_toc=template_id in _BUILTIN_UAT_TOC,
+        )
+    manifest = _load_compiled_manifest(template_id)
+    if manifest is None:
+        raise ValueError(f"template_id tidak dikenal: {template_id!r} "
+                         f"(tersedia: {', '.join(list_template_ids())})")
+    base = TEMPLATES_STORE / template_id
+    source = (base / manifest["doc_types"][normalized_type]).read_text(encoding="utf-8")
+    return _ResolvedTemplate(
+        template_id=template_id,
+        template=_jinja_env.from_string(source),
+        reference_docx=base / manifest["reference"],
+        uses_component_integration=manifest.get("uses_component_integration", False),
+        groups_test_cases=manifest.get("groups_test_cases", True),
+        uat_toc=manifest.get("uat_toc", False),
+    )
 
 # Ketajaman render PlantUML. Default PlantUML 96 dpi — cukup untuk layar, buram
 # untuk cetak (pelajaran yang sama dengan mermaid.ink dulu: layak cetak butuh
@@ -410,9 +497,8 @@ def _image_attr(image_path: str) -> str:
     return f"{{width={_PAGE_WIDTH_IN}in}}"
 
 
-def _build_sdd_context(data: dict[str, Any], template_id: str = "default") -> dict[str, Any]:
+def _build_sdd_context(data: dict[str, Any], render_integration: bool = True) -> dict[str, Any]:
     diagrams = data["diagrams"]
-    render_integration = template_id in _TEMPLATES_USING_COMPONENT_INTEGRATION
 
     # Ganti newline jadi spasi supaya tidak merusak baris tabel Markdown
     # (satu baris tabel Markdown wajib satu baris teks) — sama seperti
@@ -498,7 +584,8 @@ def _document_title(normalized_type: str, project_name: str) -> str:
     return f"{label} — {project_name}" if project_name.strip() else label
 
 
-def _pandoc_args(normalized_type: str, title: str, template_id: str = "default") -> list[str]:
+def _pandoc_args(normalized_type: str, title: str, reference_docx: Path = REFERENCE_DOCX,
+                 uat_toc: bool = True) -> list[str]:
     """Argumen Pandoc per jenis dokumen.
 
     `--reference-doc` membawa TAMPILAN: font, gaya heading, dan yang paling
@@ -542,9 +629,9 @@ def _pandoc_args(normalized_type: str, title: str, template_id: str = "default")
         "lang=id",
         "-M",
         f"title={title}",
-        f"--reference-doc={REFERENCE_DOCX}",
+        f"--reference-doc={reference_docx}",
     ]
-    if normalized_type == "UAT" and template_id != "premco":
+    if normalized_type == "UAT" and uat_toc:
         args += ["--toc", "-M", "toc-title=Daftar Isi"]
     return args
 
@@ -903,11 +990,12 @@ def _group_test_cases(cases: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return groups
 
 
-def _build_uat_context(data: dict[str, Any], template_id: str = "default") -> dict[str, Any]:
+def _build_uat_context(data: dict[str, Any], group: bool = False) -> dict[str, Any]:
     cases = data.get("uat_test_cases", [])
-    if template_id == "premco":
+    if group:
         # Langkah & hasil jadi multi-baris di dalam sel (marker ((BR))), lalu
-        # dikelompokkan per modul → tabel test-case per-layar ala UAT PREMCO.
+        # dikelompokkan per modul → tabel test-case per-layar ala UAT PREMCO
+        # (premco) atau template hasil-generate (yang juga pakai tabel per-modul).
         prepared = [
             {
                 **tc,
@@ -955,7 +1043,7 @@ def generate_docx(
     if normalized_type not in ("SDD", "UAT"):
         raise ValueError(f"document_type tidak dikenal: {document_type!r} (harus 'SDD' atau 'UAT')")
     validate_template(template_id, normalized_type)
-    template_name = _TEMPLATE_REGISTRY[template_id][normalized_type]
+    resolved = _resolve_template(template_id, normalized_type)
 
     context = {
         "project_name": project_name,
@@ -964,12 +1052,13 @@ def generate_docx(
     }
 
     if normalized_type == "SDD":
-        context = {**context, **_build_sdd_context(document_content, template_id)}
+        context = {**context,
+                   **_build_sdd_context(document_content, resolved.uses_component_integration)}
     else:
-        context = {**context, **_build_uat_context(document_content, template_id)}
+        context = {**context,
+                   **_build_uat_context(document_content, resolved.groups_test_cases)}
 
-    template = _jinja_env.get_template(template_name)
-    rendered_markdown = template.render(**context)
+    rendered_markdown = resolved.template.render(**context)
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     output_path = OUTPUT_DIR / f"{normalized_type}_{uuid.uuid4().hex}.docx"
@@ -983,7 +1072,8 @@ def generate_docx(
             extra_args=_pandoc_args(
                 normalized_type,
                 _document_title(normalized_type, project_name),
-                template_id,
+                resolved.reference_docx,
+                resolved.uat_toc,
             ),
         )
     except OSError as e:
