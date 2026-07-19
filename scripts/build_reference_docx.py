@@ -6,6 +6,19 @@ File inilah yang menentukan rupa dokumen: tipografi, gaya tabel, kaki halaman.
 Isi dokumen datang dari Contract B lewat template Jinja2; file ini tidak tahu
 apa-apa soal isi, dan tidak boleh tahu.
 
+DUA MODE (V2 — sintesis reference dari template user). Tanpa argumen, `build()`
+menghasilkan reference PREMCO, dan hasilnya CONTENT-IDENTIK dengan
+`app/templates/reference.docx` yang ter-commit — isi tiap member zip sama; cuma
+timestamp zip yang berbeda antar-build (itu wajar & tak berbahaya) — jadi
+meregenerasinya tak pernah menggeser garis-dasar 239 test. Dengan `spec` (sebuah
+`TemplateSpec` dari `app.services.template_spec_service`), tipografi & warna
+header DIUKUR dari docx template user lalu di-override DI ATAS fondasi PREMCO yang
+sama. Yang di-override cuma identitas sumber (tema major/minor, ukuran/bold/caps/
+rata Title & Heading, warna fill+teks header tabel); seluruh struktur teruji —
+dot-leader, footer fldChar, padding tabel, updateFields, caption — diwarisi utuh.
+Inilah langkah "sintesis reference.docx" pipeline upload-template. Lihat
+`_resolve_style`.
+
 KENAPA SCRIPT, BUKAN .DOCX YANG DI-COMMIT BEGITU SAJA:
 sebuah .docx biner di repo adalah kotak hitam — tidak bisa di-review, tidak bisa
 di-diff, dan begitu pembuatnya pergi tidak ada yang berani menyentuhnya. Dengan
@@ -225,11 +238,13 @@ def _toc_entry_style(document, style_id: str, internal_name: str, *,
     document.styles.element.append(style)
 
 
-def _style_table(style):
+def _style_table(style, header_fill: str = BLACK, header_text: str = WHITE):
     """Tabel: garis konsisten, sel bernapas, isi rata tengah vertikal, header
-    HITAM dengan teks putih DI TENGAH — meniru tabel dokumen acuan.
+    berlatar `header_fill` dengan teks `header_text` DI TENGAH — meniru tabel
+    dokumen acuan. Default PREMCO = latar hitam, teks putih; sintesis dari spec
+    mengganti keduanya (warna terukur dari template user + teks kontras).
 
-    Header hitamnya dipasang lewat `tblStylePr type="firstRow"` — BUKAN dengan
+    Header-nya dipasang lewat `tblStylePr type="firstRow"` — BUKAN dengan
     memformat selnya langsung. Alasannya: Pandoc menghasilkan sel dengan `<w:tcPr/>`
     KOSONG dan menyalakan `<w:tblLook w:firstRow="1">`, artinya Word sendiri yang
     menerapkan format kondisional baris pertama dari style ini. Jadi seluruh rupa
@@ -284,21 +299,23 @@ def _style_table(style):
     first_row.set(qn("w:type"), "firstRow")
     rpr = OxmlElement("w:rPr")
     _sub(rpr, "w:b")
-    _sub(rpr, "w:color", val=WHITE)
+    _sub(rpr, "w:color", val=header_text)
     first_row.append(rpr)
     tc_pr = OxmlElement("w:tcPr")
     shading = OxmlElement("w:shd")
     shading.set(qn("w:val"), "clear")
     shading.set(qn("w:color"), "auto")
-    shading.set(qn("w:fill"), BLACK)
+    shading.set(qn("w:fill"), header_fill)
     tc_pr.append(shading)
     _sub(tc_pr, "w:vAlign", val="center")
     first_row.append(tc_pr)
     element.append(first_row)
 
 
-def _set_theme_fonts(path: Path, font: str = BODY_FONT) -> None:
-    """Paksa font tema paket .docx jadi `font`.
+def _set_theme_fonts(path: Path, heading_font: str = BODY_FONT,
+                     body_font: str = BODY_FONT) -> None:
+    """Paksa font tema paket .docx: `heading_font` untuk majorFont (heading),
+    `body_font` untuk minorFont (body). Default PREMCO keduanya Calibri.
 
     KENAPA TEMA, BUKAN STYLE: font dokumen tidak datang dari style mana pun.
     `docDefaults` dan style heading kerangka Pandoc menunjuk ke tema lewat
@@ -307,9 +324,12 @@ def _set_theme_fonts(path: Path, font: str = BODY_FONT) -> None:
     dokumen keluar ber-Aptos berapa pun style-nya diatur — dan itu persis yang
     terjadi seminggu tanpa ketahuan, karena style-nya memang semua benar.
 
-    Cukup dua elemen: `<a:latin>` di majorFont (heading) dan minorFont (body).
+    Dua elemen `<a:latin>`: majorFont (heading) LEBIH DULU dari minorFont (body)
+    — urutan itu dijamin skema OOXML, jadi penggantian berurutan (major, lalu
+    minor) aman. Saat `heading_font == body_font` (PREMCO), keduanya jadi string
+    yang sama, sehingga output identik dengan versi lama yang menyetel satu font.
     `panose` ikut dibuang — itu sidik jari metrik font LAMA; membiarkannya
-    menunjuk Aptos bisa menyesatkan substitusi Word di mesin tanpa Calibri.
+    menunjuk Aptos bisa menyesatkan substitusi Word di mesin tanpa font itu.
 
     python-docx tidak mengekspos part tema, jadi paketnya ditulis ulang.
     """
@@ -318,12 +338,20 @@ def _set_theme_fonts(path: Path, font: str = BODY_FONT) -> None:
         items = [(info, package.read(info.filename)) for info in package.infolist()]
     if not any(info.filename == theme_part for info, _ in items):
         raise RuntimeError(f"{theme_part} tidak ada di kerangka Pandoc — font tidak bisa diset.")
+    order = [heading_font, body_font]
+    seen = [0]
+
+    def _pick_latin(_match) -> str:
+        font = order[min(seen[0], len(order) - 1)]  # jaga-jaga bila match >2
+        seen[0] += 1
+        return f'<a:latin typeface="{font}"/>'
+
     with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as package:
         for info, data in items:
             if info.filename == theme_part:
                 patched, count = re.subn(
                     r'<a:latin typeface="[^"]*"(?:\s+panose="[^"]*")?\s*/>',
-                    f'<a:latin typeface="{font}"/>',
+                    _pick_latin,
                     data.decode("utf-8"),
                 )
                 if count != 2:
@@ -335,7 +363,92 @@ def _set_theme_fonts(path: Path, font: str = BODY_FONT) -> None:
             package.writestr(info, data)
 
 
-def build(destination: Path = OUTPUT) -> Path:
+def _contrast_text(fill_hex: str) -> str:
+    """Putih atau hitam untuk teks DI ATAS `fill_hex`, dihitung dari luminansi
+    (YIQ). Fill gelap → teks putih; fill terang → teks hitam. Dihitung, bukan
+    diukur per-dokumen: begitu warna header datang dari template user sembarang
+    (hitam PREMCO, abu `A4A4A4`, biru tua…), teks header harus tetap terbaca
+    tanpa kita menebak. Ambang 128 = konvensi YIQ; setiap warna header nyata yang
+    diukur sejauh ini jatuh jelas di satu sisi (PREMCO 000000→putih; 04
+    A4A4A4/D9D9D9→hitam)."""
+    fill = fill_hex.lstrip("#")
+    r, g, b = (int(fill[i:i + 2], 16) for i in (0, 2, 4))
+    yiq = (r * 299 + g * 587 + b * 114) / 1000
+    return BLACK if yiq >= 128 else WHITE
+
+
+def _letterspacing(caps: bool):
+    """Perenggangan antar-huruf halus MENYERTAI perlakuan huruf-besar (aksen
+    titling khas dokumen resmi). Non-caps → tak ada. Aturan turunan ini menjaga
+    PREMCO (H1/H2 caps → renggang 10) identik byte, sekaligus memberi keputusan
+    waras untuk spec asing tanpa menambah knob terpisah."""
+    return 10 if caps else None
+
+
+# Default PREMCO — nilai yang selama ini di-hardcode. `spec=None` mereproduksi
+# ini PERSIS (isi tiap member zip identik dengan reference.docx ter-commit), jadi
+# meregenerasi tanpa spec tak pernah menggeser garis-dasar test.
+_PREMCO_STYLE = {
+    "heading_font": BODY_FONT,   # tema major
+    "body_font": BODY_FONT,      # tema minor
+    "title":    {"size": 22, "bold": True, "caps": False, "align": "center"},
+    "heading1": {"size": 16, "bold": True, "caps": True,  "align": "center"},
+    "heading2": {"size": 14, "bold": True, "caps": True,  "align": "center"},
+    "heading3": {"size": 12, "bold": True, "caps": False, "align": None},
+    "header_fill": BLACK,
+    "header_text": WHITE,
+}
+
+
+def _resolve_style(spec: dict | None) -> dict:
+    """Gabungkan properti visual sumber-spesifik dari `TemplateSpec` di atas
+    fondasi PREMCO. `spec` kosong/None → PERSIS PREMCO (lihat `_PREMCO_STYLE`).
+
+    Yang di-override HANYA identitas sumber: tema major/minor (font heading vs
+    body TERPISAH), Title/Heading{1,2,3} {size,bold,caps,align}, dan warna
+    fill+teks header tabel. Field spec yang kosong (None/"") jatuh ke nilai
+    PREMCO — perilaku fallback yang sama dengan riset scratchpad yang menyalin
+    reference PREMCO lalu menimpanya.
+    """
+    if not spec:
+        return {k: (dict(v) if isinstance(v, dict) else v)
+                for k, v in _PREMCO_STYLE.items()}
+    visual = spec.get("visual", {}) or {}
+
+    def pick(measured, default):
+        # Bool `False` harus lolos (bukan dianggap "kosong"); cuma None/"" fallback.
+        return measured if measured not in (None, "") else default
+
+    def heading(key: str) -> dict:
+        m = (visual.get("headings", {}) or {}).get(key, {}) or {}
+        d = _PREMCO_STYLE[key.lower().replace(" ", "")]
+        return {
+            "size": pick(m.get("size_pt"), d["size"]),
+            "bold": pick(m.get("bold"), d["bold"]),
+            "caps": pick(m.get("caps"), d["caps"]),
+            "align": pick(m.get("align"), d["align"]),
+        }
+
+    title_m = visual.get("title", {}) or {}
+    fill = pick(visual.get("table_header_fill"), BLACK)
+    return {
+        "heading_font": pick(visual.get("effective_heading_font"), BODY_FONT),
+        "body_font": pick(visual.get("effective_body_font"), BODY_FONT),
+        "title": {
+            "size": pick(title_m.get("size_pt"), 22),
+            "bold": pick(title_m.get("bold"), True),
+            "caps": pick(title_m.get("caps"), False),
+            "align": pick(title_m.get("align"), "center"),
+        },
+        "heading1": heading("Heading 1"),
+        "heading2": heading("Heading 2"),
+        "heading3": heading("Heading 3"),
+        "header_fill": fill,
+        "header_text": _contrast_text(fill),
+    }
+
+
+def build(destination: Path = OUTPUT, spec: dict | None = None) -> Path:
     default = subprocess.run(
         [pypandoc.get_pandoc_path(), "--print-default-data-file", "reference.docx"],
         capture_output=True,
@@ -345,28 +458,39 @@ def build(destination: Path = OUTPUT) -> Path:
     scratch.write_bytes(default)
     document = docx.Document(str(scratch))
     styles = document.styles
+    cfg = _resolve_style(spec)  # PREMCO bila spec None; terukur-dari-sumber bila terisi
 
     # --- Tipografi ---------------------------------------------------------
     # Judul dokumen (halaman cover). Judulnya juga muncul di kaki tiap halaman
     # lewat field TITLE — satu sumber, dua tempat, meniru acuan. Napas besar di
     # atas & bawahnya supaya cover tidak terasa mampet.
-    _restyle(styles["Title"], size=22, bold=True, align="center", before=64, after=28)
+    _restyle(styles["Title"], size=cfg["title"]["size"], bold=cfg["title"]["bold"],
+             caps=cfg["title"]["caps"], align=cfg["title"]["align"],
+             char_spacing=_letterspacing(cfg["title"]["caps"]), before=64, after=28)
 
     # Section = Heading 2, karena template memakai `##` (`#` dipakai judul, yang
     # kini datang dari metadata). Di dokumen acuan judul bab DI TENGAH, bold,
     # huruf besar — bukan rata kiri gaya Markdown. Perenggangan antar-huruf
     # halus (char_spacing) jadi aksen visualnya.
-    _restyle(styles["Heading 1"], size=16, bold=True, caps=True, color=BLACK,
-             align="center", before=28, after=12, keep_next=True, char_spacing=10)
-    _restyle(styles["Heading 2"], size=14, bold=True, caps=True, color=BLACK,
-             align="center", before=28, after=14, keep_next=True, char_spacing=10)
-    _restyle(styles["Heading 3"], size=12, bold=True, color=BLACK,
-             before=16, after=8, keep_next=True)
+    _restyle(styles["Heading 1"], size=cfg["heading1"]["size"], bold=cfg["heading1"]["bold"],
+             caps=cfg["heading1"]["caps"], color=BLACK, align=cfg["heading1"]["align"],
+             before=28, after=12, keep_next=True,
+             char_spacing=_letterspacing(cfg["heading1"]["caps"]))
+    _restyle(styles["Heading 2"], size=cfg["heading2"]["size"], bold=cfg["heading2"]["bold"],
+             caps=cfg["heading2"]["caps"], color=BLACK, align=cfg["heading2"]["align"],
+             before=28, after=14, keep_next=True,
+             char_spacing=_letterspacing(cfg["heading2"]["caps"]))
+    _restyle(styles["Heading 3"], size=cfg["heading3"]["size"], bold=cfg["heading3"]["bold"],
+             caps=cfg["heading3"]["caps"], color=BLACK, align=cfg["heading3"]["align"],
+             before=16, after=8, keep_next=True,
+             char_spacing=_letterspacing(cfg["heading3"]["caps"]))
 
-    # Judul "Daftar Isi/Gambar/Tabel": rupa sama dengan judul bab, plus SELALU
-    # mulai halaman baru — di acuan tiap daftar punya halamannya sendiri.
-    _restyle(styles["TOC Heading"], size=14, bold=True, caps=True, color=BLACK,
-             align="center", before=0, after=18, char_spacing=10,
+    # Judul "Daftar Isi/Gambar/Tabel": rupa mengikuti judul bab (Heading 2, level
+    # bab template), plus SELALU mulai halaman baru — di acuan tiap daftar punya
+    # halamannya sendiri.
+    _restyle(styles["TOC Heading"], size=cfg["heading2"]["size"], bold=cfg["heading2"]["bold"],
+             caps=cfg["heading2"]["caps"], color=BLACK, align=cfg["heading2"]["align"],
+             before=0, after=18, char_spacing=_letterspacing(cfg["heading2"]["caps"]),
              page_break_before=True)
 
     # Caption: kecil, miring, biru-kelabu, di TENGAH — persis caption acuan.
@@ -391,7 +515,8 @@ def build(destination: Path = OUTPUT) -> Path:
     _restyle(styles["Figure"], align="center", before=10, after=4)
     _restyle(styles["Captioned Figure"], align="center", before=10, after=4)
 
-    _style_table(styles["Table"])
+    _style_table(styles["Table"], header_fill=cfg["header_fill"],
+                 header_text=cfg["header_text"])
 
     # --- Style entri daftar (dot leader) ------------------------------------
     # Bab template = Heading 2, jadi entri utama Daftar Isi memakai "toc 2"
@@ -439,7 +564,8 @@ def build(destination: Path = OUTPUT) -> Path:
         paragraph._p.append(run)
 
     document.save(str(destination))
-    _set_theme_fonts(destination)
+    _set_theme_fonts(destination, heading_font=cfg["heading_font"],
+                     body_font=cfg["body_font"])
     scratch.unlink()
     return destination
 

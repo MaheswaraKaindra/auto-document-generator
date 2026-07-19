@@ -99,6 +99,18 @@ per-dokumen.
 tabel **abu teks hitam**. Output PREMCO → Calibri, semua tengah, **DIPAKSA CAPS**
 + perenggangan, header **hitam teks putih**. Tipografi kini diukur-dari-sumber.
 
+**TERIMPLEMENTASI (2026-07-19, bukan lagi scratchpad).** Pendekatan A: perluas
+`scripts/build_reference_docx.py` dengan param `spec=None`. `_resolve_style(spec)`
+menggabungkan properti sumber-spesifik di atas fondasi PREMCO; `_set_theme_fonts`
+kini menyetel major≠minor berurutan; `_style_table` menerima `header_fill`/`text`;
+`_contrast_text` (YIQ, ambang 128) menghitung teks header. **`spec=None` CONTENT-
+IDENTIK dengan reference.docx ter-commit** — dan temuan penting: "byte-identik"
+tak tepat, yang benar **content-identik per member zip**; raw byte beda hanya di
+**timestamp zip** (wajar antar-build, tak berbahaya). Guard test membandingkan
+isi tiap member (bukan byte kontainer). 5 tes baru (`tests/test_build_reference_docx.py`),
+246 test hijau. A/B render diverifikasi VISUAL ulang di Word sungguhan
+(PROBE28_synth_reference_{premco,04}.png).
+
 ## Increment 3 (PROTOTIPE SELESAI) — loop penuh pada `04`
 
 outline (dari spec) + **peta bab heuristik** (stand-in untuk peta yang kelak
@@ -135,9 +147,9 @@ sekali → template terdaftar di `_TEMPLATE_REGISTRY`. Alasan:
 
 | Increment | Isi | Status |
 |---|---|---|
-| 1 | `TemplateSpec` (ukur → JSON) | ✅ terbukti pada 3 template |
-| 2 | Sintesis reference.docx dari spec | ✅ terbukti render ($0) |
-| 3 | Peta bab→Contract B + generasi template Jinja + isi + render | ✅ PROTOTIPE terbukti pada `04` ($0, peta heuristik) |
+| 1 | `TemplateSpec` (ukur → JSON) | ✅ **KODE app + tes** (`app/services/template_spec_service.py`, 2026-07-18) |
+| 2 | Sintesis reference.docx dari spec | ✅ **KODE + tes** (`build_reference_docx.py` param `spec`, 2026-07-19) |
+| 3 | Peta bab→Contract B + generasi template Jinja + isi + render | ✅ PROTOTIPE terbukti pada `04` ($0, peta heuristik) — belum kode app |
 
 **Riset V2 SELESAI** — ketiga increment terbukti sebagai satu rantai pada
 template non-PREMCO. Sisa = IMPLEMENTASI, bukan lagi kelayakan.
