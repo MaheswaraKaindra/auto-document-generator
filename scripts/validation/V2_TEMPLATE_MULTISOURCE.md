@@ -130,6 +130,22 @@ Contract B UAT → render lewat reference-`04` tersintesis. Terbukti $0:
 Jadi ketiga increment terbukti sebagai **satu rantai** pada template non-PREMCO
 nyata. V2 de-risked: layak diimplementasikan.
 
+**INTI diport ke kode app (2026-07-19).** `app/services/template_generator_service.py`:
+`propose_mapping(spec, doc_type)` (peta bab heuristik berbasis kata kunci, **stand-in
+LLM** — keluaran `[{level,text,binding}]` dirancang untuk UI tinjauan) + `generate_jinja_template(mapping)`
+(outline → string Jinja; bab isi-kode di-bind loop/tabel Contract B, bab asing →
+`*(diisi manual)*` degradasi anggun, anak bab yang isinya diganti dibuang). Snippet
+Jinja **diambil dari template `default` terbukti**; warna header TANPA marker —
+datang dari `tblStylePr firstRow` reference tersintesis (spec-driven, increment 2).
+6 tes fixture sintetis + smoke render dgn Contract B nyata (nol tag Jinja tersisa).
+Bukti end-to-end $0 **VISUAL**: outline SDD sintetis → peta → template → isi
+`document_content_sdd.json` → render lewat reference-`04` tersintesis → dokumen
+SDD lengkap gaya `04` (PROBE29): bab Tahoma-kiri, body Verdana, tabel header-abu
+spec-driven, use-case & activity ber-sub-heading benar, Acceptance Criteria list
+bernomor (blank-before-list terjaga), Mockup → placeholder jujur. Sisa increment 3
+(checkpoint berikut): pendaftaran `_TEMPLATE_REGISTRY` + storage artefak (butuh
+desain), LLM auto-usul peta (berbayar), UI tinjauan, orientasi landscape per-section.
+
 ## Keputusan arsitektur — "kompilasi upload jadi template terdaftar" (bukan swap)
 
 V2 = otomatiskan persis kerja manual pembuatan `premco`: docx upload → ukur →
@@ -149,7 +165,7 @@ sekali → template terdaftar di `_TEMPLATE_REGISTRY`. Alasan:
 |---|---|---|
 | 1 | `TemplateSpec` (ukur → JSON) | ✅ **KODE app + tes** (`app/services/template_spec_service.py`, 2026-07-18) |
 | 2 | Sintesis reference.docx dari spec | ✅ **KODE + tes** (`build_reference_docx.py` param `spec`, 2026-07-19) |
-| 3 | Peta bab→Contract B + generasi template Jinja + isi + render | ✅ PROTOTIPE terbukti pada `04` ($0, peta heuristik) — belum kode app |
+| 3 | Peta bab→Contract B + generasi template Jinja + isi + render | 🟨 **INTI deterministik = KODE + tes** (`app/services/template_generator_service.py`, 2026-07-19); sisa = pendaftaran registry/storage, LLM auto-usul peta, UI tinjauan, landscape |
 
 **Riset V2 SELESAI** — ketiga increment terbukti sebagai satu rantai pada
 template non-PREMCO. Sisa = IMPLEMENTASI, bukan lagi kelayakan.
