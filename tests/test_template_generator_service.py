@@ -93,6 +93,37 @@ def test_generate_drops_children_of_content_bound_chapter():
     assert "# Penutup" in tmpl            # bab sejajar sesudahnya tetap ada
 
 
+def test_repeated_content_chapters_dedup_first_wins():
+    """Beberapa bab yang cocok isi SAMA (template IEEE: Introduction/Background/
+    Overview → app_description) TAK mengulang isinya — yang pertama menang, sisanya
+    turun jadi placeholder. Cegah paragraf/diagram berulang di dokumen."""
+    spec = _spec([
+        (1, "Introduction"),
+        (1, "Background"),
+        (1, "Overview of the System"),
+    ])
+    plan = tg.propose_mapping(spec, "SDD")
+    app_desc = [p for p in plan if p["binding"] == tg.APP_DESCRIPTION]
+    assert len(app_desc) == 1                       # cuma SEKALI, bukan 3x
+    assert app_desc[0]["text"] == "Introduction"    # yang pertama menang
+
+
+def test_scalar_content_chapter_keeps_its_subtree():
+    """Bab isi SKALAR (app_description) TAK menelan sub-pohonnya — anak yang punya
+    pemetaan sendiri tetap muncul, struktur bab template dipertahankan. (Beda dari
+    use_cases yang memang mengganti sub-strukturnya.) Pelajaran template IEEE
+    bersarang: dulu _OWNS_SUBTREE terlalu luas → 'Overview of Business Process'
+    di bawah 'Background' ikut hilang."""
+    spec = _spec([
+        (1, "Background"),                       # → app_description (skalar)
+        (2, "Overview of Business Process"),     # → business_flow, JANGAN hilang
+        (2, "Scope"),                            # → manual, struktur tetap ada
+    ])
+    tmpl = tg.generate_jinja_template(tg.propose_mapping(spec, "SDD"))
+    assert "{{ business_flow_description }}" in tmpl   # anak business_flow tetap dirender
+    assert "# Scope" in tmpl                           # struktur template dipertahankan
+
+
 def test_generated_sdd_template_renders_with_real_contract_b():
     """Smoke terpenting: template hasil-generate render di env Jinja compiler
     dengan Contract B nyata — markup valid, nol tag Jinja tersisa, isi berjejak."""

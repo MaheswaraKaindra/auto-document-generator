@@ -146,6 +146,32 @@ bernomor (blank-before-list terjaga), Mockup → placeholder jujur. Sisa increme
 (checkpoint berikut): pendaftaran `_TEMPLATE_REGISTRY` + storage artefak (butuh
 desain), LLM auto-usul peta (berbayar), UI tinjauan, orientasi landscape per-section.
 
+## Validasi END-TO-END pada template vendor asli (2026-07-19)
+
+Sesudah mesin V2 jadi kode, ketiga template isian **dijalankan lewat pipeline app
+sungguhnya** (`compile_template_from_docx`, bukan lagi spec sintetis) — validasi
+yang selama ini belum pernah dilakukan. Hasil:
+
+- **Ukur (increment 1) generalisasi**: IEEE = Times New Roman/Arial, header
+  `D9D9D9`, EN, landscape; moe UAT = Arial, header `None`. Semua ≠ PREMCO,
+  terbaca dari sumber.
+- **Peta + degradasi anggun terbukti pada IEEE** (paling jauh dari PREMCO): 81
+  bab → ~13 isi turunan-kode, sisanya placeholder jujur. Nol karangan, nol crash.
+- **DUA cacat heuristik ditemukan — HANYA karena template nyata BERSARANG DALAM**
+  (outline uji sintetis selalu datar/L1): **(A)** bab bersaudara cocok isi sama →
+  DUPLIKASI (Introduction & Background dua-duanya app_description); **(B)**
+  `_OWNS_SUBTREE` memuat isi skalar → bab konten menelan sub-pohonnya, membuang
+  bab anak yang punya pemetaan sendiri + struktur bab template.
+- **Diperbaiki ($0)**: (A) dedup di `propose_mapping` (binding isi dipakai sekali,
+  yang pertama menang); (B) `_OWNS_SUBTREE` dipersempit ke binding yang meng-emit
+  sub-heading sendiri saja. Verifikasi visual before/after IEEE (PROBE31): 26 KB/
+  6 hlm app_description 2× & sub-bab hilang → 63 KB/9 hlm app_description 1× &
+  struktur bab IEEE dipertahankan dengan placeholder jujur.
+
+Pelajaran: **uji sintetis (outline datar) buta terhadap sekelas bug bersarang.**
+Template vendor nyata = alat validasi yang tak tergantikan (bukan data latih —
+mesinnya deterministik; satu contoh nyata langsung menunjukkan lubang).
+
 ## Keputusan arsitektur — "kompilasi upload jadi template terdaftar" (bukan swap)
 
 V2 = otomatiskan persis kerja manual pembuatan `premco`: docx upload → ukur →

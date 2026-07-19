@@ -55,13 +55,23 @@ ARCHITECTURE = "architecture"
 BUSINESS_FLOW = "business_flow"
 TEST_GROUPS = "test_groups"      # tabel test-case dikelompokkan per modul/layar
 
-# Binding yang menghasilkan sub-struktur sendiri (heading anak) → anak bab yang
-# di-upload di bawahnya DIBUANG (digantikan isi turunan-kode). Sama untuk tabel
-# yang menggantikan rincian bab: isi kita menggantikan sub-struktur mereka.
-_OWNS_SUBTREE = {
+# Semua binding turunan-kode (untuk dedup: satu bab sumber = satu isi; bab lain
+# yang meminta isi SAMA jangan mengulanginya — lihat propose_mapping).
+_CONTENT_BINDINGS = {
     APP_DESCRIPTION, USER_ROLES, SYSTEM_REQUIREMENTS, FEATURE_REQUIREMENTS,
     USE_CASES, ACTIVITY_DIAGRAMS, ARCHITECTURE, BUSINESS_FLOW, TEST_GROUPS,
 }
+
+# Binding yang meng-emit SUB-HEADING sendiri (loop `### ...`) → anak bab yang
+# di-upload di bawahnya DIBUANG, digantikan isi turunan-kode (mis. sampel "Contoh
+# Use Case Login" diganti loop use_cases). HANYA yang benar-benar menghasilkan
+# sub-struktur — BUKAN isi skalar (app_description/architecture/dst.). Pelajaran
+# dari template IEEE nyata (bersarang dalam): kalau isi skalar ikut menelan
+# sub-pohon, bab anak yang punya pemetaan sendiri (mis. "Overview of Business
+# Process"→business_flow di bawah "Background"→app_description) ikut HILANG, dan
+# struktur bab template (Scope, Purpose, ...) yang seharusnya jadi placeholder
+# ikut terbuang. Uji sintetis (outline datar) tak pernah memunculkan ini.
+_OWNS_SUBTREE = {USE_CASES, ACTIVITY_DIAGRAMS, TEST_GROUPS}
 
 # --- Aturan kata kunci bab → binding (dicek berurutan, cocok pertama menang) ---
 # Frasa spesifik didahulukan sebelum yang umum (mis. "system requirement" sebelum
@@ -117,11 +127,20 @@ def propose_mapping(spec: dict, doc_type: str) -> list[dict]:
 
     Bab tak dikenali: **kontainer** (punya anak lebih dalam) → `heading_only`;
     **daun** → `manual`. Itu degradasi anggun — placeholder jujur, bukan karangan.
+
+    DEDUP isi turunan-kode: tiap binding isi dipakai PALING BANYAK SEKALI. Bab
+    kedua yang meminta isi sama (mis. template IEEE punya "Introduction",
+    "Background", "Overview of the System" — semua cocok app_description) TIDAK
+    mengulang isinya; ia turun jadi kontainer/placeholder. Tanpa ini paragraf/
+    diagram yang sama berulang beberapa kali di dokumen — terlihat pada template
+    IEEE nyata. (Pemilihan bab MANA yang paling pas untuk tiap isi butuh judgment
+    — itu tugas peta LLM kelak; heuristik ini "yang pertama menang".)
     """
     outline = spec.get("structure", {}).get("outline", [])
     rules = _UAT_RULES if doc_type.upper() == "UAT" else _SDD_RULES
 
     plan = []
+    used_content: set[str] = set()
     for i, entry in enumerate(outline):
         level = entry.get("level", 1)
         text = (entry.get("text") or "").strip()
@@ -129,15 +148,18 @@ def propose_mapping(spec: dict, doc_type: str) -> list[dict]:
             plan.append({"level": level, "text": text, "binding": SKIP})
             continue
         key = _norm(text)
+        has_children = (i + 1 < len(outline)
+                        and outline[i + 1].get("level", 1) > level)
         if any(kw in key for kw in _SKIP_KEYWORDS):
             binding = SKIP
         else:
             binding = _classify(key, rules)
-            if binding is None:
-                # Kontainer bila entri berikutnya lebih dalam (punya sub-bab).
-                has_children = (i + 1 < len(outline)
-                                and outline[i + 1].get("level", 1) > level)
+            if binding in used_content:        # isi ini sudah dipakai bab lain
+                binding = None
+            if binding is None:                # tak dikenali / sudah dipakai
                 binding = HEADING_ONLY if has_children else MANUAL
+            else:
+                used_content.add(binding)
         plan.append({"level": level, "text": text, "binding": binding})
     return plan
 
