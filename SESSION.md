@@ -1,4 +1,4 @@
-# Catatan Sesi — 2026-07-20 (3 template vendor + peta LLM prototipe→produksi + layer diagram IR + V2 di frontend)
+# Catatan Sesi — 2026-07-20 (balik ke satu diagram use case gabungan; split per-aktor dibuang)
 
 > **File ini ditimpa habis setiap sesi baru.** Isinya cuma satu hal: apa yang
 > dikerjakan sesi kemarin, supaya sesi berikutnya tidak mulai dari nol.
@@ -12,127 +12,99 @@
 
 ## Ringkasan satu paragraf
 
-Demo batal → kembali ke Trek A ("jalankan template vendor yang belum diuji").
-Tiga template isian yang menganggur di root dijalankan lewat mesin V2 (`04` UAT,
-`moe` UAT [ex-`.doc`], dan `Template SDD` — template **Microsoft Dynamics CRM**
-yang pemilik tambahkan hari itu). **Ketiganya kompilasi+render tanpa crash** —
-fix subtree-drop/dedup sesi lalu tahan pada outline bersarang asing. Temuan
-crux: `Template SDD` menghasilkan **0 binding isi dari 29 bab** → dokumen 100%
-placeholder. Bukan bug — **plafon heuristik** (nama bab spesifik-domain tak cocok
-kata kunci). Lalu **peta bab LLM di-prototipe-kan ($0,034)** dan membuktikan
-plafon itu teratasi: 4 binding isi + 3 perbaikan struktural, dokumen kosong jadi
-berisi (deskripsi + tabel requirement + diagram arsitektur + tabel fitur). CLAUDE.md
-+ roadmap diperbarui: "LLM auto-usul peta" kini **DE-RISKED**. Belum ada commit
-(kerja eksplorasi + update dok). Biaya sesi: **$0,034**.
+Pemilik berubah pikiran: split diagram use case per-aktor (sesi lalu, untuk fix
+panah menyilang Flowy) **DIBATALKAN** — mau **SATU diagram gabungan** saja (semua
+aktor dalam satu gambar), asal rapi. Kandidat sesi lalu (Graphviz `dot`) diinvestigasi
+**$0 dulu** (instruksi pemilik: timbang trade-off dependency sebelum kerja besar) dan
+**premisnya gugur**: (1) `dot` ternyata SUDAH dibundel di `plantuml.jar` (Windows
+auto-extract ke `%TEMP%\_graphviz\`, jadi bukan dependency baru di Windows), TAPI
+(2) `dot` ≈ `smetana` dan **tak ada engine yang menghapus panah menyilang** untuk
+diagram gabungan padat — itu **struktural**, bukan kualitas engine (diukur visual
+smetana/dot/elk pada 3 aktor × 13 use case); (3) kasus NYATA cuma 2 aktor / 5-8 use
+case, dan di situ **smetana pun sudah bersih**. Keputusan otonom (premis pemilik
+gugur): **Opsi A — balik ke gabungan, tetap smetana** (paling sederhana, nol
+dependency, dot tak menolong dense & keunggulannya hilang di deploy Linux). Revert
+bersih + verifikasi visual default & premco. **288 test hijau, $0.** Belum commit
+(nunggu review pemilik).
 
 ## Yang dikerjakan
 
-1. **Orientasi status** (jawab pertanyaan pemilik): frontend ketinggalan backend —
-   `TEMPLATE_OPTIONS` frontend hardcode `premco: SDD-saja` padahal backend sudah
-   premco UAT; dan **seluruh V2 (upload template) tak diekspos di frontend sama sekali**.
-2. **3 template vendor diuji lewat mesin** (`compile_template_from_docx` →
-   `propose_mapping` → `generate_docx` dgn Contract B dummy → docx → PDF → PNG →
-   DILIHAT). Semua lolos rantai penuh. `04`/`moe` UAT: `test_groups` benar
-   (tabel test per-layar terisi). `Template SDD`: **semua placeholder**.
-3. **Prototipe peta bab LLM** (`scratchpad/llm_mapping_proto.py`, BERBAYAR
-   $0,034, Sonnet 5, structured output, kontrak keluaran SAMA dgn `propose_mapping`)
-   pada `Template SDD`: 0→4 binding isi, before/after dilihat visual.
-4. **Dok diperbarui**: entri Riwayat CLAUDE.md 2026-07-20 + roadmap "LLM auto-usul
-   peta" ditandai DE-RISKED. SESSION.md ini.
+1. **Investigasi layout $0** (sebelum kerja besar, per instruksi pemilik):
+   - `java -jar plantuml.jar -version` → PlantUML **menemukan** Graphviz 2.44.1;
+     jejaknya `%TEMP%\_graphviz\dot.exe` (kelas `GraphvizWindowsLite` di jar
+     29 MB). Shell tak lihat dot (bukan PATH/registry), tapi PlantUML pakai.
+   - Render **3 engine** pada kasus padat (3 aktor × 13 use case): `smetana`
+     (kusut), `dot` (sedikit lebih halus, TETAP menyilang), `elk` (orthogonal
+     tapi 2204px — mustahil potret, tetap menyilang). → crossing **struktural**.
+   - Render kasus **tipikal** (2 aktor × 8 use case): smetana & dot **dua-duanya
+     bersih**. → Flowy patologis, bukan norma.
+2. **Revert split → gabungan** (Opsi A, smetana). File: `compiler_service.py`
+   (buang `_usecase_plantuml_to_ir`/`_split_usecase_images`/regex `_UC_*`/flag
+   `splits_usecase`/param `split_usecase`/context `use_case_diagrams_by_actor`+
+   `use_case_figure_count`), `sdd_template.md` + `sdd_premco_template.md` +
+   `template_generator_service._BODY[USE_CASES]` (loop per-aktor → satu
+   `![Use Case Diagram]`), offset gambar activity balik hardcode (default `+4`,
+   premco `+3`), `template_compiler_service` manifest tak tulis `splits_usecase`,
+   `tests/test_usecase_split.py` **dihapus**, 2 tes lain dibersihkan.
+3. **Verifikasi VISUAL $0** (docx → PDF Word COM → PNG → dilihat) pada Contract B
+   2-aktor (Customer+Admin): **default** `Gambar 4 Use Case`(1 gambar, 2 aktor)→
+   `Gambar 5 Activity`; **premco** `Gambar 3`→`Gambar 4` + bar biru use case utuh.
+   Penomoran benar ujung-ke-ujung.
+4. **Dok**: entri Riwayat baru (+ split lama ditandai DIBALIK); SESSION.md ini.
+5. **BONUS — pisah changelog dari CLAUDE.md** (permintaan pemilik: CLAUDE.md boros
+   token). "Riwayat Perubahan Penting" (~65% isi, ~30k token, di-load tiap sesi)
+   dipindah ke **`CHANGELOG.md`** (dibaca on-demand). CLAUDE.md **~47,5k → ~17,5k
+   token (−63%)**. Ditambah seksi **"Prinsip Kerja"** (8 pola distilasi) supaya
+   pelajaran tetap ter-load. Memory checkpoint + header model-file di-update: entri
+   baru → CHANGELOG.md, CLAUDE.md hanya kalau pengetahuan permanen berubah. 48 entri
+   terbawa utuh. Lihat entri teratas CHANGELOG.md.
 
 ## Kejadian yang layak diingat (jebakan)
 
-- **`Template SDD` = plafon heuristik, bukan bug.** Degradasi anggun konservatif
-  menelan SEMUA bab kalau nama-namanya asing (Dynamics/BRD). Ini justru kasus yang
-  membenarkan peta LLM — dan prototipe membuktikannya, murah.
-- **Peta LLM juga memperbaiki kesalahan STRUKTURAL heuristik**, bukan cuma isi:
-  "1 Contents"→skip (TOC yang `_SKIP_KEYWORDS` lewatkan), judul→skip. Nilai tambah
-  LLM lebih luas dari sekadar mengenali bab konten.
-- **LLM patuh dedup "sekali per binding"** — jaring pengaman first-wins tak terpicu.
-  Kontrak keluaran + enum + aturan di system prompt sudah cukup mengarahkan.
-- **`.doc` → Word COM `SaveAs2(...,16)`**; docx hasil render V2 punya `updateFields`
-  (dari reference tersintesis) → **buang dulu** sebelum Word COM buka (kalau tidak
-  menggantung). Word COM PDF `SaveAs2(...,17)`; PDF→PNG via PyMuPDF (`fitz`, ada di venv).
-- **Template scratch (`tpl-*`) SUDAH dibersihkan** dari `data/templates/` (turunan
-  docx internal, mengotori registry). Store kembali kosong.
-
-## Redesign layer diagram (Option C, sesi ini juga)
-
-Modul BARU `app/diagram/` — Diagram IR (semantik, ala AST) + PlantUML Renderer
-(salah satu backend). **Live pipeline TAK disentuh** (DOCX identik; renderer baru
-belum dipanggil jalur live). Dibedah dulu kontradiksinya: "IR jadi source of truth"
-mustahil bersamaan dgn "DOCX identik" + "jangan ubah LLM/DocumentContent", sebab
-LLM menulis PlantUML LANGSUNG ke DocumentContent. Pemilik pilih Option C (fondasi
-sekarang, switch nanti).
-
-- `ir/` = graf (node/edge/lane), Pydantic per-tipe (activity/usecase/architecture/
-  component) + `base.py`. Graf sengaja (peta langsung ke Mermaid/ReactFlow/drawio).
-- `renderer/base.py` `DiagramRenderer` (ABC) + `renderer/plantuml/` `PlantUMLRenderer`.
-- Renderer emit PlantUML **struktur-saja tanpa theme** → masuk `_normalize_plantuml`
-  →`_run_plantuml` yang SAMA (theme disuntik di sana) = **switch-ready**.
-- Verifikasi: **277 test hijau** (263+14, nol regresi); VISUAL — IR arch & usecase
-  dirender via jar ASLI = UML identik gaya jalur LLM (`IR_arch.png`, `IR_usecase.png`).
-- Menambah SVG kelak = `renderer/svg/` + `SVGRenderer(DiagramRenderer)`, nol ubah IR/pipeline.
+- **`dot` dibundel `plantuml.jar` di Windows** (`GraphvizWindowsLite`, extract ke
+  `%TEMP%\_graphviz\`). "dot: command not found" sesi lalu MENYESATKAN — shell tak
+  lihat, PlantUML lihat. Cukup buang `-Playout=smetana` untuk pakai dot. Tapi ini
+  Windows-only (Linux deploy tak dapat).
+- **Panah use case menyilang di diagram GABUNGAN itu STRUKTURAL**, bukan bug engine.
+  Banyak aktor berbagi banyak use case dalam satu kolom = pasti menyilang. dot/elk
+  tak menyelesaikannya. Satu-satunya solusi "selalu bersih" = split per-aktor (yang
+  justru dibuang). Untuk dokumen normal (2-3 aktor) gabungan sudah bersih.
+- **Premis yang tak pernah diuji** ("dot jauh lebih rapi") menahan pekerjaan &
+  menyesatkan arah. Ukur $0 dulu sebelum install/refactor — persis pola repo ini.
+- **`app/diagram/` (IR + renderer) kini tak dipakai pipeline live lagi** (split
+  adalah satu-satunya pemakainya). Balik jadi fondasi-saja; modul + tesnya utuh.
 
 ## Kalau melanjutkan, mulai dari sini
 
-**#0 (PERMINTAAN PEMILIK TERBARU — prioritaskan):** BALIKKAN diagram use case ke
-**SATU diagram gabungan** (aktor TIDAK dipisah), tapi hasilnya **RAPI/sempurna**
-(bukan kusut seperti bug Flowy sebelumnya). Artinya: revert/nonaktifkan split
-per-aktor (commit `bd3b782`/`7179e25`/`1f1e46c` — `compiler_service._split_usecase_images`
-+ `_usecase_plantuml_to_ir` + flag `splits_usecase`/`_BUILTIN_SPLITS_USECASE` +
-loop `use_case_diagrams_by_actor` di `sdd_template.md`/`sdd_premco_template.md`/
-`template_generator_service._BODY[USE_CASES]`) → kembali ke satu
-`![... Use Case Diagram ...]({{ diagrams.use_case_diagram_image }})` gabungan,
-LALU bikin layout-nya bersih. **Kandidat terbaik: Graphviz `dot`** (routing panah
-jauh lebih rapi dari `smetana` untuk use case padat) — TAPI `dot` BELUM terpasang
-(dicek sesi ini: `dot: command not found`), jadi perlu install Graphviz + ubah
-`compiler_service._run_plantuml` memakai `dot` untuk diagram use case (buang/ubah
-`-Playout=smetana`), dengan **fallback smetana kalau Graphviz tak ada**. Trade-off:
-dependency runtime baru (justru yang smetana dipilih untuk dihindari — timbang &
-dokumentasikan). Layer Diagram IR tetap berguna (dogfood: `UseCaseDiagramIR` →
-render via dot). **Verifikasi VISUAL wajib** (docx→PDF→PNG→lihat). Pertahankan tes hijau.
+**#0 (permintaan pemilik sesi ini) — ✅ SELESAI.** Diagram use case balik ke satu
+gabungan, split dibuang, smetana dipertahankan, diverifikasi visual. Batas jujur
+yang diterima pemilik: dokumen ultra-padat (Flowy) tetap menyilang di bentuk
+gabungan — tak terhindarkan tanpa split. **Belum di-commit** (nunggu review).
 
-**#1 (Trek A — tetap PALING BERNILAI selagi magang):** kumpulkan/bawa template
-SDD/UAT sumber lain, jalankan lewat mesin (`compile_template_from_docx` + lihat).
-Sudah 4 kelas struktur tertutup (PREMCO-family/asing × SDD/UAT × datar/bersarang);
-tiap template yang BEDA struktur masih mungkin memancing bug. Satu-satunya kerja
+**#1 (Trek A — PALING BERNILAI selagi magang):** kumpulkan/bawa template SDD/UAT
+sumber lain, jalankan lewat mesin (`compile_template_from_docx` + lihat). Sudah 4
+kelas struktur tertutup; template BEDA struktur masih mungkin memancing bug. Kerja
 yang tak bisa diambil setelah keluar magang.
 
-**#2 (produksionisasi peta LLM) — ✅ SELESAI (sesi ini).** `app/services/
-llm_mapping_service.py` `llm_propose_mapping` (kontrak keluaran SAMA dgn heuristik),
-gate opt-in `use_llm_mapping` di `compile_template`/`compile_template_from_docx`/
-`POST /templates` (default heuristik $0). Refactor `assemble_plan` (dedup+degradasi)
-dipakai bersama. +11 tes (LLM mock), **288 hijau**, nol regresi. Jalur berbayar
-diverifikasi ke API nyata (Dynamics 0→**6** binding isi, ~$0,03). Lihat Riwayat CLAUDE.md.
-
-**#3 (ekspos V2 di frontend) — ✅ SELESAI (sesi ini).** `GET /templates` diperkaya
-(`id`/`name`/`doc_types`/`source`, `compiler_service.list_templates_detail`); `App.jsx`
-dropdown gaya dari server (difilter per doc_type) + **widget upload** (`.docx` +
-checkbox `use_llm_mapping` → `POST /templates`) + ringkasan hasil peta (0 bab →
-saran centang AI). `TEMPLATE_OPTIONS` hardcoded dihapus; `premco` UAT tak lagi stale.
-288 hijau, `vite build` bersih. **Batas: UI belum di-klik-uji live** (tak ada harness browser).
-
-**#4 (sisa V2, $0 — kandidat berikutnya):** UI tinjauan/**EDIT** peta bab sebelum
-generate (tampilkan `mappings` dari `GET /templates/{id}`, user sunting binding lalu
-generate) + orientasi landscape per-section (spec `orientations[]` belum diukur BENAR
-— terukur `None` di 3 template; untuk tabel test lebar) + job simpan `template_id`.
+**#2 (sisa V2, $0):** UI tinjauan/**EDIT** peta bab sebelum generate (tampilkan
+`mappings` dari `GET /templates/{id}`, user sunting binding lalu generate) +
+orientasi landscape per-section (spec `orientations[]` terukur `None` di 3 template
+— pengukuran + penerapan sama-sama belum jalan) + job simpan `template_id`.
 
 **Utang lama (cepat):** revoke `GOOGLE_API_KEY` & `LLAMA_API_KEY`; isi `GITHUB_TOKEN`.
 
 ## Yang perlu dilakukan manusia
 
-- **Debug dokumen Flowy (sesi ini) — 2 bug ditutup**: (1) "logo tak muncul" =
-  user upload SCREENSHOT aplikasi sebagai logo (salah file) + ter-render sliver
-  karena portrait → fix: **preview thumbnail logo** di frontend + re-upload logo
-  ASLI; (2) "panah use case menyilang" = **DIPERBAIKI** — diagram use case dipecah
-  per-aktor ($0, SEMUA template: `default` + `premco` + upload; lihat `split_p12.png`/`premco_p12.png`/`upload_p1.png`). **Server dev DIMATIKAN**
-  (user mau testing nanti — nyalakan lagi: `uvicorn app.main:app` + `npm --prefix frontend run dev`).
-- **Lihat before/after `Template SDD`** (scratchpad, bukan repo):
-  `RENDER_tpl-baru-sdd_p1..2.png` (heuristik = semua placeholder) vs
-  `LLM_p1..2.png` (peta LLM = deskripsi + tabel requirement + diagram arsitektur +
-  tabel fitur, bab manual tetap jujur). Ini bukti konkret peta LLM layak dikerjakan.
-- **Keputusan**: apakah #2 (produksionisasi peta LLM) atau #3 (frontend) duluan?
-  Keduanya sudah de-risked; #2 berbayar tiap generate, #3 gratis tapi butuh restu
-  "sentuh frontend lagi".
-- Dua tugas lama: revoke API key lama, isi `GITHUB_TOKEN`.
+- **Review perubahan lalu commit** (belum aku commit) — DUA pekerjaan terpisah,
+  sarannya **dua commit**: (1) **revert use case** → satu diagram gabungan
+  (smetana); (2) **pisah changelog** (CLAUDE.md ramping + `CHANGELOG.md` baru).
+  Verifikasi visual revert di scratchpad: `verify_default_p12.png` (Gambar 4, 2
+  aktor 1 gambar) & `verify_premco_p12.png` (Gambar 3, bar biru). Perbandingan
+  engine: `uc_smetana.png`/`uc_dot.png`/`uc_elk.png` (kenapa dot tak menolong dense).
+- **Server dev DIMATIKAN** (masih, dari sesi lalu). Kalau mau testing lewat
+  frontend: `uvicorn app.main:app --reload` + `npm --prefix frontend run dev`.
+  (Verifikasi sesi ini tak butuh server — render langsung lewat compiler.)
+- **Keputusan opsional**: kalau kelak mau diagram gabungan sedikit lebih halus DAN
+  siap bayar dependency Graphviz di deploy Linux, tinggal buang `-Playout=smetana`
+  di `_run_plantuml` (khusus use case) + install graphviz di Linux. Aku sengaja
+  TIDAK ambil ini (marginal, hilang di Linux, nambah knob).
