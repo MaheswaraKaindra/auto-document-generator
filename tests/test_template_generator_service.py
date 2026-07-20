@@ -143,6 +143,10 @@ def test_generated_sdd_template_renders_with_real_contract_b():
     diagrams = {
         "system_architecture_image": "img/a.png", "system_architecture_attr": dummy_attr,
         "use_case_diagram_image": "img/uc.png", "use_case_diagram_attr": dummy_attr,
+        "use_case_diagrams_by_actor": [   # compiler memecah use case per-aktor
+            {"actor": "Admin", "image": "img/uc_admin.png", "attr": dummy_attr},
+            {"actor": "Customer", "image": "img/uc_cust.png", "attr": dummy_attr},
+        ],
         "business_process_flow_image": "img/bf.png", "business_process_flow_attr": dummy_attr,
         "activity_diagrams": [
             {**a, "image_path": "img/act.png", "image_attr": dummy_attr}
@@ -158,6 +162,7 @@ def test_generated_sdd_template_renders_with_real_contract_b():
     # isi berjejak ke fixture
     assert data["feature_requirements"][0]["feature_name"] in rendered
     assert data["use_cases"][0]["use_case_id"] in rendered
+    assert "Use Case Diagram — Admin" in rendered          # loop use case per-aktor
     assert "ACT001" in rendered                            # penomoran activity deterministik
 
 

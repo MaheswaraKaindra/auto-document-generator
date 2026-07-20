@@ -212,6 +212,9 @@ def _resolve_template(template_id: str, normalized_type: str) -> _ResolvedTempla
         uses_component_integration=manifest.get("uses_component_integration", False),
         groups_test_cases=manifest.get("groups_test_cases", True),
         uat_toc=manifest.get("uat_toc", False),
+        # default False supaya template LAMA (di-generate sebelum badan use case
+        # punya loop per-aktor) tetap render diagram tunggal — nol regresi.
+        splits_usecase=manifest.get("splits_usecase", False),
     )
 
 # Ketajaman render PlantUML. Default PlantUML 96 dpi — cukup untuk layar, buram

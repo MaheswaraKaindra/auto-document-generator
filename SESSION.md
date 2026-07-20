@@ -109,7 +109,7 @@ generate) + orientasi landscape per-section (spec `orientations[]` belum diukur 
   user upload SCREENSHOT aplikasi sebagai logo (salah file) + ter-render sliver
   karena portrait → fix: **preview thumbnail logo** di frontend + re-upload logo
   ASLI; (2) "panah use case menyilang" = **DIPERBAIKI** — diagram use case dipecah
-  per-aktor ($0, template `default` + `premco`; lihat `split_p12.png`/`premco_p12.png`). **Server dev DIMATIKAN**
+  per-aktor ($0, SEMUA template: `default` + `premco` + upload; lihat `split_p12.png`/`premco_p12.png`/`upload_p1.png`). **Server dev DIMATIKAN**
   (user mau testing nanti — nyalakan lagi: `uvicorn app.main:app` + `npm --prefix frontend run dev`).
 - **Lihat before/after `Template SDD`** (scratchpad, bukan repo):
   `RENDER_tpl-baru-sdd_p1..2.png` (heuristik = semua placeholder) vs

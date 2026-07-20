@@ -110,6 +110,9 @@ def compile_template(spec: dict, name: str, doc_types=None,
         "uses_component_integration": False,
         "groups_test_cases": True,
         "uat_toc": False,
+        # Badan use case hasil-generate memakai loop per-aktor (di-emit
+        # generate_jinja_template) → pecah diagram use case per aktor (panah jelas).
+        "splits_usecase": True,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     (base / "template.json").write_text(
