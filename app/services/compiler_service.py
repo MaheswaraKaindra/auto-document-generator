@@ -125,7 +125,7 @@ REFERENCE_DOCX = TEMPLATES_DIR / "reference.docx"
 # hasil-kompilasi upload membawa flag ini di manifest-nya.
 _BUILTIN_GROUPS_TEST_CASES = {"premco"}   # sisanya (default) pakai tabel test flat
 _BUILTIN_UAT_TOC = {"default"}            # sisanya (premco) tanpa Daftar Isi
-_BUILTIN_SPLITS_USECASE = {"default"}     # SDD: pecah diagram use case per-aktor (panah lebih jelas)
+_BUILTIN_SPLITS_USECASE = {"default", "premco"}   # SDD: pecah diagram use case per-aktor (panah lebih jelas)
 
 
 @dataclass(frozen=True)

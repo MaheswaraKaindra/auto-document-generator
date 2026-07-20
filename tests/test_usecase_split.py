@@ -104,6 +104,7 @@ def test_build_sdd_context_split_vs_single(monkeypatch, tmp_path):
     assert single["use_case_diagram_image"] is not None
 
 
-def test_default_template_splits_usecase_premco_does_not():
+def test_builtin_sdd_templates_split_usecase():
+    # default DAN premco memecah use case per-aktor; compiled (upload) tidak (default flag False)
     assert C._resolve_template("default", "SDD").splits_usecase is True
-    assert C._resolve_template("premco", "SDD").splits_usecase is False
+    assert C._resolve_template("premco", "SDD").splits_usecase is True

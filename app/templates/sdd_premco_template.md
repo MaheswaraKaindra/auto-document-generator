@@ -25,8 +25,10 @@
 
   PENOMORAN (aturan yang sama dengan sdd_template.md — nomor ditanam di caption,
   urutan wajib urut dokumen, offset = jumlah gambar/tabel tetap sebelum loop):
-    Gambar 1-3 tetap : Arsitektur, Flow Proses Bisnis, Use Case Diagram
-    Gambar 4..N      : activity diagram      -> loop.index + 3
+    Gambar 1-2 tetap : Arsitektur, Flow Proses Bisnis
+    Gambar 3..(2+K)  : use case (K=use_case_figure_count: 1 diagram tunggal, atau
+                       satu per aktor kalau compiler memecahnya — panah lebih jelas)
+    Gambar (3+K)..N  : activity diagram      -> loop.index + 2 + use_case_figure_count
     Tabel  1-7 tetap : Role, Demografi, System Requirement, How to Access,
                        Infrastructure, Security, Features
     Tabel  8..N      : use case              -> loop.index + 7
@@ -267,7 +269,17 @@ Tahapan alur proses bisnis:
 
 ## Use Case
 
+{# Diagram use case dipecah per aktor kalau compiler mengaktifkannya (panah lebih
+   jelas); fallback ke satu diagram gabungan kalau tidak (< 2 aktor / parse gagal).
+   Use case = Gambar 3..(2+K); activity di bawah pakai offset use_case_figure_count. #}
+{% if diagrams.use_case_diagrams_by_actor %}
+{% for uc_dia in diagrams.use_case_diagrams_by_actor %}
+![Gambar {{ loop.index + 2 }} Use Case Diagram — {{ uc_dia.actor }}]({{ uc_dia.image }}){{ uc_dia.attr }}
+
+{% endfor %}
+{% else %}
 ![Gambar 3 Use Case Diagram]({{ diagrams.use_case_diagram_image }}){{ diagrams.use_case_diagram_attr }}
+{% endif %}
 
 {% for uc in use_cases %}
 | ((BAR))Use Case {{ uc.use_case_id }} — {{ uc.actor }} | |
@@ -287,7 +299,7 @@ Tahapan alur proses bisnis:
 {% for activity in diagrams.activity_diagrams %}
 {{ activity.description }}
 
-![Gambar {{ loop.index + 3 }} Activity Diagram {{ activity.activity_name }}]({{ activity.image_path }}){{ activity.image_attr }}
+![Gambar {{ loop.index + 2 + diagrams.use_case_figure_count }} Activity Diagram {{ activity.activity_name }}]({{ activity.image_path }}){{ activity.image_attr }}
 
 {# Langkah aktivitas ada DI DALAM sel Description (konvensi dokumen asli),
    dipisah marker ((BR)) yang ditukar post-process jadi line break sungguhan —
