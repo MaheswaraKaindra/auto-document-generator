@@ -105,6 +105,12 @@ generate) + orientasi landscape per-section (spec `orientations[]` belum diukur 
 
 ## Yang perlu dilakukan manusia
 
+- **Debug dokumen Flowy (sesi ini) — 2 bug ditutup**: (1) "logo tak muncul" =
+  user upload SCREENSHOT aplikasi sebagai logo (salah file) + ter-render sliver
+  karena portrait → fix: **preview thumbnail logo** di frontend + re-upload logo
+  ASLI; (2) "panah use case menyilang" = **DIPERBAIKI** — diagram use case dipecah
+  per-aktor ($0, template `default`; lihat `split_p12.png`). **Server dev DIMATIKAN**
+  (user mau testing nanti — nyalakan lagi: `uvicorn app.main:app` + `npm --prefix frontend run dev`).
 - **Lihat before/after `Template SDD`** (scratchpad, bukan repo):
   `RENDER_tpl-baru-sdd_p1..2.png` (heuristik = semua placeholder) vs
   `LLM_p1..2.png` (peta LLM = deskripsi + tabel requirement + diagram arsitektur +

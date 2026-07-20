@@ -264,7 +264,19 @@ Tahapan alur proses bisnis:
 
 ## 11. Use Case
 
+{# Diagram use case: kalau compiler memecahnya per aktor (arrows lebih jelas —
+   template `default` mengaktifkannya), tampilkan satu gambar bernomor per aktor;
+   kalau tidak (< 2 aktor / parse gagal) fallback ke satu diagram gabungan.
+   Penomoran: use case = Gambar 4..(3+N), jadi activity di bawah memakai offset
+   `use_case_figure_count` (bukan angka tetap). #}
+{% if diagrams.use_case_diagrams_by_actor %}
+{% for uc_dia in diagrams.use_case_diagrams_by_actor %}
+![Gambar {{ loop.index + 3 }} Use Case Diagram — {{ uc_dia.actor }}]({{ uc_dia.image }}){{ uc_dia.attr }}
+
+{% endfor %}
+{% else %}
 ![Gambar 4 Use Case Diagram]({{ diagrams.use_case_diagram_image }}){{ diagrams.use_case_diagram_attr }}
+{% endif %}
 
 {% for uc in use_cases %}
 ### 11.{{ loop.index }} Use Case {{ uc.use_case_id }} — {{ uc.actor }}
@@ -303,7 +315,7 @@ Tahapan alur proses bisnis:
 
 {{ activity.description }}
 
-![Gambar {{ loop.index + 4 }} Activity Diagram {{ activity.activity_name }}]({{ activity.image_path }}){{ activity.image_attr }}
+![Gambar {{ loop.index + 3 + diagrams.use_case_figure_count }} Activity Diagram {{ activity.activity_name }}]({{ activity.image_path }}){{ activity.image_attr }}
 
 {# Nomor ACT ditanam deterministik dari urutan (bukan diminta ke LLM): tidak ada
    yang bisa dikarang dari penomoran, dan urutannya dijamin sinkron dengan

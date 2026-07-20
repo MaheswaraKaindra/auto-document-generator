@@ -34,6 +34,8 @@ from jinja2 import Environment, FileSystemLoader
 from PIL import Image, UnidentifiedImageError
 
 from app.core import config
+from app.diagram.ir import Actor, Association, UseCaseDiagramIR, UseCaseNode
+from app.diagram.renderer import PlantUMLRenderer
 from app.domain.exceptions import DiagramRenderError
 
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
@@ -123,6 +125,7 @@ REFERENCE_DOCX = TEMPLATES_DIR / "reference.docx"
 # hasil-kompilasi upload membawa flag ini di manifest-nya.
 _BUILTIN_GROUPS_TEST_CASES = {"premco"}   # sisanya (default) pakai tabel test flat
 _BUILTIN_UAT_TOC = {"default"}            # sisanya (premco) tanpa Daftar Isi
+_BUILTIN_SPLITS_USECASE = {"default"}     # SDD: pecah diagram use case per-aktor (panah lebih jelas)
 
 
 @dataclass(frozen=True)
@@ -136,6 +139,7 @@ class _ResolvedTemplate:
     uses_component_integration: bool  # render diagram Component Integration?
     groups_test_cases: bool           # UAT: kelompokkan test-case per modul?
     uat_toc: bool                     # UAT: pasang --toc?
+    splits_usecase: bool = False      # SDD: pecah diagram use case jadi satu per-aktor?
 
 
 def _load_compiled_manifest(template_id: str) -> dict | None:
@@ -193,6 +197,7 @@ def _resolve_template(template_id: str, normalized_type: str) -> _ResolvedTempla
             uses_component_integration=template_id in _TEMPLATES_USING_COMPONENT_INTEGRATION,
             groups_test_cases=template_id in _BUILTIN_GROUPS_TEST_CASES,
             uat_toc=template_id in _BUILTIN_UAT_TOC,
+            splits_usecase=template_id in _BUILTIN_SPLITS_USECASE,
         )
     manifest = _load_compiled_manifest(template_id)
     if manifest is None:
@@ -486,6 +491,79 @@ def _render_diagram_to_image(diagram_script: str, images_dir: Path) -> str:
     return str(image_path)
 
 
+# --- Split use case diagram per-aktor -----------------------------------------
+# Diagram use case dengan banyak aktor yang berbagi banyak use case membuat
+# panah menyilang-menumpuk (keterbatasan auto-layout smetana) — sulit dibaca
+# (temuan dari dokumen user Flowy, 2026-07-20). Solusinya: pecah jadi satu
+# diagram BERSIH per aktor. Datanya diambil dengan mem-PARSE PlantUML use case
+# karangan LLM (grammar-nya dibatasi SYSTEM_PROMPT: actor/rectangle/usecase/-->),
+# lalu dirender ulang lewat layer Diagram IR (PlantUMLRenderer). Tak menyentuh
+# LLM/prompt/DocumentContent; kalau parse/render gagal → None → pemanggil
+# fallback ke diagram tunggal (nol regresi).
+_UC_ACTOR_ALIAS = re.compile(r'^\s*actor\s+"([^"]+)"\s+as\s+(\w+)', re.M)
+_UC_ACTOR_BARE = re.compile(r"^\s*actor\s+(\w+)\s*$", re.M)
+_UC_USECASE = re.compile(r'usecase\s+"([^"]+)"\s+as\s+(\w+)')
+_UC_RECTANGLE = re.compile(r'rectangle\s+"([^"]+)"')
+_UC_ASSOC = re.compile(r"^\s*(\w+)\s*-->\s*(\w+)", re.M)
+
+
+def _usecase_plantuml_to_ir(script: str) -> UseCaseDiagramIR | None:
+    """Parse PlantUML use case (subset grammar LLM) → UseCaseDiagramIR, atau None
+    kalau tak cocok (→ fallback). Toleran: apa pun yang tak dikenali diabaikan."""
+    actors: dict[str, str] = {}
+    for label, alias in _UC_ACTOR_ALIAS.findall(script):
+        actors[alias] = label
+    for name in _UC_ACTOR_BARE.findall(script):
+        actors.setdefault(name, name)          # `actor Admin` → id=label=Admin
+    use_cases = {ucid: label for label, ucid in _UC_USECASE.findall(script)}
+    if not actors or not use_cases:
+        return None
+
+    rect = _UC_RECTANGLE.search(script)
+    associations = []
+    for a, b in _UC_ASSOC.findall(script):
+        # arah asosiasi bisa Actor-->UC atau UC-->Actor; normalkan ke (aktor, uc)
+        if a in actors and b in use_cases:
+            associations.append((a, b))
+        elif b in actors and a in use_cases:
+            associations.append((b, a))
+    if not associations:
+        return None
+    return UseCaseDiagramIR(
+        system_name=rect.group(1) if rect else "System",
+        actors=[Actor(id=i, label=l) for i, l in actors.items()],
+        use_cases=[UseCaseNode(id=i, label=l) for i, l in use_cases.items()],
+        associations=[Association(actor=a, use_case=u) for a, u in associations],
+    )
+
+
+def _split_usecase_images(script: str, images_dir: Path) -> list[dict] | None:
+    """PlantUML use case → daftar `{actor, image, attr}` per aktor (satu diagram
+    bersih per aktor). None kalau tak bisa/tak berguna di-split (< 2 aktor, parse
+    gagal, atau render gagal) — pemanggil fallback ke diagram tunggal."""
+    ir = _usecase_plantuml_to_ir(script)
+    if ir is None or len(ir.actors) < 2:
+        return None
+    renderer = PlantUMLRenderer()
+    out = []
+    for actor in ir.actors:
+        uc_ids = {a.use_case for a in ir.associations if a.actor == actor.id}
+        if not uc_ids:
+            continue
+        sub = UseCaseDiagramIR(
+            system_name=ir.system_name,
+            actors=[actor],
+            use_cases=[u for u in ir.use_cases if u.id in uc_ids],
+            associations=[a for a in ir.associations if a.actor == actor.id],
+        )
+        try:
+            path = _render_diagram_to_image(renderer.render(sub), images_dir)
+        except DiagramRenderError:
+            return None                        # render gagal → fallback tunggal
+        out.append({"actor": actor.label, "image": path, "attr": _image_attr(path)})
+    return out if len(out) >= 2 else None
+
+
 def _image_attr(image_path: str) -> str:
     """Atribut ukuran Pandoc (`{width=...}` / `{height=...}`) untuk satu diagram.
 
@@ -515,7 +593,8 @@ def _image_attr(image_path: str) -> str:
     return f"{{width={_PAGE_WIDTH_IN}in}}"
 
 
-def _build_sdd_context(data: dict[str, Any], render_integration: bool = True) -> dict[str, Any]:
+def _build_sdd_context(data: dict[str, Any], render_integration: bool = True,
+                       split_usecase: bool = False) -> dict[str, Any]:
     diagrams = data["diagrams"]
 
     # Ganti newline jadi spasi supaya tidak merusak baris tabel Markdown
@@ -555,7 +634,15 @@ def _build_sdd_context(data: dict[str, Any], render_integration: bool = True) ->
         else None
     )
     business_flow = _render_diagram_to_image(diagrams["business_process_flow"], IMAGES_DIR)
-    use_case = _render_diagram_to_image(diagrams["use_case_diagram"], IMAGES_DIR)
+    # Use case: template yang mendukung boleh memecah jadi satu diagram per aktor
+    # (panah lebih jelas — temuan Flowy 2026-07-20). Kalau tak bisa/tak berguna
+    # (< 2 aktor, parse/render gagal) → None → satu diagram gabungan (nol regresi).
+    use_case_per_actor = (
+        _split_usecase_images(diagrams["use_case_diagram"], IMAGES_DIR)
+        if split_usecase else None
+    )
+    use_case = (None if use_case_per_actor
+                else _render_diagram_to_image(diagrams["use_case_diagram"], IMAGES_DIR))
 
     return {
         **data,
@@ -572,7 +659,11 @@ def _build_sdd_context(data: dict[str, Any], render_integration: bool = True) ->
             "business_process_flow_image": business_flow,
             "business_process_flow_attr": _image_attr(business_flow),
             "use_case_diagram_image": use_case,
-            "use_case_diagram_attr": _image_attr(use_case),
+            "use_case_diagram_attr": _image_attr(use_case) if use_case else "",
+            # None (pakai diagram tunggal di atas) ATAU list[{actor,image,attr}] per aktor.
+            "use_case_diagrams_by_actor": use_case_per_actor,
+            # Jumlah GAMBAR use case (untuk offset penomoran gambar activity di template).
+            "use_case_figure_count": len(use_case_per_actor) if use_case_per_actor else 1,
             "activity_diagrams": [
                 {
                     "activity_name": activity["activity_name"],
@@ -1071,7 +1162,8 @@ def generate_docx(
 
     if normalized_type == "SDD":
         context = {**context,
-                   **_build_sdd_context(document_content, resolved.uses_component_integration)}
+                   **_build_sdd_context(document_content, resolved.uses_component_integration,
+                                        resolved.splits_usecase)}
     else:
         context = {**context,
                    **_build_uat_context(document_content, resolved.groups_test_cases)}
