@@ -11,10 +11,11 @@ dokumen bergaya template yang di-upload — MEMAKAI ULANG seluruh pipeline matan
 "kompilasi upload jadi template terdaftar", bukan swap `--reference-doc` runtime
 (yang V0 buktikan menghasilkan paket corrupt).
 
-Persis kerja MANUAL pembuatan template `premco` (V1) — diotomatiskan. Deterministik
-& $0: peta bab masih heuristik (`propose_mapping`, stand-in usulan LLM). Bagian
-LLM & UI tinjauan menyusul; kontrak peta (`[{level,text,binding}]`) sudah siap
-menerima keduanya.
+Persis kerja MANUAL pembuatan template `premco` (V1) — diotomatiskan. Default
+DETERMINISTIK & $0: peta bab heuristik (`propose_mapping`). Peta bab BER-LLM
+tersedia OPT-IN lewat `use_llm_mapping=True` (berbayar, `llm_mapping_service`) —
+memetakan bab asing yang kata kuncinya tak cocok; kontrak peta
+(`[{level,text,binding}]`) identik jadi keduanya dipertukarkan. UI tinjauan menyusul.
 """
 from __future__ import annotations
 
@@ -28,6 +29,7 @@ from pathlib import Path
 # SATU sumber kebenaran di compiler_service — penting agar redirect (test/config)
 # cukup di satu tempat, bukan dua binding yang bisa menyimpang.
 from app.services import compiler_service
+from app.services.llm_mapping_service import llm_propose_mapping
 from app.services.reference_synthesis_service import build_reference
 from app.services.template_generator_service import generate_jinja_template, propose_mapping
 from app.services.template_spec_service import build_template_spec
@@ -60,7 +62,8 @@ def _pick_doc_types(spec: dict, requested) -> list[str]:
 
 
 def compile_template(spec: dict, name: str, doc_types=None,
-                     template_id: str | None = None) -> dict:
+                     template_id: str | None = None,
+                     use_llm_mapping: bool = False) -> dict:
     """`TemplateSpec` → template terdaftar. Menulis ke data/templates/<id>/:
     template Jinja per doc_type (`.md`), rencana peta (`mapping_<dt>.json`),
     reference.docx tersintesis, spec (`spec.json`), dan manifest (`template.json`).
@@ -69,6 +72,10 @@ def compile_template(spec: dict, name: str, doc_types=None,
     doc_types: jenis dokumen yang dibuatkan template. None = tebak dari
     `spec.doc_kind_guess` (fallback ["SDD"]) — meng-generate template UAT dari
     outline SDD (atau sebaliknya) cuma menghasilkan placeholder, jadi tak berguna.
+
+    use_llm_mapping: False (default) = peta bab heuristik ($0, deterministik).
+    True = peta bab BER-LLM (`llm_mapping_service`, BERBAYAR — satu panggilan
+    Claude per doc_type) yang memetakan bab asing yang kata kuncinya tak cocok.
     """
     doc_types = _pick_doc_types(spec, doc_types)
     template_id = _unique_template_id(template_id or _slugify(name))
@@ -77,7 +84,8 @@ def compile_template(spec: dict, name: str, doc_types=None,
 
     doc_type_files = {}
     for dt in doc_types:
-        mapping = propose_mapping(spec, dt)
+        mapping = (llm_propose_mapping(spec, dt) if use_llm_mapping
+                   else propose_mapping(spec, dt))
         (base / f"mapping_{dt}.json").write_text(
             json.dumps(mapping, ensure_ascii=False, indent=2), encoding="utf-8")
         (base / f"{dt}.md").write_text(
@@ -110,11 +118,14 @@ def compile_template(spec: dict, name: str, doc_types=None,
 
 
 def compile_template_from_docx(docx_path, name: str | None = None, doc_types=None,
-                               template_id: str | None = None) -> dict:
+                               template_id: str | None = None,
+                               use_llm_mapping: bool = False) -> dict:
     """Jalur lengkap dari file `.docx` yang di-upload: ukur (`build_template_spec`)
-    → `compile_template`. `.doc` biner harus dikonversi ke `.docx` dulu."""
+    → `compile_template`. `.doc` biner harus dikonversi ke `.docx` dulu.
+    `use_llm_mapping` diteruskan ke `compile_template` (lihat di sana)."""
     spec = build_template_spec(docx_path)
-    return compile_template(spec, name or Path(docx_path).stem, doc_types, template_id)
+    return compile_template(spec, name or Path(docx_path).stem, doc_types, template_id,
+                            use_llm_mapping=use_llm_mapping)
 
 
 def load_compiled_detail(template_id: str) -> dict:

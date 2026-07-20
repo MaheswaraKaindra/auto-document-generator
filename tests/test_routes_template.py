@@ -62,6 +62,26 @@ def test_upload_compiles_registers_and_is_usable_in_generate(client):
     assert detail.json()["manifest"]["template_id"] == tid
 
 
+def test_upload_with_llm_mapping_opt_in(client, monkeypatch):
+    """use_llm_mapping=true meng-opt-in pemeta LLM (di-mock di boundary, $0). Bab
+    asing yang heuristik tandai 'manual' kini terpetakan lewat jawaban LLM."""
+    import app.services.llm_mapping_service as lm
+    monkeypatch.setattr(
+        lm, "_request_bindings",
+        lambda outline, doc_type: {0: "skip", 1: "app_description", 2: "feature_requirements"},
+    )
+    data = _docx_bytes(["Vision Statement", "Business Capabilities"])
+    resp = client.post(
+        "/templates",
+        files={"file": ("dynamics.docx", data, DOCX_MIME)},
+        data={"doc_types": "SDD", "use_llm_mapping": "true"},
+    )
+    assert resp.status_code == 201, resp.text
+    bindings = {m["text"]: m["binding"] for m in resp.json()["mappings"]["SDD"]}
+    assert bindings["Vision Statement"] == "app_description"
+    assert bindings["Business Capabilities"] == "feature_requirements"
+
+
 def test_upload_rejects_doc_and_non_docx(client):
     doc = client.post("/templates", files={"file": ("lama.doc", b"\xd0\xcf", "application/msword")})
     assert doc.status_code == 422

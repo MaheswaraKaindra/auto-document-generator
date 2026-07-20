@@ -127,3 +127,30 @@ def test_compile_from_docx_measures_then_registers(isolated_store, tmp_path):
     template_md = (compiler_service.TEMPLATES_STORE / tid / "SDD.md").read_text(encoding="utf-8")
     assert "{{ app_description }}" in template_md          # "Deskripsi Aplikasi" ter-bind
     assert "{% for uc in use_cases %}" in template_md      # "Use Case" ter-bind
+
+
+def test_use_llm_mapping_opt_in_calls_llm_mapper(isolated_store, monkeypatch):
+    """use_llm_mapping=True memakai pemeta LLM (di-mock di boundary orkestrator)."""
+    calls = []
+
+    def fake_llm(spec, dt):
+        calls.append(dt)
+        return [{"level": 1, "text": "Deskripsi", "binding": "app_description"}]
+
+    monkeypatch.setattr(template_compiler_service, "llm_propose_mapping", fake_llm)
+    manifest = template_compiler_service.compile_template(
+        _spec(), "LLM Opt In", use_llm_mapping=True)
+    assert calls == ["SDD"]                              # dipanggil utk doc_type SDD
+    tid = manifest["template_id"]
+    md = (compiler_service.TEMPLATES_STORE / tid / "SDD.md").read_text(encoding="utf-8")
+    assert "{{ app_description }}" in md                 # rencana LLM ter-render
+
+
+def test_default_path_does_not_call_llm_mapper(isolated_store, monkeypatch):
+    """Default (use_llm_mapping=False) TIDAK menyentuh LLM — jalur $0 tetap heuristik."""
+    def boom(spec, dt):
+        raise AssertionError("pemeta LLM tak boleh dipanggil pada jalur default")
+
+    monkeypatch.setattr(template_compiler_service, "llm_propose_mapping", boom)
+    template_compiler_service.compile_template(_spec(), "Default Heuristik")
+    # sampai sini tanpa AssertionError = LLM tak dipanggil

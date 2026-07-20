@@ -43,6 +43,7 @@ def upload_template(
     file: UploadFile = File(...),
     name: str | None = Form(None),
     doc_types: str | None = Form(None),
+    use_llm_mapping: bool = Form(False),
 ):
     """Upload `.docx` template → ukur + kompilasi jadi template terdaftar. Balik
     `template_id` + rencana peta bab (untuk ditinjau sebelum dipakai). SINKRON.
@@ -50,6 +51,11 @@ def upload_template(
     `doc_types` opsional (comma-separated "SDD,UAT"); kosong = tebak dari dokumen.
     Menghasilkan template UAT dari outline SDD (atau sebaliknya) cuma menghasilkan
     placeholder, jadi tebakan biasanya yang benar.
+
+    `use_llm_mapping` opsional (default False = peta bab heuristik, $0). True =
+    peta bab BER-LLM (BERBAYAR — satu panggilan Claude per doc_type), berguna untuk
+    template SDD asing yang nama babnya tak cocok kata kunci heuristik (kalau tidak,
+    dokumennya jadi penuh placeholder). Lihat `llm_mapping_service`.
     """
     filename = file.filename or "template.docx"
     lower = filename.lower()
@@ -87,6 +93,7 @@ def upload_template(
                 docx_path,
                 name=name or Path(filename).stem,
                 doc_types=requested_doc_types,
+                use_llm_mapping=use_llm_mapping,
             )
         except (PackageNotFoundError, zipfile.BadZipFile, KeyError) as e:
             # File bukan .docx valid / rusak — kesalahan INPUT user (422), bukan

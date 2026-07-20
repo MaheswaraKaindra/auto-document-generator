@@ -1,4 +1,4 @@
-# Catatan Sesi — 2026-07-20 (3 template vendor + prototipe peta LLM + redesign layer diagram)
+# Catatan Sesi — 2026-07-20 (3 template vendor + peta LLM prototipe→produksi + redesign layer diagram)
 
 > **File ini ditimpa habis setiap sesi baru.** Isinya cuma satu hal: apa yang
 > dikerjakan sesi kemarin, supaya sesi berikutnya tidak mulai dari nol.
@@ -82,15 +82,18 @@ Sudah 4 kelas struktur tertutup (PREMCO-family/asing × SDD/UAT × datar/bersara
 tiap template yang BEDA struktur masih mungkin memancing bug. Satu-satunya kerja
 yang tak bisa diambil setelah keluar magang.
 
-**#2 (produksionisasi peta LLM — sekarang DE-RISKED, BERBAYAR saat jalan):**
-angkat `scratchpad/llm_mapping_proto.py` jadi fungsi di `app/` (mis.
-`llm_propose_mapping(spec, doc_type)` bersebelahan `propose_mapping` heuristik),
-jadikan opsi di `compile_template_from_docx` di belakang gate biaya, + tes (mock LLM).
-Kontrak keluaran sudah sama, jadi drop-in.
+**#2 (produksionisasi peta LLM) — ✅ SELESAI (sesi ini).** `app/services/
+llm_mapping_service.py` `llm_propose_mapping` (kontrak keluaran SAMA dgn heuristik),
+gate opt-in `use_llm_mapping` di `compile_template`/`compile_template_from_docx`/
+`POST /templates` (default heuristik $0). Refactor `assemble_plan` (dedup+degradasi)
+dipakai bersama. +11 tes (LLM mock), **288 hijau**, nol regresi. Jalur berbayar
+diverifikasi ke API nyata (Dynamics 0→**6** binding isi, ~$0,03). Lihat Riwayat CLAUDE.md.
 
-**#3 (frontend, $0, TAPI pemilik bilang "frontend cukup" — konfirmasi dulu):**
-ekspos V2 (widget upload → `POST /templates`, dropdown dari `GET /templates`) +
-perbaiki `premco` UAT yang stale di `TEMPLATE_OPTIONS`.
+**#3 (frontend, $0 — kandidat berikutnya, TAPI pemilik bilang "frontend cukup" →
+KONFIRMASI dulu):** ekspos V2 (widget upload → `POST /templates` [kini terima
+`use_llm_mapping`], dropdown dari `GET /templates`) + UI tinjauan/edit peta bab
+(`mappings` dari `GET /templates/{id}`) + perbaiki `premco` UAT stale di `TEMPLATE_OPTIONS`.
+Sekarang bernilai penuh karena #2 bikin fiturnya berisi, bukan kosong.
 
 **#4 ($0):** orientasi landscape per-section (spec `orientations[]` belum diukur
 BENAR — terukur `None` di 3 template; ukur + terapkan untuk tabel test lebar).

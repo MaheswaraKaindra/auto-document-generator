@@ -116,29 +116,24 @@ def _classify(key: str, rules) -> str | None:
     return None
 
 
-def propose_mapping(spec: dict, doc_type: str) -> list[dict]:
-    """Usulkan binding untuk tiap entri outline `spec`. Deterministik ($0).
+def assemble_plan(outline: list[dict], classify) -> list[dict]:
+    """Rangkai rencana peta dari `outline` + `classify(i, entry) -> binding | None`.
 
-    Mengembalikan list paralel outline: `[{level, text, binding}, ...]` — rencana
-    lengkap (termasuk entri SKIP) supaya bisa ditampilkan/diedit di UI tinjauan
-    lalu diteruskan apa adanya ke `generate_jinja_template`. `doc_type` ("SDD"/
-    "UAT") menentukan kosakata isi yang dipertimbangkan supaya dokumen koheren
-    (bab test-case cuma untuk UAT; use case/activity untuk SDD).
+    Menyatukan logika STRUKTURAL yang dipakai bersama pemeta heuristik
+    (`propose_mapping`) dan pemeta LLM (`llm_mapping_service.llm_propose_mapping`)
+    — satu sumber kebenaran supaya keduanya tak menyimpang diam-diam:
+    - judul dokumen / bab kosong (`level == 0` atau teks kosong) → SKIP;
+    - DEDUP isi turunan-kode: tiap binding di `_CONTENT_BINDINGS` dipakai PALING
+      BANYAK SEKALI (yang pertama menang); bab kedua yang meminta isi sama (mis.
+      template IEEE punya "Introduction"/"Background"/"Overview" — semua cocok
+      app_description) turun jadi kontainer/placeholder, supaya paragraf/diagram
+      yang sama tidak berulang;
+    - bab tak-terpetakan (`classify` → None): **kontainer** (punya anak lebih
+      dalam) → `heading_only`, **daun** → `manual` (placeholder jujur, bukan karangan).
 
-    Bab tak dikenali: **kontainer** (punya anak lebih dalam) → `heading_only`;
-    **daun** → `manual`. Itu degradasi anggun — placeholder jujur, bukan karangan.
-
-    DEDUP isi turunan-kode: tiap binding isi dipakai PALING BANYAK SEKALI. Bab
-    kedua yang meminta isi sama (mis. template IEEE punya "Introduction",
-    "Background", "Overview of the System" — semua cocok app_description) TIDAK
-    mengulang isinya; ia turun jadi kontainer/placeholder. Tanpa ini paragraf/
-    diagram yang sama berulang beberapa kali di dokumen — terlihat pada template
-    IEEE nyata. (Pemilihan bab MANA yang paling pas untuk tiap isi butuh judgment
-    — itu tugas peta LLM kelak; heuristik ini "yang pertama menang".)
+    `classify` HANYA memutuskan binding usulan per bab; degradasi anggun & dedup
+    seragam di sini.
     """
-    outline = spec.get("structure", {}).get("outline", [])
-    rules = _UAT_RULES if doc_type.upper() == "UAT" else _SDD_RULES
-
     plan = []
     used_content: set[str] = set()
     for i, entry in enumerate(outline):
@@ -147,21 +142,43 @@ def propose_mapping(spec: dict, doc_type: str) -> list[dict]:
         if not text or level == 0:            # judul dokumen: ditangani pandoc
             plan.append({"level": level, "text": text, "binding": SKIP})
             continue
-        key = _norm(text)
         has_children = (i + 1 < len(outline)
                         and outline[i + 1].get("level", 1) > level)
-        if any(kw in key for kw in _SKIP_KEYWORDS):
-            binding = SKIP
-        else:
-            binding = _classify(key, rules)
-            if binding in used_content:        # isi ini sudah dipakai bab lain
-                binding = None
-            if binding is None:                # tak dikenali / sudah dipakai
-                binding = HEADING_ONLY if has_children else MANUAL
-            else:
-                used_content.add(binding)
+        binding = classify(i, entry)
+        if binding in _CONTENT_BINDINGS and binding in used_content:
+            binding = None                    # isi ini sudah dipakai bab lain
+        if binding is None:                   # tak dikenali / sudah dipakai
+            binding = HEADING_ONLY if has_children else MANUAL
+        elif binding in _CONTENT_BINDINGS:
+            used_content.add(binding)
         plan.append({"level": level, "text": text, "binding": binding})
     return plan
+
+
+def propose_mapping(spec: dict, doc_type: str) -> list[dict]:
+    """Usulkan binding untuk tiap entri outline `spec` — HEURISTIK, deterministik ($0).
+
+    Mengembalikan list paralel outline: `[{level, text, binding}, ...]` — rencana
+    lengkap (termasuk entri SKIP) untuk ditampilkan/diedit di UI tinjauan lalu
+    diteruskan apa adanya ke `generate_jinja_template`. `doc_type` ("SDD"/"UAT")
+    menentukan kosakata isi (bab test-case cuma untuk UAT; use case/activity untuk SDD).
+
+    Pencocokan berbasis KATA KUNCI (`_classify`), sengaja konservatif: nama bab
+    yang tak dikenali → placeholder, tidak menebak. Alternatif ber-judgment
+    (memetakan bab asing yang kata kuncinya tak cocok — mis. "Vision Statement" →
+    app_description) ada di `llm_mapping_service.llm_propose_mapping` (berbayar,
+    opt-in); kontrak keluarannya SAMA, jadi bisa dipertukarkan.
+    """
+    outline = spec.get("structure", {}).get("outline", [])
+    rules = _UAT_RULES if doc_type.upper() == "UAT" else _SDD_RULES
+
+    def classify(_i, entry):
+        key = _norm((entry.get("text") or "").strip())
+        if any(kw in key for kw in _SKIP_KEYWORDS):
+            return SKIP
+        return _classify(key, rules)
+
+    return assemble_plan(outline, classify)
 
 
 # --- Badan Jinja per binding (diambil dari template default yang terbukti) -----
