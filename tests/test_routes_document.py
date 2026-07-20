@@ -37,6 +37,18 @@ def _white_png(width: int = 1600, height: int = 1200) -> bytes:
 _MINIMAL_PNG = _white_png()
 
 
+def _zip_bytes(files: dict) -> bytes:
+    """ZIP di memori berisi {path: konten} — repo sintetis untuk jalur ZIP."""
+    import io
+    import zipfile
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        for path, content in files.items():
+            archive.writestr(path, content)
+    return buffer.getvalue()
+
+
 def _load_fixture(name: str) -> dict:
     return json.loads((FIXTURES_DIR / name).read_text(encoding="utf-8"))
 
@@ -311,6 +323,54 @@ def test_logo_survives_the_whole_async_round_trip(client, mock_plantuml_ok, tmp_
     assert any("<w:drawing" in xml for xml in header_xmls), (
         "logo tidak sampai ke header dokumen yang diunduh"
     )
+
+
+def test_generate_from_zip_produces_document(client, mock_plantuml_ok):
+    """Jalur ZIP -> dokumen (dulu TAK PERNAH tersambung, lihat Keterbatasan): ZIP
+    base64 di body JSON di-ingest+parse SUNGGUHAN (tanpa jaringan) lalu lewat
+    pipeline yang sama dengan GitHub. LLM & plantuml di-mock; ingest+parse ZIP asli
+    — job 'done' membuktikan ZIP tervalidasi & terbaca (zip rusak -> gagal 422)."""
+    import base64
+
+    content = _load_fixture("document_content_sdd.json")
+    zip_b64 = base64.b64encode(
+        _zip_bytes(
+            {
+                "myapp/app.py": "def hello():\n    return 'hi'\n",
+                "myapp/models.py": "class User:\n    pass\n",
+            }
+        )
+    ).decode()
+
+    with patch.object(
+        routes_document._llm_service, "generate_document_content", return_value=content
+    ):
+        job = _generate(
+            client,
+            document_type="SDD",
+            zip_files=[{"repo_tag": "Backend", "filename": "myapp.zip", "zip_base64": zip_b64}],
+        )
+
+    assert job["status"] == "done", job
+    assert client.get(job["download_url"]).status_code == 200
+
+
+def test_zip_bad_base64_rejected_synchronously_with_422(client):
+    """base64 ZIP rusak ditolak SAAT POST — sebelum job dibuat, sebelum LLM.
+    Prinsip yang sama dengan validasi logo & document_type."""
+    response = client.post(
+        "/documents/generate",
+        json={
+            "document_type": "SDD",
+            "zip_files": [
+                {"repo_tag": "Backend", "filename": "x.zip", "zip_base64": "@@bukan base64@@"}
+            ],
+        },
+    )
+
+    assert response.status_code == 422
+    assert "base64" in response.json()["detail"].lower()
+    assert "job_id" not in response.json()
 
 
 def test_every_meta_field_in_templates_exists_in_schema():

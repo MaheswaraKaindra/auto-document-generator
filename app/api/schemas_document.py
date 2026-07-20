@@ -3,13 +3,26 @@ milik Peran 1 — file terpisah supaya tidak ada resiko konflik/campur tanggung 
 
 from typing import Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class GithubRepoIn(BaseModel):
     repo_tag: str
     repo_url: str
     branch: Optional[str] = None
+
+
+class ZipFileIn(BaseModel):
+    """Satu repo yang di-upload sebagai ZIP (base64), untuk jalur ZIP -> dokumen.
+
+    Base64-in-JSON, pola yang sama dengan `logo_base64`: menyatu dengan kontrak
+    JSON `/documents/generate` yang sudah ada, jadi tak perlu endpoint multipart
+    terpisah. Prefiks data-URL ("data:application/zip;base64,...") dari browser
+    boleh ikut — endpoint yang membuangnya."""
+
+    repo_tag: str
+    filename: str
+    zip_base64: str
 
 
 class DocumentMetadata(BaseModel):
@@ -87,7 +100,12 @@ class GenerateDocumentRequest(BaseModel):
     project_name: Optional[str] = None
     document_type: str  # "SDD" atau "UAT"
     github_token: Optional[str] = None
-    repositories: list[GithubRepoIn]
+    # Sumber kode. Dua jalur yang saling menggantikan: `repositories` (GitHub)
+    # ATAU `zip_files` (upload ZIP base64). Kalau `zip_files` diisi, ITU yang
+    # dipakai; kalau tidak, jatuh ke `repositories`. Keduanya default kosong
+    # (dibiarkan longgar: request lama yang mengirim `repositories: []` tetap sah).
+    repositories: list[GithubRepoIn] = Field(default_factory=list)
+    zip_files: Optional[list[ZipFileIn]] = None
     document_metadata: Optional[DocumentMetadata] = None
     # Gaya dokumen: "default" (template bawaan) atau "premco" (kompilasi manual
     # docx PREMCO, V1 roadmap tahap c — baru menyediakan SDD). Divalidasi

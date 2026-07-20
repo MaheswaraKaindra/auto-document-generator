@@ -4,13 +4,14 @@ Tidak mengubah kode Peran 1 (parser_service.py, ingestion_service.py) atau
 Peran 2 (llm_service.py) — hanya mengimpor & memanggil apa yang sudah
 mereka sediakan."""
 
+import base64
 import logging
 from typing import Callable
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from fastapi.responses import FileResponse
 
-from app.api.schemas_document import GenerateDocumentRequest
+from app.api.schemas_document import GenerateDocumentRequest, ZipFileIn
 from app.domain.exceptions import (
     ContextWindowExceededError,
     DiagramRenderError,
@@ -18,7 +19,7 @@ from app.domain.exceptions import (
     PandocUnavailableError,
     SourceProviderError,
 )
-from app.domain.models import GithubIngestRequest, SourceType
+from app.domain.models import GithubIngestRequest, SourceType, ZipIngestRequest
 from app.services import job_store
 from app.services.compiler_service import decode_logo, generate_docx, validate_template
 from app.services.ingestion_service import IngestionService
@@ -83,8 +84,36 @@ def generate_uat_from_content(body: DocumentContent):
     return FileResponse(output_path, media_type=_DOCX_MEDIA_TYPE, filename=_FILENAME_BY_TYPE["UAT"])
 
 
+def _decode_zip_files(zip_files: list[ZipFileIn]) -> list[ZipIngestRequest]:
+    """base64 (dari JSON) -> ZipIngestRequest berisi bytes, divalidasi SINKRON.
+
+    Prinsip yang sama dengan decode_logo: base64 rusak ditolak 422 saat POST,
+    sebelum job dibuat & jauh sebelum LLM berbayar. Isi ZIP-nya sendiri (struktur,
+    zip-bomb) tetap divalidasi di lapisan ingestion (SourceProviderError -> 422 di
+    job) — sama seperti repo GitHub yang gagal diambil."""
+    requests = []
+    for zf in zip_files:
+        payload = zf.zip_base64.strip()
+        # data-URL dari browser ("data:application/zip;base64,...") — buang prefiks.
+        if payload.startswith("data:"):
+            payload = payload.partition(",")[2]
+        try:
+            raw = base64.b64decode(payload, validate=True)
+        except ValueError as e:
+            raise ValueError(f"ZIP '{zf.repo_tag}' bukan base64 yang valid.") from e
+        if not raw:
+            raise ValueError(f"ZIP '{zf.repo_tag}' kosong.")
+        requests.append(
+            ZipIngestRequest(repo_tag=zf.repo_tag, filename=zf.filename, zip_bytes=raw)
+        )
+    return requests
+
+
 def _run_generation(
-    job_id: str, body: GenerateDocumentRequest, logo_bytes: bytes | None = None
+    job_id: str,
+    body: GenerateDocumentRequest,
+    logo_bytes: bytes | None = None,
+    zip_requests: list[ZipIngestRequest] | None = None,
 ) -> None:
     """Pipeline penuh, dijalankan di LATAR BELAKANG: ingest -> parse (Peran 1)
     -> generate content (Peran 2) -> render & export docx (Peran 3).
@@ -106,6 +135,7 @@ def _run_generation(
             body,
             logo_bytes=logo_bytes,
             on_progress=lambda text: job_store.set_progress(job_id, text),
+            zip_requests=zip_requests,
         )
     except SourceProviderError as e:
         job_store.mark_failed(job_id, str(e), 422)
@@ -175,8 +205,17 @@ def generate_document_full_pipeline(
         except ValueError as e:
             raise HTTPException(status_code=422, detail=str(e)) from e
 
+    # Jalur ZIP: base64 didecode SINKRON (base64 rusak = 422 sekarang, sebelum job
+    # & LLM). Kalau ada, ZIP jadi sumber kode; kalau tidak, jatuh ke GitHub.
+    zip_requests = None
+    if body.zip_files:
+        try:
+            zip_requests = _decode_zip_files(body.zip_files)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e)) from e
+
     job_id = job_store.create_job(document_type=doc_type, project_name=body.project_name)
-    background_tasks.add_task(_run_generation, job_id, body, logo_bytes)
+    background_tasks.add_task(_run_generation, job_id, body, logo_bytes, zip_requests)
     return {
         "job_id": job_id,
         "status": job_store.STATUS_QUEUED,
@@ -251,6 +290,7 @@ def _generate_document(
     body: GenerateDocumentRequest,
     logo_bytes: bytes | None = None,
     on_progress: Callable[[str], None] = lambda _: None,
+    zip_requests: list[ZipIngestRequest] | None = None,
 ) -> str:
     """Pipeline murni: tidak tahu-menahu soal job maupun HTTP.
 
@@ -263,20 +303,24 @@ def _generate_document(
     soal HTTP. Default no-op supaya pemanggil yang tidak peduli (mis. test) tidak
     perlu menyediakan apa pun.
     """
-    ingest_requests = [
-        GithubIngestRequest(
-            repo_tag=r.repo_tag,
-            repo_url=r.repo_url,
-            branch=r.branch,
-            access_token=body.github_token,
-        )
-        for r in body.repositories
-    ]
-
     # Exception dibiarkan naik apa adanya — _run_generation yang memetakannya ke
     # kode HTTP dan menyimpannya ke job. Fungsi ini sengaja tidak tahu HTTP.
-    on_progress(f"Mengunduh {len(ingest_requests)} repo dari GitHub...")
-    workspaces = _ingestion_service.ingest(SourceType.GITHUB, ingest_requests)
+    # Dua sumber kode yang saling menggantikan: ZIP (kalau di-upload) atau GitHub.
+    if zip_requests:
+        on_progress(f"Membongkar {len(zip_requests)} berkas ZIP...")
+        workspaces = _ingestion_service.ingest(SourceType.ZIP_UPLOAD, zip_requests)
+    else:
+        ingest_requests = [
+            GithubIngestRequest(
+                repo_tag=r.repo_tag,
+                repo_url=r.repo_url,
+                branch=r.branch,
+                access_token=body.github_token,
+            )
+            for r in body.repositories
+        ]
+        on_progress(f"Mengunduh {len(ingest_requests)} repo dari GitHub...")
+        workspaces = _ingestion_service.ingest(SourceType.GITHUB, ingest_requests)
 
     parsed_repo_context = build_parsed_repo_context(
         project_name=body.project_name or "generated-project",

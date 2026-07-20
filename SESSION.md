@@ -58,6 +58,13 @@ bersih + verifikasi visual default & premco. **288 test hijau, $0.** Belum commi
    pelajaran tetap ter-load. Memory checkpoint + header model-file di-update: entri
    baru → CHANGELOG.md, CLAUDE.md hanya kalau pengetahuan permanen berubah. 48 entri
    terbawa utuh. Lihat entri teratas CHANGELOG.md.
+6. **BONUS — sambung jalur ZIP → dokumen (backend)** ("kerjakan yang bisa
+   dilakukan"). Gap lama: `/documents/generate` cuma terima `repositories` GitHub.
+   Sekarang ada field **`zip_files`** (base64-in-JSON, pola sama `logo_base64`;
+   non-breaking, `repositories` default `[]`). ZIP → pipeline yang SAMA (ingest →
+   parse → LLM → compile). base64 rusak = 422 sinkron; isi ZIP rusak = 422 di job.
+   Diverifikasi: 2 test baru + $0 sanity (ekstrak class/function/endpoint benar).
+   **290 test hijau.** Sisa: **UI upload ZIP di frontend** (API siap, form belum).
 
 ## Kejadian yang layak diingat (jebakan)
 
@@ -95,12 +102,12 @@ orientasi landscape per-section (spec `orientations[]` terukur `None` di 3 templ
 
 ## Yang perlu dilakukan manusia
 
-- **Review perubahan lalu commit** (belum aku commit) — DUA pekerjaan terpisah,
-  sarannya **dua commit**: (1) **revert use case** → satu diagram gabungan
-  (smetana); (2) **pisah changelog** (CLAUDE.md ramping + `CHANGELOG.md` baru).
-  Verifikasi visual revert di scratchpad: `verify_default_p12.png` (Gambar 4, 2
-  aktor 1 gambar) & `verify_premco_p12.png` (Gambar 3, bar biru). Perbandingan
-  engine: `uc_smetana.png`/`uc_dot.png`/`uc_elk.png` (kenapa dot tak menolong dense).
+- **Semua sudah di-commit + PUSH ke origin/develop** (3 commit sesi ini di atas
+  8 commit lama yg juga baru ke-push): (1) revert use case → satu gabungan; (2)
+  pisah changelog; (3) sambung ZIP → dokumen. Working tree bersih. Verifikasi
+  visual revert use case: scratchpad `verify_default_p12.png` (Gambar 4, 2 aktor
+  1 gambar) & `verify_premco_p12.png` (Gambar 3, bar biru); perbandingan engine
+  `uc_smetana/dot/elk.png` (kenapa dot tak menolong dense).
 - **Server dev DIMATIKAN** (masih, dari sesi lalu). Kalau mau testing lewat
   frontend: `uvicorn app.main:app --reload` + `npm --prefix frontend run dev`.
   (Verifikasi sesi ini tak butuh server — render langsung lewat compiler.)
