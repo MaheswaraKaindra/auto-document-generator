@@ -53,8 +53,11 @@ def test_upload_compiles_registers_and_is_usable_in_generate(client):
     assert bindings["Use Case"] == "use_cases"
     assert bindings["Lampiran"] == "manual"          # tak dikenali → placeholder jujur
 
-    # terdaftar, muncul di daftar, DAN lolos validasi jalur /documents/generate
-    assert tid in client.get("/templates").json()["templates"]
+    # terdaftar, muncul di daftar (dengan doc_types), DAN lolos validasi generate
+    listed = client.get("/templates").json()["templates"]
+    entry = next(t for t in listed if t["id"] == tid)
+    assert entry["doc_types"] == ["SDD"]
+    assert entry["source"] == "compiled"
     compiler_service.validate_template(tid, "SDD")   # tak melempar = bisa dipakai generate
 
     detail = client.get(f"/templates/{tid}")
@@ -100,10 +103,13 @@ def test_upload_rejects_garbage_and_empty(client):
     assert empty.status_code == 422
 
 
-def test_list_templates_includes_builtins(client):
+def test_list_templates_includes_builtins_with_doc_types(client):
     templates = client.get("/templates").json()["templates"]
-    assert "default" in templates
-    assert "premco" in templates
+    by_id = {t["id"]: t for t in templates}
+    assert by_id["default"]["doc_types"] == ["SDD", "UAT"]
+    assert by_id["default"]["source"] == "builtin"
+    # premco kini menyediakan SDD DAN UAT — frontend membaca ini, bukan hardcode
+    assert by_id["premco"]["doc_types"] == ["SDD", "UAT"]
 
 
 def test_get_unknown_template_is_404(client):

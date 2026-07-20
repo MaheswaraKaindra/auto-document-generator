@@ -161,6 +161,24 @@ def list_template_ids() -> list[str]:
     return sorted(set(_TEMPLATE_REGISTRY) | _compiled_template_ids())
 
 
+def list_templates_detail() -> list[dict]:
+    """Tiap template + `doc_types` yang tersedia + `source` + `name` — untuk
+    dropdown gaya dokumen di frontend yang MENGHORMATI ketersediaan per jenis
+    dokumen. Server jadi sumber kebenaran (dulu frontend hardcode daftarnya, dan
+    `premco` UAT ketinggalan diam-diam ketika backend mulai mendukungnya)."""
+    detail = []
+    for tid in list_template_ids():
+        if tid in _TEMPLATE_REGISTRY:
+            detail.append({"id": tid, "name": tid, "source": "builtin",
+                           "doc_types": sorted(_TEMPLATE_REGISTRY[tid])})
+        else:
+            manifest = _load_compiled_manifest(tid) or {}
+            detail.append({"id": tid, "name": manifest.get("name", tid),
+                           "source": "compiled",
+                           "doc_types": sorted(manifest.get("doc_types", {}))})
+    return detail
+
+
 def _resolve_template(template_id: str, normalized_type: str) -> _ResolvedTemplate:
     """template_id + jenis dokumen → sumber Jinja + reference.docx + flag perilaku.
     Built-in muat dari app/templates/ + reference.docx ter-commit; template

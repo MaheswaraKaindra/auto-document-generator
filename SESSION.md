@@ -1,4 +1,4 @@
-# Catatan Sesi — 2026-07-20 (3 template vendor + peta LLM prototipe→produksi + redesign layer diagram)
+# Catatan Sesi — 2026-07-20 (3 template vendor + peta LLM prototipe→produksi + layer diagram IR + V2 di frontend)
 
 > **File ini ditimpa habis setiap sesi baru.** Isinya cuma satu hal: apa yang
 > dikerjakan sesi kemarin, supaya sesi berikutnya tidak mulai dari nol.
@@ -89,14 +89,17 @@ gate opt-in `use_llm_mapping` di `compile_template`/`compile_template_from_docx`
 dipakai bersama. +11 tes (LLM mock), **288 hijau**, nol regresi. Jalur berbayar
 diverifikasi ke API nyata (Dynamics 0→**6** binding isi, ~$0,03). Lihat Riwayat CLAUDE.md.
 
-**#3 (frontend, $0 — kandidat berikutnya, TAPI pemilik bilang "frontend cukup" →
-KONFIRMASI dulu):** ekspos V2 (widget upload → `POST /templates` [kini terima
-`use_llm_mapping`], dropdown dari `GET /templates`) + UI tinjauan/edit peta bab
-(`mappings` dari `GET /templates/{id}`) + perbaiki `premco` UAT stale di `TEMPLATE_OPTIONS`.
-Sekarang bernilai penuh karena #2 bikin fiturnya berisi, bukan kosong.
+**#3 (ekspos V2 di frontend) — ✅ SELESAI (sesi ini).** `GET /templates` diperkaya
+(`id`/`name`/`doc_types`/`source`, `compiler_service.list_templates_detail`); `App.jsx`
+dropdown gaya dari server (difilter per doc_type) + **widget upload** (`.docx` +
+checkbox `use_llm_mapping` → `POST /templates`) + ringkasan hasil peta (0 bab →
+saran centang AI). `TEMPLATE_OPTIONS` hardcoded dihapus; `premco` UAT tak lagi stale.
+288 hijau, `vite build` bersih. **Batas: UI belum di-klik-uji live** (tak ada harness browser).
 
-**#4 ($0):** orientasi landscape per-section (spec `orientations[]` belum diukur
-BENAR — terukur `None` di 3 template; ukur + terapkan untuk tabel test lebar).
+**#4 (sisa V2, $0 — kandidat berikutnya):** UI tinjauan/**EDIT** peta bab sebelum
+generate (tampilkan `mappings` dari `GET /templates/{id}`, user sunting binding lalu
+generate) + orientasi landscape per-section (spec `orientations[]` belum diukur BENAR
+— terukur `None` di 3 template; untuk tabel test lebar) + job simpan `template_id`.
 
 **Utang lama (cepat):** revoke `GOOGLE_API_KEY` & `LLAMA_API_KEY`; isi `GITHUB_TOKEN`.
 

@@ -32,10 +32,11 @@ _MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 
 @router.get("")
 def list_templates():
-    """Semua `template_id` yang bisa dipakai di `POST /documents/generate` —
-    built-in ('default'/'premco') + hasil-upload. Buat mengisi dropdown gaya
-    dokumen di frontend."""
-    return {"templates": compiler_service.list_template_ids()}
+    """Semua template yang bisa dipakai di `POST /documents/generate` — built-in
+    ('default'/'premco') + hasil-upload — dengan `doc_types`/`source`/`name`.
+    Buat mengisi dropdown gaya dokumen di frontend (menghormati ketersediaan per
+    jenis dokumen)."""
+    return {"templates": compiler_service.list_templates_detail()}
 
 
 @router.post("", status_code=201)

@@ -411,3 +411,46 @@ button:disabled {
   color: inherit;
   font-weight: 600;
 }
+
+/* ==== Upload template (V2) ================================================ */
+/* Widget kecil di dalam panel Dokumen: user meng-upload .docx template
+   perusahaannya, sistem mendaftarkannya sebagai Gaya Dokumen baru. */
+
+.upload-box {
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+  margin-top: 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.checkbox-row {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  font-weight: 400;
+  font-size: 14px;
+}
+
+.checkbox-row input {
+  width: auto;
+  margin: 0;
+}
+
+.upload-msg {
+  font-size: 13.5px;
+  line-height: 1.5;
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 7px;
+  background: var(--ok-bg);
+  border: 1px solid var(--ok-border);
+  color: var(--ok);
+}
+
+.upload-msg.error {
+  background: var(--err-bg);
+  border-color: var(--err-border);
+  color: var(--err);
+}

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import './App.css'
 
 // Bisa dioverride tanpa menyentuh kode: taruh VITE_API_BASE_URL di
@@ -177,12 +177,31 @@ function buildMetadataPayload(metadata, documentType) {
 // penggunanya tahu detik itu juga, bukan setelah request bolak-balik.
 const LOGO_MAX_BYTES = 2 * 1024 * 1024
 
-// Gaya dokumen — cermin dari _TEMPLATE_REGISTRY di backend (server tetap
-// sumber kebenaran: kombinasi yang tidak tersedia ditolak 422).
-const TEMPLATE_OPTIONS = [
-  { id: 'default', label: 'Bawaan (gaya acuan enterprise)', docTypes: ['SDD', 'UAT'] },
-  { id: 'premco', label: 'Gaya PREMCO (baru SDD)', docTypes: ['SDD'] },
-]
+// Gaya dokumen di-AMBIL dari server (GET /templates) saat mount — bukan hardcoded.
+// Jadi template hasil-upload (V2) otomatis muncul, dan doc_types selalu sinkron
+// dengan backend (dulu daftar statis bikin `premco` UAT ketinggalan diam-diam
+// begitu backend mulai mendukungnya). Server tetap sumber kebenaran.
+const BUILTIN_LABELS = {
+  default: 'Bawaan (gaya acuan enterprise)',
+  premco: 'Gaya PREMCO',
+}
+const templateLabel = (t) =>
+  t.source === 'builtin' ? BUILTIN_LABELS[t.id] || t.id : t.name || t.id
+
+// Binding "isi" (turunan-kode) — untuk meringkas hasil peta bab sesudah upload:
+// berapa bab terisi otomatis dari kode. Cermin _CONTENT_BINDINGS di backend.
+const CONTENT_BINDINGS = new Set([
+  'app_description', 'user_roles', 'system_requirements', 'feature_requirements',
+  'use_cases', 'activity_diagrams', 'architecture', 'business_flow', 'test_groups',
+])
+
+function summarizeMapping(mappings) {
+  let content = 0
+  for (const rows of Object.values(mappings || {})) {
+    for (const m of rows) if (CONTENT_BINDINGS.has(m.binding)) content += 1
+  }
+  return content
+}
 
 function App() {
   const [projectName, setProjectName] = useState('')
@@ -209,6 +228,26 @@ function App() {
   const [seconds, setSeconds] = useState(0)
   const [errorMessage, setErrorMessage] = useState('')
   const [download, setDownload] = useState(null)
+
+  // Gaya dokumen dari server (GET /templates) + widget upload template (V2).
+  const [templates, setTemplates] = useState([])
+  const [uploadFile, setUploadFile] = useState(null)
+  const [uploadUseLlm, setUploadUseLlm] = useState(false)
+  const [uploadBusy, setUploadBusy] = useState(false)
+  const [uploadMsg, setUploadMsg] = useState(null)   // { ok, text } | null
+  const [uploadKey, setUploadKey] = useState(0)      // remount input file sesudah sukses
+
+  const fetchTemplates = async () => {
+    try {
+      const resp = await fetch(`${API_BASE_URL}/templates`)
+      if (resp.ok) setTemplates((await resp.json()).templates || [])
+    } catch {
+      // gagal ambil daftar: dropdown fallback ke 'default' (tetap valid di backend)
+    }
+  }
+  useEffect(() => {
+    fetchTemplates()
+  }, [])
 
   const pushStage = (message) =>
     setStages((prev) => (prev[prev.length - 1] === message ? prev : [...prev, message]))
@@ -247,6 +286,46 @@ function App() {
     reader.onload = () => setLogo({ name: file.name, base64: reader.result })
     reader.onerror = () => setLogoError('Gagal membaca file logo — coba pilih ulang.')
     reader.readAsDataURL(file)
+  }
+
+  const handleUploadTemplate = async () => {
+    if (!uploadFile) return
+    setUploadBusy(true)
+    setUploadMsg(null)
+    try {
+      const form = new FormData()
+      form.append('file', uploadFile)
+      if (uploadUseLlm) form.append('use_llm_mapping', 'true')
+      const resp = await fetch(`${API_BASE_URL}/templates`, { method: 'POST', body: form })
+      const body = await resp.json().catch(() => ({}))
+      if (!resp.ok) throw new Error(body.detail || `Gagal upload template (${resp.status})`)
+
+      const tid = body.manifest.template_id
+      const tDocTypes = Object.keys(body.manifest.doc_types || {})
+      const content = summarizeMapping(body.mappings)
+
+      await fetchTemplates()
+      setTemplateId(tid)
+      // kalau template baru tak mendukung jenis dokumen yang sedang dipilih,
+      // ikut pindah supaya kombinasi tetap valid (tak kena 422 saat generate).
+      if (tDocTypes.length && !tDocTypes.includes(documentType)) {
+        setDocumentType(tDocTypes[0])
+      }
+      setUploadFile(null)
+      setUploadUseLlm(false)
+      setUploadKey((k) => k + 1)
+      setUploadMsg({
+        ok: true,
+        text:
+          content > 0
+            ? `Template "${body.manifest.name || tid}" terdaftar & dipilih — ${content} bab terisi otomatis dari kode.`
+            : `Template "${body.manifest.name || tid}" terdaftar & dipilih, tapi belum ada bab yang bisa diisi dari kode. Untuk template dengan nama bab tak umum, centang "pemetaan AI" lalu upload ulang.`,
+      })
+    } catch (e) {
+      setUploadMsg({ ok: false, text: e.message })
+    } finally {
+      setUploadBusy(false)
+    }
   }
 
   const handleSubmit = async (event) => {
@@ -357,6 +436,8 @@ function App() {
   )
 
   const isSubmitting = phase === 'running'
+  // Gaya dokumen yang cocok untuk jenis dokumen terpilih (server yang menentukan).
+  const availableTemplates = templates.filter((t) => t.doc_types.includes(documentType))
 
   return (
     <main>
@@ -402,8 +483,8 @@ function App() {
                 onChange={(e) => {
                   const nextType = e.target.value
                   setDocumentType(nextType)
-                  const chosen = TEMPLATE_OPTIONS.find((t) => t.id === templateId)
-                  if (chosen && !chosen.docTypes.includes(nextType)) setTemplateId('default')
+                  const chosen = templates.find((t) => t.id === templateId)
+                  if (chosen && !chosen.doc_types.includes(nextType)) setTemplateId('default')
                 }}
               >
                 <option value="SDD">Solution Design Document (SDD)</option>
@@ -433,18 +514,61 @@ function App() {
             <label>
               Gaya Dokumen
               <select value={templateId} onChange={(e) => setTemplateId(e.target.value)}>
-                {TEMPLATE_OPTIONS.map((t) => (
-                  <option key={t.id} value={t.id} disabled={!t.docTypes.includes(documentType)}>
-                    {t.label}
-                  </option>
-                ))}
+                {availableTemplates.length === 0 ? (
+                  <option value="default">memuat gaya dokumen…</option>
+                ) : (
+                  availableTemplates.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {templateLabel(t)}
+                    </option>
+                  ))
+                )}
               </select>
             </label>
             <p className="hint">
               Isi dokumennya sama — yang berbeda <strong>bentuk penyajiannya</strong>. Gaya
-              PREMCO meniru konvensi dokumen aslinya: tabel use case/activity ber-bar judul
-              dengan kriteria di dalam tabel, bab tanpa nomor, dua bab mockup.
+              PREMCO meniru konvensi dokumen aslinya; template <strong>hasil upload Anda</strong>{' '}
+              (di bawah) muncul di sini setelah didaftarkan.
             </p>
+
+            <div className="upload-box">
+              <label>
+                Upload Template Sendiri (opsional)
+                <input
+                  key={uploadKey}
+                  type="file"
+                  accept=".docx"
+                  onChange={(e) => {
+                    setUploadFile(e.target.files?.[0] || null)
+                    setUploadMsg(null)
+                  }}
+                />
+              </label>
+              <label className="checkbox-row">
+                <input
+                  type="checkbox"
+                  checked={uploadUseLlm}
+                  onChange={(e) => setUploadUseLlm(e.target.checked)}
+                />
+                Petakan bab dengan AI (berbayar) — untuk template yang nama babnya tak umum
+              </label>
+              <button
+                type="button"
+                onClick={handleUploadTemplate}
+                disabled={!uploadFile || uploadBusy}
+              >
+                {uploadBusy ? 'Mengunggah…' : 'Upload & Daftarkan Template'}
+              </button>
+              {uploadMsg && (
+                <p className={`upload-msg${uploadMsg.ok ? '' : ' error'}`}>{uploadMsg.text}</p>
+              )}
+              <p className="hint">
+                File <strong>.docx</strong> template perusahaan Anda — sistem mengukur gayanya
+                (font, tabel, struktur bab) lalu mendaftarkannya sebagai Gaya Dokumen baru. Bab
+                yang bisa diturunkan dari kode diisi otomatis; sisanya jadi placeholder{' '}
+                <em>(diisi manual)</em>. Tanpa AI, hanya bab bernama umum yang dikenali.
+              </p>
+            </div>
           </div>
 
           <div className="field">
