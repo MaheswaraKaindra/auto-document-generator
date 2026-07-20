@@ -76,6 +76,23 @@ sekarang, switch nanti).
 
 ## Kalau melanjutkan, mulai dari sini
 
+**#0 (PERMINTAAN PEMILIK TERBARU — prioritaskan):** BALIKKAN diagram use case ke
+**SATU diagram gabungan** (aktor TIDAK dipisah), tapi hasilnya **RAPI/sempurna**
+(bukan kusut seperti bug Flowy sebelumnya). Artinya: revert/nonaktifkan split
+per-aktor (commit `bd3b782`/`7179e25`/`1f1e46c` — `compiler_service._split_usecase_images`
++ `_usecase_plantuml_to_ir` + flag `splits_usecase`/`_BUILTIN_SPLITS_USECASE` +
+loop `use_case_diagrams_by_actor` di `sdd_template.md`/`sdd_premco_template.md`/
+`template_generator_service._BODY[USE_CASES]`) → kembali ke satu
+`![... Use Case Diagram ...]({{ diagrams.use_case_diagram_image }})` gabungan,
+LALU bikin layout-nya bersih. **Kandidat terbaik: Graphviz `dot`** (routing panah
+jauh lebih rapi dari `smetana` untuk use case padat) — TAPI `dot` BELUM terpasang
+(dicek sesi ini: `dot: command not found`), jadi perlu install Graphviz + ubah
+`compiler_service._run_plantuml` memakai `dot` untuk diagram use case (buang/ubah
+`-Playout=smetana`), dengan **fallback smetana kalau Graphviz tak ada**. Trade-off:
+dependency runtime baru (justru yang smetana dipilih untuk dihindari — timbang &
+dokumentasikan). Layer Diagram IR tetap berguna (dogfood: `UseCaseDiagramIR` →
+render via dot). **Verifikasi VISUAL wajib** (docx→PDF→PNG→lihat). Pertahankan tes hijau.
+
 **#1 (Trek A — tetap PALING BERNILAI selagi magang):** kumpulkan/bawa template
 SDD/UAT sumber lain, jalankan lewat mesin (`compile_template_from_docx` + lihat).
 Sudah 4 kelas struktur tertutup (PREMCO-family/asing × SDD/UAT × datar/bersarang);
