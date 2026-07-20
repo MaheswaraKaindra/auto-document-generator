@@ -454,3 +454,28 @@ button:disabled {
   border-color: var(--err-border);
   color: var(--err);
 }
+
+/* ==== Preview logo ======================================================== */
+/* Menampilkan thumbnail logo yang dipilih — supaya salah pilih file (mis.
+   screenshot) langsung ketahuan sebelum generate. */
+
+.logo-preview {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.logo-preview img {
+  height: 40px;
+  max-width: 160px;
+  object-fit: contain;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  padding: 3px;
+  background: #fff;   /* logo transparan tetap terlihat di atas putih */
+  flex-shrink: 0;
+}
+
+.logo-preview .hint {
+  flex: 1;
+}

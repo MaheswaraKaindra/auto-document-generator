@@ -577,12 +577,15 @@ function App() {
               <input type="file" accept="image/png,image/jpeg" onChange={handleLogoChange} />
             </label>
             {logo && (
-              <p className="hint">
-                <strong>{logo.name}</strong> akan dipasang di header.{' '}
+              <div className="logo-preview">
+                <img src={logo.base64} alt={`Preview ${logo.name}`} />
+                <span className="hint">
+                  <strong>{logo.name}</strong> akan dipasang di header — pastikan ini logo yang benar.
+                </span>
                 <button type="button" className="remove-repo-btn" onClick={() => setLogo(null)}>
                   ✕
                 </button>
-              </p>
+              </div>
             )}
             {logoError && <p className="hint">{logoError}</p>}
             <p className="hint">
