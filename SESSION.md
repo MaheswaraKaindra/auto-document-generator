@@ -1,4 +1,4 @@
-# Catatan Sesi — 2026-07-20 (3 template vendor diuji + prototipe peta bab LLM)
+# Catatan Sesi — 2026-07-20 (3 template vendor + prototipe peta LLM + redesign layer diagram)
 
 > **File ini ditimpa habis setiap sesi baru.** Isinya cuma satu hal: apa yang
 > dikerjakan sesi kemarin, supaya sesi berikutnya tidak mulai dari nol.
@@ -55,6 +55,24 @@ berisi (deskripsi + tabel requirement + diagram arsitektur + tabel fitur). CLAUD
   menggantung). Word COM PDF `SaveAs2(...,17)`; PDF→PNG via PyMuPDF (`fitz`, ada di venv).
 - **Template scratch (`tpl-*`) SUDAH dibersihkan** dari `data/templates/` (turunan
   docx internal, mengotori registry). Store kembali kosong.
+
+## Redesign layer diagram (Option C, sesi ini juga)
+
+Modul BARU `app/diagram/` — Diagram IR (semantik, ala AST) + PlantUML Renderer
+(salah satu backend). **Live pipeline TAK disentuh** (DOCX identik; renderer baru
+belum dipanggil jalur live). Dibedah dulu kontradiksinya: "IR jadi source of truth"
+mustahil bersamaan dgn "DOCX identik" + "jangan ubah LLM/DocumentContent", sebab
+LLM menulis PlantUML LANGSUNG ke DocumentContent. Pemilik pilih Option C (fondasi
+sekarang, switch nanti).
+
+- `ir/` = graf (node/edge/lane), Pydantic per-tipe (activity/usecase/architecture/
+  component) + `base.py`. Graf sengaja (peta langsung ke Mermaid/ReactFlow/drawio).
+- `renderer/base.py` `DiagramRenderer` (ABC) + `renderer/plantuml/` `PlantUMLRenderer`.
+- Renderer emit PlantUML **struktur-saja tanpa theme** → masuk `_normalize_plantuml`
+  →`_run_plantuml` yang SAMA (theme disuntik di sana) = **switch-ready**.
+- Verifikasi: **277 test hijau** (263+14, nol regresi); VISUAL — IR arch & usecase
+  dirender via jar ASLI = UML identik gaya jalur LLM (`IR_arch.png`, `IR_usecase.png`).
+- Menambah SVG kelak = `renderer/svg/` + `SVGRenderer(DiagramRenderer)`, nol ubah IR/pipeline.
 
 ## Kalau melanjutkan, mulai dari sini
 
