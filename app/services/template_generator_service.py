@@ -228,15 +228,9 @@ _BODY = {
     # kriteria). Baris kosong sebelum `###` dan sebelum list WAJIB (blank_before_
     # header / list) — kalau tidak, heading/kriteria bocor jadi teks literal.
     USE_CASES: (
-        # Diagram use case dipecah per aktor kalau compiler mengaktifkannya (panah
-        # lebih jelas); else satu diagram gabungan. Selaras template default/premco.
-        "{% if diagrams.use_case_diagrams_by_actor %}\n"
-        "{% for uc_dia in diagrams.use_case_diagrams_by_actor %}\n"
-        "![Use Case Diagram — {{ uc_dia.actor }}]({{ uc_dia.image }}){{ uc_dia.attr }}\n\n"
-        "{% endfor %}\n"
-        "{% else %}\n"
+        # SATU diagram use case gabungan (semua aktor dalam satu gambar). Selaras
+        # dengan template default/premco.
         "![Use Case Diagram]({{ diagrams.use_case_diagram_image }}){{ diagrams.use_case_diagram_attr }}\n\n"
-        "{% endif %}\n"
         "{% for uc in use_cases %}\n"
         "### {{ uc.use_case_id }} — {{ uc.actor }}\n\n"
         "| Field | Isi |\n"

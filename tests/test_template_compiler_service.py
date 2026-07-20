@@ -70,7 +70,6 @@ def test_compile_template_writes_registered_artifacts(isolated_store):
     assert manifest["reference"] == "reference.docx"
     assert manifest["groups_test_cases"] is True
     assert manifest["uses_component_integration"] is False
-    assert manifest["splits_usecase"] is True             # use case per-aktor untuk template upload
 
     # terdaftar + validasi (jalur 422 sinkron endpoint)
     assert tid in compiler_service.list_template_ids()

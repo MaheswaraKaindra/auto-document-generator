@@ -7,11 +7,11 @@
   adalah jumlah gambar/tabel tetap yang mendahului loop-nya:
 
     Gambar 1-4 tetap : Arsitektur Sistem, Integrasi Komponen, Flow Proses
-                       Bisnis, Use Case Diagram
+                       Bisnis, Use Case Diagram (SATU diagram gabungan)
     Gambar 5..N      : activity diagram      -> loop.index + 4
     Tabel  1-6 tetap : Role Pengguna, Demografi, System Requirement,
                        How to Access, Security, Features Requirement
-    Tabel  7..N      : use case per aktor    -> loop.index + 6
+    Tabel  7..N      : use case              -> loop.index + 6
     Tabel  N+1..     : activity diagram      -> loop.index + 6 + use_cases|length
 
   Menambah gambar/tabel TETAP berarti offset ikut naik — di SEMUA tempatnya.
@@ -264,19 +264,9 @@ Tahapan alur proses bisnis:
 
 ## 11. Use Case
 
-{# Diagram use case: kalau compiler memecahnya per aktor (arrows lebih jelas —
-   template `default` mengaktifkannya), tampilkan satu gambar bernomor per aktor;
-   kalau tidak (< 2 aktor / parse gagal) fallback ke satu diagram gabungan.
-   Penomoran: use case = Gambar 4..(3+N), jadi activity di bawah memakai offset
-   `use_case_figure_count` (bukan angka tetap). #}
-{% if diagrams.use_case_diagrams_by_actor %}
-{% for uc_dia in diagrams.use_case_diagrams_by_actor %}
-![Gambar {{ loop.index + 3 }} Use Case Diagram — {{ uc_dia.actor }}]({{ uc_dia.image }}){{ uc_dia.attr }}
-
-{% endfor %}
-{% else %}
+{# SATU diagram use case gabungan (semua aktor dalam satu gambar), gaya UML acuan
+   enterprise. Gambar 4 tetap; activity di bawah mulai Gambar 5 (loop.index + 4). #}
 ![Gambar 4 Use Case Diagram]({{ diagrams.use_case_diagram_image }}){{ diagrams.use_case_diagram_attr }}
-{% endif %}
 
 {% for uc in use_cases %}
 ### 11.{{ loop.index }} Use Case {{ uc.use_case_id }} — {{ uc.actor }}
@@ -315,7 +305,7 @@ Tahapan alur proses bisnis:
 
 {{ activity.description }}
 
-![Gambar {{ loop.index + 3 + diagrams.use_case_figure_count }} Activity Diagram {{ activity.activity_name }}]({{ activity.image_path }}){{ activity.image_attr }}
+![Gambar {{ loop.index + 4 }} Activity Diagram {{ activity.activity_name }}]({{ activity.image_path }}){{ activity.image_attr }}
 
 {# Nomor ACT ditanam deterministik dari urutan (bukan diminta ke LLM): tidak ada
    yang bisa dikarang dari penomoran, dan urutannya dijamin sinkron dengan
