@@ -316,6 +316,13 @@ _GREEN_HEADER_FILL = "a8d08d"
 # konsep "section landscape sebagian", jadi ini satu-satunya tempat deterministik.
 _LANDSCAPE_MARKER = "((LANDSCAPE))"
 
+# Pasangan `((LANDSCAPE))`: mengembalikan orientasi ke potret. Tidak dibutuhkan
+# premco UAT (di sana landscape memang sampai akhir dokumen), tapi WAJIB ada
+# untuk template hasil-upload: template sembarang bisa punya satu bab landscape
+# di TENGAH lalu kembali potret, dan tanpa penutup ini sisa dokumennya ikut
+# terputar. Lihat _apply_orientation_markers.
+_PORTRAIT_MARKER = "((PORTRAIT))"
+
 # Blok cover yang TANPA kotak-kotak tabel. Keduanya tetap ditulis sebagai pipe
 # table di template — itu satu-satunya cara Markdown menjamin kolom yang lurus —
 # lalu post-process MELEPAS rupa tabelnya. Hasilnya: perataan seakurat tabel,
@@ -1221,25 +1228,50 @@ def _add_header_logo(document, logo_bytes: bytes) -> None:
         paragraph.add_run().add_picture(io.BytesIO(logo_bytes), **size)
 
 
-def _landscape_after_marker(document) -> None:
-    """Pecah dokumen di paragraf _LANDSCAPE_MARKER: bagian SEBELUMnya tetap
-    potret, bagian SESUDAHnya (Case Pengujian UAT premco) jadi LANDSCAPE.
+def _set_section_orientation(section, orient: str) -> None:
+    """Set orientasi satu section lewat API python-docx, BUKAN tukar atribut
+    mentah: reference.docx tak punya `<w:pgSz>` sama sekali (page size-nya
+    default), jadi tidak ada yang bisa ditukar — setter page_width/height yang
+    membuatnya. Letter landscape (11x8,5) / potret (8,5x11), margin 1 inci."""
+    if orient == "landscape":
+        section.orientation = WD_ORIENT.LANDSCAPE
+        section.page_width = Inches(11)
+        section.page_height = Inches(8.5)
+    else:
+        section.orientation = WD_ORIENT.PORTRAIT
+        section.page_width = Inches(8.5)
+        section.page_height = Inches(11)
+    section.left_margin = Inches(1)
+    section.right_margin = Inches(1)
 
-    Mekanisme OOXML: properti sebuah section disimpan di sectPr yang MENGAKHIRI-
-    nya. Jadi: (1) salin sectPr body (potret) ke pPr paragraf marker → itu
-    menutup section potret di sana; (2) putar sectPr body sendiri jadi landscape
-    → itu jadi section terakhir, memayungi Case Pengujian sampai akhir dokumen.
-    Marker-driven supaya template lain tak tersentuh; hanya premco UAT yang
-    memancarkannya. Dijalankan sebelum _add_header_logo agar logo (yang meloop
-    document.sections) menjangkau KEDUA section."""
+
+def _apply_orientation_markers(document) -> None:
+    """Pecah dokumen di tiap marker orientasi: `((LANDSCAPE))` memutar bagian
+    SESUDAHnya jadi landscape, `((PORTRAIT))` mengembalikannya jadi potret.
+
+    Mekanisme OOXML: properti sebuah section disimpan di sectPr yang
+    MENGAKHIRInya. Jadi tiap paragraf marker diberi sectPr berisi orientasi
+    segmen yang BERJALAN SAMPAI SITU, lalu orientasi berjalan berganti; sectPr
+    body (yang selalu jadi section TERAKHIR) memayungi segmen penghabisan.
+
+    Dulu fungsi ini cuma menangani SATU marker (`_landscape_after_marker`):
+    potret → landscape sampai akhir dokumen, cukup untuk UAT premco yang
+    memang begitu bentuknya. Digeneralisasi saat template hasil-upload mulai
+    membawa orientasinya sendiri — template sembarang bisa punya satu bab
+    landscape di TENGAH lalu kembali potret, dan mekanisme satu-marker
+    memaksa sisa dokumen ikut landscape. Satu marker `((LANDSCAPE))` sendirian
+    tetap menghasilkan perilaku yang sama persis seperti dulu.
+
+    Dijalankan sebelum _add_header_logo agar logo (yang meloop
+    document.sections) menjangkau SEMUA section."""
     body = document.element.body
-    marker_p = None
+    markers = []
     for paragraph in body.findall(qn("w:p")):
-        text = "".join(t.text or "" for t in paragraph.iter(qn("w:t")))
-        if text.strip() == _LANDSCAPE_MARKER:
-            marker_p = paragraph
-            break
-    if marker_p is None:
+        text = "".join(t.text or "" for t in paragraph.iter(qn("w:t"))).strip()
+        if text in (_LANDSCAPE_MARKER, _PORTRAIT_MARKER):
+            markers.append((paragraph, "landscape" if text == _LANDSCAPE_MARKER
+                            else "portrait"))
+    if not markers:
         return
 
     section_props = body.findall(qn("w:sectPr"))
@@ -1247,31 +1279,24 @@ def _landscape_after_marker(document) -> None:
         return
     body_sectpr = section_props[-1]
 
-    # (1) sectPr potret (salinan) → menutup section potret di paragraf marker.
-    #     Salinan ini SENGAJA tanpa pgSz (reference.docx tak punya) → mewarisi
-    #     Letter potret default, persis halaman depan sekarang.
-    portrait = copy.deepcopy(body_sectpr)
-    p_pr = marker_p.find(qn("w:pPr"))
-    if p_pr is None:
-        p_pr = OxmlElement("w:pPr")
-        marker_p.insert(0, p_pr)
-    p_pr.append(portrait)
+    for marker_p, _ in markers:
+        # sectPr (salinan) → menutup segmen berjalan tepat di paragraf marker.
+        closing = copy.deepcopy(body_sectpr)
+        p_pr = marker_p.find(qn("w:pPr"))
+        if p_pr is None:
+            p_pr = OxmlElement("w:pPr")
+            marker_p.insert(0, p_pr)
+        p_pr.append(closing)
+        # Kosongkan teks marker — paragrafnya jadi penutup section (tak terlihat).
+        for run in list(marker_p.findall(qn("w:r"))):
+            marker_p.remove(run)
 
-    # Kosongkan teks marker — paragrafnya jadi penutup section (tak terlihat).
-    for run in list(marker_p.findall(qn("w:r"))):
-        marker_p.remove(run)
-
-    # (2) Section terakhir (sectPr body) → landscape. Lewat API python-docx,
-    #     BUKAN tukar atribut mentah: reference.docx tak punya <w:pgSz> sama
-    #     sekali (page size-nya default), jadi tidak ada yang bisa ditukar —
-    #     setter page_width/height membuat pgSz-nya. Letter landscape (11x8,5),
-    #     margin 1 inci → area teks 9 inci untuk 9 kolom.
-    landscape_section = document.sections[-1]
-    landscape_section.orientation = WD_ORIENT.LANDSCAPE
-    landscape_section.page_width = Inches(11)
-    landscape_section.page_height = Inches(8.5)
-    landscape_section.left_margin = Inches(1)
-    landscape_section.right_margin = Inches(1)
+    # Sesudah N marker ditanam, dokumen punya N+1 section. Section pertama
+    # adalah yang SEBELUM marker pertama (selalu potret — dokumen mulai potret);
+    # section ke-i sesudahnya memakai orientasi yang dideklarasikan marker ke-i.
+    orientations = ["portrait"] + [orient for _, orient in markers]
+    for section, orient in zip(document.sections, orientations):
+        _set_section_orientation(section, orient)
 
 
 def _postprocess_docx(docx_path: str, logo_bytes: bytes | None = None) -> None:
@@ -1287,7 +1312,7 @@ def _postprocess_docx(docx_path: str, logo_bytes: bytes | None = None) -> None:
     _bind_lead_in_to_figure(document)
     _move_table_captions_below(document)
     _heighten_signature_rows(document)
-    _landscape_after_marker(document)  # Case Pengujian UAT premco → landscape
+    _apply_orientation_markers(document)  # ((LANDSCAPE))/((PORTRAIT)) → section
     if logo_bytes:
         _add_header_logo(document, logo_bytes)
     document.save(docx_path)

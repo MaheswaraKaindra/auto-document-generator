@@ -139,7 +139,7 @@ Pada saat eksekusi semua kasus pengujian telah diselesaikan, Sertifikasi Keberha
 
 {# Case Pengujian di dokumen asli berada di section LANDSCAPE (diukur: section 2
    orientasi landscape, tabel test 10,9 inci lebar). Marker ini memicu section
-   break + orientasi landscape di post-process (_landscape_after_marker), supaya
+   break + orientasi landscape di post-process (_apply_orientation_markers), supaya
    9 kolom tidak berdesakan & header tidak membungkus patah-patah seperti di potret. #}
 ((LANDSCAPE))
 

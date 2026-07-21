@@ -21,6 +21,11 @@ job_store.init_db()
 # tak menjalankan startup hook. Idempoten; di DB tanpa job basi ini no-op.
 job_store.reap_stale_jobs()
 
+# Bersihkan docx yang kedaluwarsa (lihat DOCUMENT_TTL_SECONDS). Alasan & titik
+# panggil yang sama dengan reaper di atas: nol scheduler, cuma satu sapuan murah
+# di tempat yang memang sudah dijalankan.
+job_store.purge_expired_documents()
+
 # Kerangka frontend (frontend/) dipanggil dari origin terpisah (dibuka
 # langsung sebagai file atau lewat dev server), jadi butuh CORS.
 # allow_origins="*" hanya untuk kebutuhan development; persempit sebelum

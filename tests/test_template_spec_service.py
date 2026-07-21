@@ -93,3 +93,38 @@ def test_build_template_spec_dokumen_polos_tanpa_error(tmp_path):
     assert spec["visual"]["table_header_fill"] is None
     assert spec["visual"]["has_landscape"] is False
     assert spec["visual"]["base_size_pt"]        # selalu ada fallback
+
+
+def test_outline_entries_carry_their_section_orientation(tmp_path):
+    """Bab harus tahu dirinya berada di section potret atau landscape.
+
+    `orientations` sendiri sudah lama diukur, tapi itu daftar per-SECTION
+    sementara template yang di-generate disusun per-HEADING — tanpa korelasi ini
+    pengukurannya tak pernah bisa dipakai, dan tabel lebar milik template
+    pengguna dipaksa muat di halaman potret."""
+    import docx
+    from docx.enum.section import WD_ORIENT
+    from docx.shared import Inches
+
+    d = docx.Document()
+    d.add_heading("Pendahuluan", 1)
+    landscape = d.add_section()
+    landscape.orientation = WD_ORIENT.LANDSCAPE
+    landscape.page_width, landscape.page_height = Inches(11), Inches(8.5)
+    d.add_heading("Matriks Pengujian", 1)
+    portrait = d.add_section()
+    portrait.orientation = WD_ORIENT.PORTRAIT
+    portrait.page_width, portrait.page_height = Inches(8.5), Inches(11)
+    d.add_heading("Penutup", 1)
+    source = tmp_path / "tiga_section.docx"
+    d.save(str(source))
+
+    spec = build_template_spec(source)
+
+    by_text = {o["text"]: o["orient"] for o in spec["structure"]["outline"]}
+    assert by_text == {
+        "Pendahuluan": "portrait",
+        "Matriks Pengujian": "landscape",
+        "Penutup": "portrait",
+    }
+    assert spec["visual"]["has_landscape"] is True

@@ -11,6 +11,7 @@ from pathlib import Path
 from subprocess import CompletedProcess
 from unittest.mock import Mock, patch
 
+import pypandoc
 import pytest
 from docx import Document
 from docx.oxml.ns import qn
@@ -1641,3 +1642,32 @@ def test_typography_reaches_the_generated_document(mock_plantuml_ok):
     assert section.bold and section.all_caps, "judul bab (Heading 1) harus tebal & huruf besar"
     caption = document.styles["Image Caption"].font
     assert caption.italic and caption.size.pt <= 10, "caption harus kecil & miring"
+
+
+def test_orientation_returns_to_portrait_after_closing_marker(tmp_path, mock_plantuml_ok):
+    """Template hasil-upload bisa punya bab landscape di TENGAH lalu kembali
+    potret. Mekanisme lama cuma menangani satu marker (potret → landscape sampai
+    AKHIR dokumen), jadi sisa dokumen ikut terputar — cacat yang tak pernah
+    terlihat di premco UAT karena di sana landscape memang sampai akhir."""
+    from docx.enum.section import WD_ORIENT
+
+    markdown = (
+        "# Pendahuluan\n\nPotret.\n\n"
+        "((LANDSCAPE))\n\n# Matriks\n\nLandscape.\n\n"
+        "((PORTRAIT))\n\n# Penutup\n\nPotret lagi.\n"
+    )
+    output = tmp_path / "orient.docx"
+    pypandoc.convert_text(
+        markdown, to="docx", format="md", outputfile=str(output),
+        extra_args=compiler_service._pandoc_args("SDD", "Uji Orientasi"),
+    )
+    compiler_service._postprocess_docx(str(output))
+
+    doc = Document(str(output))
+    orientations = [
+        "landscape" if s.orientation == WD_ORIENT.LANDSCAPE else "portrait"
+        for s in doc.sections
+    ]
+    assert orientations == ["portrait", "landscape", "portrait"]
+    text = "\n".join(p.text for p in doc.paragraphs)
+    assert "((LANDSCAPE))" not in text and "((PORTRAIT))" not in text

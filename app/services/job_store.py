@@ -56,12 +56,30 @@ _STALE_ERROR = (
 )
 _STALE_STATUS = 503
 
+# Umur dokumen sebelum dibersihkan. `data/documents/` tumbuh SELAMANYA tanpa ini
+# — satu docx ~700 KB (terukur pada esteler), jadi pemakaian rutin mengisi disk
+# tanpa ada yang menyadarinya sampai server penuh. 30 hari: jauh lebih lama dari
+# umur pakai nyata sebuah unduhan (orang mengunduh dokumennya di hari yang sama),
+# tapi masih menyisakan riwayat sebulan untuk "generate ulang bulan lalu mana ya".
+DOCUMENT_TTL_SECONDS = 30 * 24 * 60 * 60
+
+# Pesan & kode untuk job yang dokumennya sudah kedaluwarsa. 410 GONE, bukan 404:
+# job-nya ADA dan dulu memang berhasil — yang hilang filenya, dan itu memang
+# disengaja. Membedakannya dari 404 ("job_id salah") penting supaya pengguna
+# tahu harus generate ulang, bukan mencari-cari id yang benar.
+_EXPIRED_ERROR = (
+    "Dokumen sudah dibersihkan otomatis karena berumur lebih dari 30 hari. "
+    "Silakan generate ulang."
+)
+_EXPIRED_STATUS = 410
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS jobs (
     id            TEXT PRIMARY KEY,
     status        TEXT NOT NULL,
     document_type TEXT NOT NULL,
     project_name  TEXT,
+    template_id   TEXT,
     progress      TEXT,
     docx_path     TEXT,
     error         TEXT,
@@ -78,6 +96,7 @@ CREATE TABLE IF NOT EXISTS jobs (
 # akan pernah terlihat di CI.
 _MIGRATIONS = [
     ("progress", "ALTER TABLE jobs ADD COLUMN progress TEXT"),
+    ("template_id", "ALTER TABLE jobs ADD COLUMN template_id TEXT"),
 ]
 
 
@@ -119,14 +138,22 @@ def init_db() -> None:
                 conn.execute(statement)
 
 
-def create_job(document_type: str, project_name: Optional[str]) -> str:
+def create_job(
+    document_type: str,
+    project_name: Optional[str],
+    template_id: Optional[str] = None,
+) -> str:
+    """`template_id` dicatat supaya riwayat job bisa menjawab "dokumen ini gaya
+    apa" — sebelumnya tidak bisa, dan itu jadi pertanyaan begitu ada lebih dari
+    satu gaya (default/premco/hasil-upload). Opsional supaya pemanggil lama
+    (dan job di DB lama) tetap sah."""
     job_id = uuid.uuid4().hex
     now = _now()
     with _connect() as conn:
         conn.execute(
-            "INSERT INTO jobs (id, status, document_type, project_name, created_at, updated_at)"
-            " VALUES (?, ?, ?, ?, ?, ?)",
-            (job_id, STATUS_QUEUED, document_type, project_name, now, now),
+            "INSERT INTO jobs (id, status, document_type, project_name, template_id,"
+            " created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (job_id, STATUS_QUEUED, document_type, project_name, template_id, now, now),
         )
     return job_id
 
@@ -216,6 +243,50 @@ def reap_stale_jobs(max_age_seconds: float = STALE_JOB_SECONDS) -> int:
                 )
                 reaped += 1
     return reaped
+
+
+def purge_expired_documents(max_age_seconds: float = DOCUMENT_TTL_SECONDS) -> int:
+    """Hapus docx yang lebih tua dari `max_age_seconds`, kembalikan jumlahnya.
+
+    `data/documents/` tumbuh selamanya tanpa ini — satu docx ~700 KB, jadi
+    pemakaian rutin akan mengisi disk tanpa ada yang menyadarinya.
+
+    File DAN catatannya dibereskan bersama, dan urutannya kebalikan dari
+    `mark_done`: di sana path dicatat SESUDAH file ada; di sini path dilepas
+    SESUDAH file hilang. Dua-duanya menjaga aturan yang sama — DB tidak boleh
+    menunjuk ke file yang tidak ada. Job-nya sendiri TIDAK dihapus: riwayat
+    "pernah generate ini" tetap berguna, yang kedaluwarsa cuma filenya. Status
+    jadi `failed`+410 supaya endpoint unduh punya jawaban jujur ("dulu ada,
+    sudah dibersihkan") alih-alih meledak saat mengirim path yang kosong.
+
+    Dipanggil di titik yang sama dengan `reap_stale_jobs` (startup + lazy saat
+    GET status): nol infrastruktur baru, tak ada scheduler yang harus hidup.
+    """
+    cutoff = datetime.now(timezone.utc) - timedelta(seconds=max_age_seconds)
+    purged = 0
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT id, docx_path, updated_at FROM jobs"
+            " WHERE status = ? AND docx_path IS NOT NULL",
+            (STATUS_DONE,),
+        ).fetchall()
+        for row in rows:
+            try:
+                updated = datetime.fromisoformat(row["updated_at"])
+            except ValueError:
+                # Timestamp tak terbaca: jangan hapus apa pun atas dasar tebakan
+                # — aturan yang sama dengan reap_stale_jobs.
+                continue
+            if updated >= cutoff:
+                continue
+            Path(row["docx_path"]).unlink(missing_ok=True)
+            conn.execute(
+                "UPDATE jobs SET status = ?, docx_path = NULL, error = ?,"
+                " error_status = ?, updated_at = ? WHERE id = ?",
+                (STATUS_FAILED, _EXPIRED_ERROR, _EXPIRED_STATUS, _now(), row["id"]),
+            )
+            purged += 1
+    return purged
 
 
 def _update(job_id: str, **fields: Any) -> None:

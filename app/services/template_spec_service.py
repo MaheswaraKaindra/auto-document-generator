@@ -197,24 +197,43 @@ def build_template_spec(docx_path: str | Path) -> dict:
         orientations.append({"orient": orient, "width_in": width})
 
     # Outline heading berurut + sinyal dekay (CORETAD).
+    #
+    # Tiap entri juga membawa ORIENTASI section tempatnya berada. Tanpa itu
+    # `orientations` di atas tak bisa dipakai apa-apa: dia daftar per-SECTION,
+    # sementara template yang di-generate disusun per-HEADING — tak ada yang
+    # menghubungkan "section ke-2 landscape" dengan "bab mana yang mulai di
+    # sana". Korelasinya dibuat di sini, dengan menelusuri body secara URUT:
+    # properti sebuah section disimpan di sectPr yang MENGAKHIRInya, jadi tiap
+    # paragraf ber-sectPr menutup section berjalan dan yang berikutnya masuk
+    # section sesudahnya.
     outline = []
     heading_usage = Counter()
     empty_headings = 0
     tab_in_headings = False
-    for para in doc.paragraphs:
-        name = para.style.name if para.style else ""
-        match = re.fullmatch(r"Heading (\d)", name)
-        if name != "Title" and match is None:
-            continue
-        heading_usage[name] += 1
-        text = para.text.strip()
-        if not text:
-            empty_headings += 1
-        if "\t" in para.text:
-            tab_in_headings = True
-        level = 0 if name == "Title" else int(match.group(1))
-        outline.append({"level": level, "text": re.sub(r"\s+", " ", text)[:90],
-                        "empty": not text})
+    section_index = 0
+    paragraph_by_element = {para._p: para for para in doc.paragraphs}
+    for element in body.iterchildren(qn("w:p")):
+        para = paragraph_by_element.get(element)
+        if para is not None:
+            name = para.style.name if para.style else ""
+            match = re.fullmatch(r"Heading (\d)", name)
+            if name == "Title" or match is not None:
+                heading_usage[name] += 1
+                text = para.text.strip()
+                if not text:
+                    empty_headings += 1
+                if "\t" in para.text:
+                    tab_in_headings = True
+                level = 0 if name == "Title" else int(match.group(1))
+                here = (orientations[section_index]["orient"]
+                        if section_index < len(orientations) else "portrait")
+                outline.append({"level": level,
+                                "text": re.sub(r"\s+", " ", text)[:90],
+                                "empty": not text,
+                                "orient": here})
+        p_pr = element.find(qn("w:pPr"))
+        if p_pr is not None and p_pr.find(qn("w:sectPr")) is not None:
+            section_index += 1
 
     n_toc = (sum(1 for it in body.findall(".//" + qn("w:instrText"))
                  if it.text and "TOC" in it.text)

@@ -214,7 +214,11 @@ def generate_document_full_pipeline(
         except ValueError as e:
             raise HTTPException(status_code=422, detail=str(e)) from e
 
-    job_id = job_store.create_job(document_type=doc_type, project_name=body.project_name)
+    job_id = job_store.create_job(
+        document_type=doc_type,
+        project_name=body.project_name,
+        template_id=body.template_id,
+    )
     background_tasks.add_task(_run_generation, job_id, body, logo_bytes, zip_requests)
     return {
         "job_id": job_id,
@@ -234,6 +238,7 @@ def get_job_status(job_id: str):
     # job yang ditanya di sini yang paling mungkin sedang dipoll, jadi ini titik
     # paling tepat untuk deteksi lazy pada job milik worker yang mati.
     job_store.reap_stale_jobs()
+    job_store.purge_expired_documents()
     job = job_store.get_job(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail=f"Job {job_id} tidak ditemukan.")
@@ -242,6 +247,10 @@ def get_job_status(job_id: str):
         "job_id": job["id"],
         "status": job["status"],
         "document_type": job["document_type"],
+        # Gaya dokumen yang dipakai job ini. Riwayat job dulu tidak bisa menjawab
+        # "dokumen ini gaya apa" — pertanyaan yang muncul begitu ada lebih dari
+        # satu gaya. None untuk job dari DB lama (sebelum kolomnya ada).
+        "template_id": job["template_id"],
         # Tahap yang sedang dikerjakan, kalimat siap tampil. `status` cuma punya
         # empat nilai dan tidak bisa membedakan "sedang mengunduh repo" dari
         # "sedang menunggu AI dua menit" — padahal itu yang ingin diketahui orang

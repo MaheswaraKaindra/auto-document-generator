@@ -73,6 +73,14 @@ _CONTENT_BINDINGS = {
 # ikut terbuang. Uji sintetis (outline datar) tak pernah memunculkan ini.
 _OWNS_SUBTREE = {USE_CASES, ACTIVITY_DIAGRAMS, TEST_GROUPS}
 
+# Marker orientasi yang dibaca compiler (`_apply_orientation_markers`). Ditulis
+# sebagai paragraf tersendiri; compiler mengubahnya jadi section break lalu
+# mengosongkan teksnya, jadi tak pernah terlihat di dokumen jadi.
+_ORIENTATION_MARKER = {
+    "landscape": "((LANDSCAPE))",
+    "portrait": "((PORTRAIT))",
+}
+
 # --- Aturan kata kunci bab → binding (dicek berurutan, cocok pertama menang) ---
 # Frasa spesifik didahulukan sebelum yang umum (mis. "system requirement" sebelum
 # "requirement"; frasa test-case spesifik sebelum kata "testing" yang terlalu luas
@@ -139,8 +147,13 @@ def assemble_plan(outline: list[dict], classify) -> list[dict]:
     for i, entry in enumerate(outline):
         level = entry.get("level", 1)
         text = (entry.get("text") or "").strip()
+        # Orientasi ikut dibawa apa adanya dari hasil pengukuran: ini fakta
+        # tentang TATA LETAK sumber, bukan keputusan pemetaan, jadi baik pemeta
+        # heuristik maupun pemeta LLM tak boleh mengubahnya.
+        orient = entry.get("orient") or "portrait"
         if not text or level == 0:            # judul dokumen: ditangani pandoc
-            plan.append({"level": level, "text": text, "binding": SKIP})
+            plan.append({"level": level, "text": text, "binding": SKIP,
+                         "orient": orient})
             continue
         has_children = (i + 1 < len(outline)
                         and outline[i + 1].get("level", 1) > level)
@@ -151,7 +164,8 @@ def assemble_plan(outline: list[dict], classify) -> list[dict]:
             binding = HEADING_ONLY if has_children else MANUAL
         elif binding in _CONTENT_BINDINGS:
             used_content.add(binding)
-        plan.append({"level": level, "text": text, "binding": binding})
+        plan.append({"level": level, "text": text, "binding": binding,
+                     "orient": orient})
     return plan
 
 
@@ -293,6 +307,7 @@ def generate_jinja_template(mapping: list[dict]) -> str:
     """
     blocks: list[str] = []
     skip_below: int | None = None
+    orient = "portrait"  # dokumen selalu mulai potret
 
     for entry in mapping:
         level = entry.get("level", 1)
@@ -306,6 +321,17 @@ def generate_jinja_template(mapping: list[dict]) -> str:
 
         if binding == SKIP or not text or level == 0:
             continue
+
+        # Orientasi bab ini (diukur `template_spec_service` dari section tempat
+        # heading-nya berada). Marker dipancarkan hanya saat BERUBAH — compiler
+        # yang menerjemahkannya jadi section break sungguhan
+        # (`_apply_orientation_markers`). Tanpa ini, `has_landscape` yang sudah
+        # diukur tak pernah sampai ke dokumen: tabel lebar milik template
+        # pengguna dipaksa muat di halaman potret.
+        entry_orient = entry.get("orient") or "portrait"
+        if entry_orient != orient:
+            blocks.append(_ORIENTATION_MARKER[entry_orient])
+            orient = entry_orient
 
         heading = "#" * min(max(level, 1), 3) + " " + text
 
