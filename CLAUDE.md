@@ -282,13 +282,11 @@ ref/                       # TIDAK ikut repo; ada di mesin pengembang saja
                            #   Template SDD (Dynamics), moe_mal, system_design_
                            #   document_template, 04. Dokumen UAT, Veracity
   keluaran-lama/           # docx hasil generate lampau (bukan acuan apa pun)
-  lain-lain/               # screenshot & serpihan lain. (Installer pandoc 41 MB
-                           #   dulu di sini, DIHAPUS 2026-07-21 — pandoc sudah
-                           #   terpasang, dan `pypandoc.download_pandoc()` bisa
-                           #   mengambilnya lagi kapan pun. Lihat Setup Lokal.)
 ```
 
-`ref/` ditutup **seluruh folder** di `.gitignore`, bukan per-ekstensi: pola `*.docx`/`*.doc`/`*.pdf`/`*.msi` memang berlaku global, tapi `/*.png` cuma menutup root — screenshot yang pindah ke sana akan bocor kalau mengandalkan pola lama.
+Dulu ada `lain-lain/` berisi installer pandoc 41 MB + screenshot UI lama; **dua-duanya dihapus 2026-07-21** dan foldernya dibuang. Keduanya bisa didapat lagi kalau benar-benar perlu: pandoc lewat `pypandoc.download_pandoc()` (lihat Setup Lokal), tampilan frontend lama dengan checkout commit sebelum redesign lalu `npm run dev`.
+
+`ref/` ditutup **seluruh folder** di `.gitignore`, bukan per-ekstensi. Alasannya masih berlaku walau isinya sekarang cuma dokumen: pola `*.docx`/`*.doc`/`*.pdf` berlaku global, tapi `/*.png` cuma menutup root — begitu ada gambar/aset non-dokumen masuk `ref/`, mengandalkan pola per-ekstensi akan membocorkannya.
 
 ## Tech Stack
 
