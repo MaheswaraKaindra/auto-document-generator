@@ -228,6 +228,12 @@ def get_job_status(job_id: str):
     """Status job. 200 walau job-nya gagal — pertanyaannya ("job ini bagaimana?")
     berhasil dijawab; kegagalan generation-nya ada di dalam payload, lengkap
     dengan `error_status` supaya klien tahu ini kegagalan permanen atau bukan."""
+    # Pungut job basi lebih dulu: kalau proses yang menjalankan job ini mati
+    # (restart/OOM/worker crash), tanpa ini job tergantung di `running` selamanya
+    # dan klien polling tanpa akhir. Sapuan murah (tabel job kecil) & idempoten;
+    # job yang ditanya di sini yang paling mungkin sedang dipoll, jadi ini titik
+    # paling tepat untuk deteksi lazy pada job milik worker yang mati.
+    job_store.reap_stale_jobs()
     job = job_store.get_job(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail=f"Job {job_id} tidak ditemukan.")

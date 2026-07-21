@@ -1,4 +1,4 @@
-# Catatan Sesi — 2026-07-21 (UI upload ZIP di frontend)
+# Catatan Sesi — 2026-07-21 (UI upload ZIP + job reaper)
 
 > **File ini ditimpa habis setiap sesi baru.** Isinya cuma satu hal: apa yang
 > dikerjakan sesi kemarin, supaya sesi berikutnya tidak mulai dari nol.
@@ -12,81 +12,75 @@
 
 ## Ringkasan satu paragraf
 
-Melanjutkan langsung dari sesi kemarin: backend jalur ZIP → dokumen sudah jadi
-(field `zip_files` base64 di `POST /documents/generate`), yang tersisa cuma **UI
-upload ZIP di frontend**. Itu yang dikerjakan sesi ini — $0, tanpa LLM, reversible.
-Section "Sumber Kode" sekarang punya pemilih **GitHub vs Upload ZIP**; mode ZIP =
-daftar baris (satu ZIP = satu repo) dengan Tag + input file `.zip` yang dibaca
-base64 (pola persis logo), dikirim sebagai `zip_files`. `vite build` + `oxlint`
-hijau. **Belum di-commit** (nunggu review pemilik), dan **belum dijalankan
-browser→generate penuh** karena itu memicu job LLM berbayar (gate pemilik) —
-jalur sinkron decode/reject-nya sendiri sudah di-unit-test backend kemarin.
+Dua hal selesai, keduanya $0 tanpa LLM. **(1) UI upload ZIP di frontend** —
+melengkapi jalur ZIP→dokumen (backend `zip_files` sudah ada sejak sesi lalu).
+Section "Sumber Kode" kini punya pemilih GitHub vs Upload ZIP; **sudah di-commit**
+(`fa1e302`). **(2) Job reaper** — menutup keterbatasan lama "job macet di `running`
+selamanya kalau proses mati". Pemilik menyatakan template sumber lain tak akan ada
+untuk waktu lama, jadi dua kandidat V2 lain (UI edit peta bab, landscape) sama-sama
+tak bisa diverifikasi tanpa input eksternal; job reaper dipilih karena CLAUDE.md
+sendiri menominasikannya sebagai kerja tepi-deployment yang **tak terhalang input
+eksternal**. **296 test hijau (+6). Reaper BELUM di-commit** (nunggu review).
 
 ## Yang dikerjakan
 
-1. **Baca kontrak backend dua sisi dulu** (sebelum sentuh frontend): `zip_files`
-   di `schemas_document.py` = `list[{repo_tag, filename, zip_base64}]`, precedence
-   di atas `repositories`; `_decode_zip_files` di `routes_document.py` membuang
-   prefiks `data:…;base64,` sendiri → aman kirim data-URL utuh dari FileReader.
-2. **`frontend/src/App.jsx`**:
-   - State baru: `sourceType` ('github'|'zip'), `zipRepos` (list `{repo_tag,
-     filename, base64, error}`), factory `emptyZip()`, konstanta `ZIP_MAX_BYTES`
-     (50 MB).
-   - Handler: `updateZip`/`addZip`/`removeZip`/`handleZipFile` (FileReader →
-     base64 data URL; file >50 MB atau gagal-baca → error per-baris, bukan lempar).
-   - `handleSubmit`: cabang `usingZip` — kumpulkan `zipFiles` (hanya baris yang
-     base64 & tag-nya terisi), tolak lebih awal kalau kosong, kirim `zip_files`
-     ATAU `repositories` (yang satunya dikosongkan) + `github_token` null di ZIP.
-   - JSX section 2: pemilih sumber + render kondisional (GitHub lama utuh di satu
-     cabang, grup ZIP di cabang lain). Subtitle masthead dikoreksi.
-3. **`frontend/src/App.css`**: `.zip-row` (grid 3 kolom: tag/file/hapus, +
-   responsif <620px) & `.zip-status` (pesan filename siap / error merah).
-4. **Verifikasi $0**: `vite build` (17 modul transformed) + `npm run lint`
-   (oxlint) dua-duanya bersih.
-5. **Dok**: entri CHANGELOG.md baru (teratas); butir keterbatasan ZIP di CLAUDE.md
-   di-update (UI SELESAI 2026-07-21, sisa cuma efisiensi base64); SESSION.md ini.
+1. **UI upload ZIP** (`frontend/src/App.jsx` + `App.css`): pemilih `sourceType`
+   GitHub/ZIP, tiap ZIP = satu repo (Tag + input `.zip` dibaca base64 via
+   FileReader), dikirim sebagai `zip_files`. Guard 50 MB + tolak dini kalau tak
+   ada file/tag. Verifikasi: `vite build` + `oxlint` hijau. **Sudah di-commit.**
+2. **Investigasi $0 SEBELUM pilih arah** (prinsip repo #2): baca
+   `template_spec_service` + `compiler_service` → temuan yang **mengalihkan
+   pilihan dari landscape ke reaper**: pengukuran orientasi (`orientations`/
+   `has_landscape`) DAN penerapan (`_landscape_after_marker` + marker
+   `((LANDSCAPE))`, dipakai premco UAT) **sudah ada**; sisa landscape sejati cuma
+   penyambungan ke V2 (butuh template upload landscape → tak akan ada).
+3. **Job reaper** (`job_store.reap_stale_jobs`): tandai job `running`/`queued`
+   yang tak update > 30 menit (ambang aman di atas timeout LLM 25 menit) jadi
+   `failed` 503 (sementara). Dipanggil di `main.py` startup (import-time) + lazy di
+   `get_job_status` route. Nol infrastruktur baru (SQLite, tak ada thread).
+4. **Test +6**: `tests/test_job_store.py` (5: stale running/queued, fresh,
+   done/failed untouched, count) + 1 route test di `test_routes_document.py`
+   (GET status lewat ASGI nyata memungut job basi). **296 hijau, nol regresi.**
+5. **Dok**: CHANGELOG 2 entri baru (ZIP UI + reaper); CLAUDE.md butir keterbatasan
+   ZIP (UI selesai) + job-hilang (reaper menutup gejala stuck-running); SESSION ini.
 
 ## Kejadian yang layak diingat (jebakan)
 
-- **`FileReader.readAsDataURL` untuk .zip bisa memberi MIME beda di Windows**
-  (`application/x-zip-compressed`), TAPI tak masalah — backend `.partition(",")[2]`
-  membuang prefiks `data:` apa pun. Jangan tergoda "membersihkan" prefiks di
-  frontend; backend sudah menoleransinya (konsisten dgn `logo_base64`).
-- **`required` pada input yang dirender kondisional**: input repositori GitHub
-  punya `required`. Karena mode ZIP me-render cabang LAIN (input GitHub tak ada di
-  DOM), `required`-nya tak memblokir submit mode ZIP. Itu sebabnya render
-  kondisional (bukan `hidden`) yang dipilih.
-- **Full E2E = bayar LLM**: `POST /documents/generate` balik 202 lalu job jalan di
-  latar belakang MEMANGGIL LLM. Jadi "coba upload ZIP lewat browser sampai dokumen
-  jadi" bukan verifikasi $0 — itu gate pemilik. Reject-path (bad base64 → 422
-  sinkron) bisa diuji $0 tapi sudah di-unit-test backend kemarin.
+- **Investigasi $0 dulu menyelamatkan dari pilihan lemah.** Aku sudah mengumumkan
+  "landscape" sebelum investigasi; membaca kodenya menunjukkan landscape sebagian
+  besar SUDAH ada & sisanya butuh input yang tak akan ada. Ganti ke reaper. Persis
+  prinsip repo "ukur/buka barangnya sebelum kerja".
+- **Reaper TIDAK boleh membunuh job sehat.** Job sehat bisa "diam" ~25 menit saat
+  menunggu LLM (client timeout 25 menit, tak ada `set_progress` selama itu). Ambang
+  30 menit dipilih di ATAS itu. Ambang lebih pendek = salah-bunuh.
+- **`main.py` panggil `init_db`/`reap` saat IMPORT, bukan startup event** — sengaja:
+  TestClient & sebagian deploy tak jalankan startup hook. Reaper ikut pola itu.
+- **Reaper cuma menandai gagal, tidak re-run** — kerja hilang tetap hilang.
+  Re-queue (Redis+RQ) sengaja belum; nol infrastruktur baru dipertahankan.
 
 ## Kalau melanjutkan, mulai dari sini
 
-**Jalur ZIP → dokumen: SELESAI end-to-end** (backend kemarin + UI hari ini).
-Sisa cuma efisiensi base64-in-JSON untuk repo besar (cukup untuk MVP).
+**Belum di-commit: perubahan job reaper** (job_store.py, main.py, routes_document.py,
+tests/test_job_store.py, tests/test_routes_document.py, CLAUDE.md, CHANGELOG.md,
+SESSION.md). ZIP UI sudah di-commit (`fa1e302`). Semua **belum di-push**.
 
-**#1 (Trek A — PALING BERNILAI selagi magang):** kumpulkan/bawa template SDD/UAT
-sumber lain, jalankan lewat mesin (`compile_template_from_docx` + lihat). Kerja
-yang tak bisa diambil setelah keluar magang.
+**Kandidat kerja $0 berikutnya** (tak butuh template sumber lain):
+- **Cleanup dokumen** (`data/documents/` tumbuh selamanya — belum ada TTL). $0,
+  self-contained, pola sama dengan reaper (sapuan job_store).
+- **Job simpan `template_id`** — kecil; riwayat job jadi bisa jawab "gaya apa".
+- **Heuristik `type` baca path + sinyal isi** — prioritas rendah (label bukan
+  bottleneck, sudah dibuktikan), tapi $0 & verifiable Tahap 1.
 
-**#2 (sisa V2, $0):** UI tinjauan/**EDIT** peta bab sebelum generate (tampilkan
-`mappings` dari `GET /templates/{id}`, user sunting binding lalu generate) +
-orientasi landscape per-section (spec `orientations[]` terukur `None` di 3
-template — pengukuran + penerapan sama-sama belum jalan) + job simpan `template_id`.
+**Terhalang input eksternal (tunggu pemilik):**
+- **Trek A** (template SDD/UAT sumber lain) — paling bernilai selagi magang.
+- **UI edit peta bab & landscape per-section (V2)** — butuh template asing untuk
+  diverifikasi; menunggu Trek A.
 
 **Utang lama (cepat):** revoke `GOOGLE_API_KEY` & `LLAMA_API_KEY`; isi `GITHUB_TOKEN`.
 
 ## Yang perlu dilakukan manusia
 
-- **BELUM DI-COMMIT.** Perubahan sesi ini (App.jsx, App.css, CLAUDE.md,
-  CHANGELOG.md, SESSION.md) masih di working tree — nunggu review pemilik sebelum
-  commit. Tak ada perubahan backend/test, jadi `pytest` tak perlu dijalankan ulang
-  (frontend-only).
-- **Uji manual kalau mau** (opsional, tapi ZIP-nya baru diuji lewat build+lint,
-  belum diklik di browser): `uvicorn app.main:app --reload` +
-  `npm --prefix frontend run dev`, pilih "Upload file ZIP", upload .zip source
-  code kecil (kecualikan node_modules/venv), beri Tag, generate. **Ini memicu LLM
-  berbayar** — lakukan hanya kalau memang mau menguji end-to-end.
-- **Server dev DIMATIKAN** (belum dinyalakan sesi ini — verifikasi lewat build
-  saja, tak butuh server).
+- **Review + restu commit reaper** (ZIP UI sudah di-commit tapi belum push). Kalau
+  oke, aku commit reaper lalu bisa push dua-duanya ke origin/develop.
+- **Server dev DIMATIKAN** — verifikasi sesi ini lewat pytest + build, tak butuh
+  server. Reaper diuji lewat TestClient (ASGI nyata), bukan mock.

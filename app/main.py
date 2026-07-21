@@ -15,6 +15,12 @@ app = FastAPI(title="Auto Document Generator")
 # ada request yang bisa menampung errornya. init_db() aman dipanggil berkali-kali.
 job_store.init_db()
 
+# Pungut job yang macet di `running`/`queued` dari proses SEBELUMNYA yang mati
+# saat job jalan (deploy/crash/OOM). Di sini — bukan di event startup — dengan
+# alasan yang sama seperti init_db di atas: TestClient & sebagian jalur deploy
+# tak menjalankan startup hook. Idempoten; di DB tanpa job basi ini no-op.
+job_store.reap_stale_jobs()
+
 # Kerangka frontend (frontend/) dipanggil dari origin terpisah (dibuka
 # langsung sebagai file atau lewat dev server), jadi butuh CORS.
 # allow_origins="*" hanya untuk kebutuhan development; persempit sebelum

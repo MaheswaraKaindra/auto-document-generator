@@ -6,6 +6,7 @@ tidak bergantung pada Java/jar terpasang, koneksi internet, API key, atau kuota.
 
 import json
 import re
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -558,3 +559,22 @@ def test_init_db_is_safe_to_run_twice(tmp_path, monkeypatch):
 
     job_id = job_store.create_job(document_type="SDD", project_name="x")
     assert job_store.get_job(job_id)["progress"] is None
+
+
+def test_get_status_reaps_stale_running_job(client, monkeypatch):
+    """GET status memungut job yang macet: kalau proses yang menjalankannya mati
+    (restart/OOM/worker crash), job tak boleh tergantung di `running` selamanya —
+    klien harus dapat `failed` (503, sementara) supaya tahu boleh mengulang."""
+    real_now = job_store._now
+    aged = (datetime.now(timezone.utc) - timedelta(minutes=45)).isoformat()
+    monkeypatch.setattr(job_store, "_now", lambda: aged)
+    job_id = job_store.create_job("SDD", None)
+    job_store.mark_running(job_id)
+    monkeypatch.setattr(job_store, "_now", real_now)
+
+    response = client.get(f"/documents/jobs/{job_id}")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "failed"
+    assert body["error_status"] == 503

@@ -21,7 +21,7 @@ import shutil
 import sqlite3
 import uuid
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Optional
 
@@ -35,6 +35,26 @@ STATUS_QUEUED = "queued"
 STATUS_RUNNING = "running"
 STATUS_DONE = "done"
 STATUS_FAILED = "failed"
+
+# Ambang "job basi": job running/queued yang TIDAK di-update selama ini dianggap
+# mati (proses di-restart/crash/OOM saat job jalan). 30 menit dipilih supaya AMAN
+# di atas jeda update terlama yang WAJAR untuk job SEHAT: client LLM diberi
+# timeout 25 menit (llm_service) untuk repo besar, dan selama panggilan LLM itu
+# tak ada set_progress — jadi job sehat bisa "diam" sampai ~25 menit. Ambang di
+# bawah itu akan salah-bunuh job yang sebenarnya masih menunggu LLM. Sengaja =
+# POLL_TIMEOUT frontend (30 menit): setelah itu klien pun sudah menyerah.
+STALE_JOB_SECONDS = 30 * 60
+
+# Pesan & kode untuk job yang dipungut reaper. 503 (bukan 500/413): proses mati
+# itu kegagalan SEMENTARA — mengulang wajar — beda dari kegagalan PERMANEN (413
+# repo kebesaran, 500 dokumen terpotong). Menjaga pemisahan permanen vs sementara
+# yang jadi guna error_status (lihat mark_failed).
+_STALE_ERROR = (
+    "Job berhenti sebelum selesai — proses server kemungkinan di-restart atau "
+    "mati saat job berjalan. Jalankan ulang; ini bukan masalah pada repo atau "
+    "masukan Anda."
+)
+_STALE_STATUS = 503
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS jobs (
@@ -154,6 +174,48 @@ def mark_failed(job_id: str, error: str, error_status: int) -> None:
     persis penyamaran yang sudah tiga kali diperbaiki di project ini.
     """
     _update(job_id, status=STATUS_FAILED, error=error, error_status=error_status)
+
+
+def reap_stale_jobs(max_age_seconds: float = STALE_JOB_SECONDS) -> int:
+    """Tandai job `running`/`queued` yang macet (tak di-update > max_age) jadi
+    `failed`, kembalikan jumlah yang dipungut.
+
+    Kenapa perlu: BackgroundTasks menjalankan job DI DALAM proses yang menerima
+    POST. Kalau proses itu mati (deploy, crash, OOM) saat job jalan, job-nya
+    berhenti selamanya di `running` — tak ada yang memungutnya, dan klien akan
+    polling tanpa akhir. Reaper inilah pemungutnya: dipanggil (1) saat startup —
+    proses baru membersihkan job basi milik proses lama yang mati; dan (2) lazy
+    saat GET status — satu worker yang hidup memungut job basi milik worker yang
+    mati. Nol infrastruktur baru: tak ada thread/scheduler, cuma satu sapuan di
+    titik yang memang sudah dijalankan.
+
+    Aman karena `updated_at` disegarkan tiap set_progress — job SEHAT tak akan
+    terlihat basi selama masih menulis progress; yang melewati ambang praktis
+    pasti mati. Idempoten & aman lintas-worker: UPDATE ke `failed` menghasilkan
+    nilai yang sama walau dua worker menyapu bersamaan.
+    """
+    cutoff = datetime.now(timezone.utc) - timedelta(seconds=max_age_seconds)
+    reaped = 0
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT id, updated_at FROM jobs WHERE status IN (?, ?)",
+            (STATUS_RUNNING, STATUS_QUEUED),
+        ).fetchall()
+        for row in rows:
+            try:
+                updated = datetime.fromisoformat(row["updated_at"])
+            except ValueError:
+                # Timestamp tak terbaca (tak seharusnya terjadi): jangan sentuh —
+                # lebih baik job tergantung daripada dibunuh atas dasar tebakan.
+                continue
+            if updated < cutoff:
+                conn.execute(
+                    "UPDATE jobs SET status = ?, error = ?, error_status = ?, "
+                    "updated_at = ? WHERE id = ?",
+                    (STATUS_FAILED, _STALE_ERROR, _STALE_STATUS, _now(), row["id"]),
+                )
+                reaped += 1
+    return reaped
 
 
 def _update(job_id: str, **fields: Any) -> None:
