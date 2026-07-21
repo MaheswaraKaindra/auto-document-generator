@@ -247,6 +247,8 @@ Daftar lengkap + perilaku error tiap endpoint ada di [`CLAUDE.md`](CLAUDE.md).
 
 ```bash
 pytest                                       # 312 test; LLM/PlantUML/GitHub di-mock, $0
+python scripts/render_fixtures.py            # render Contract B tersimpan -> docx, $0
+                                             #   (regresi visual saat kuota API habis)
 python scripts/validation/run_validation.py  # ingest+parse ke repo publik nyata, gratis
 ```
 

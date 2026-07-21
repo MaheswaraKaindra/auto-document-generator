@@ -260,6 +260,9 @@ tests/                       # pytest (191 test) — lihat bagian Testing
 dummy_data/                  # fixture JSON — dipakai test otomatis DAN testing manual
 scripts/                     # utilitas dev, bukan bagian dari aplikasi
   model_getter.py            # cetak daftar model yang tersedia untuk API key kamu
+  render_fixtures.py         # render SEMUA Contract B tersimpan -> docx ($0, tanpa
+                             #   LLM & tanpa jaringan). Regresi visual saat kuota API
+                             #   habis: langkah berbayar cuma Contract A->B.
   validation/                # kerangka validasi ke repo publik nyata — lihat Testing
     README.md                #   cara pakai + kenapa ini bukan pengganti pytest
     repos.json               #   10 kasus uji, tiap kasus menguji satu asumsi produk
@@ -401,6 +404,31 @@ python scripts/validation/run_validation.py --only flask --with-llm   # Tahap 2:
 ```
 
 **Tahap 1 gratis** (tanpa LLM) sudah cukup menjawab "parser paham repo ini?" — Contract A-nya disimpan ke `out/` supaya Tahap 2 tidak perlu ingest ulang. **Tahap 2 berbayar**: satu kasus = satu panggilan Claude, wajib opt-in. Baca `scripts/validation/README.md` sebelum menjalankan yang berbayar.
+
+### Regresi visual tanpa kuota API (`scripts/render_fixtures.py`)
+
+**Satu-satunya langkah berbayar adalah Contract A → Contract B.** Begitu Contract B
+tersimpan, seluruh sisa pipeline (template → diagram → docx) bisa diulang berapa
+kali pun **$0**. Artinya: kuota API habis TIDAK memblokir pekerjaan Peran 3
+(templating, tabel, diagram, pagination, cover) — semuanya tetap bisa dikerjakan
+DAN diverifikasi.
+
+```bash
+python scripts/render_fixtures.py              # semua fixture x semua template
+python scripts/render_fixtures.py --out hasil/ # simpan docx-nya untuk dibuka
+```
+
+Fixture datang dari `dummy_data/*.json` (ikut repo) dan `scripts/validation/out/`
+(hasil run berbayar lampau, **gitignored** — bisa hilang). Karena itu dua Contract B
+terkaya disalin ke repo: `dummy_data/contract_b_rich_sdd.json` (esteler, 11 fitur /
+7 use case / 7 activity diagram) dan `contract_b_rich_uat.json` (MyPertamina, **50
+test case**). Keduanya penting justru karena `document_content_sdd.json` cuma punya
+1 fitur/1 use case — kepadatan setipis itu BUTA terhadap bug tata letak (bug
+"halaman berisi 4 baris lalu 8 inci putih" cuma muncul pada kepadatan nyata).
+
+Contract B dari **sebelum 2026-07-16** (migrasi Mermaid → PlantUML) tidak lagi
+kompatibel; script melaporkannya `SKEMA-LAMA` dan menghitungnya terpisah dari
+kegagalan — supaya exit code tetap bermakna.
 
 Untuk testing manual end-to-end (hit API sungguhan, termasuk panggilan LLM yang sesungguhnya) — **lakukan ini hanya saat memang sedang sengaja menguji**, jangan jadikan kebiasaan default karena memakai kuota API berbayar:
 - `dummy_data/document_content_sdd.json` / `document_content_uat.json` — contoh `DocumentContent` (Contract B) siap pakai untuk `POST /documents/sdd` / `/documents/uat` langsung (tanpa LLM).

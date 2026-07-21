@@ -1,0 +1,398 @@
+{
+  "document_type": "SDD",
+  "app_description": "Esteler App adalah sistem pemesanan makanan/minuman berbasis web untuk sebuah kedai (Esteler) yang menghubungkan pelanggan dan admin toko. Pelanggan dapat melihat menu, memesan secara online (preorder) tanpa perlu membuat akun, melacak status pesanan, memberi rating, dan berinteraksi dengan asisten chat berbasis AI untuk bantuan pemesanan. Di sisi lain, admin toko dapat mengelola menu, memantau dan memproses seluruh pesanan (baik online maupun walk-in), mencetak struk, serta memantau performa bisnis melalui dashboard analitik dan laporan penjualan.",
+  "user_roles": [
+    {
+      "role_name": "Admin",
+      "description": "Mengelola menu, memantau dan memproses pesanan (online maupun walk-in), mencetak struk, serta melihat dashboard dan laporan analitik penjualan. Admin harus login menggunakan username dan password."
+    },
+    {
+      "role_name": "Customer",
+      "description": "Menjelajahi menu, mengelola keranjang belanja, membuat pesanan preorder, melacak status pesanan, memberi rating, dan berinteraksi dengan chatbot AI tanpa perlu membuat akun (diidentifikasi lewat session anonim)."
+    }
+  ],
+  "system_requirements": [
+    {
+      "name": "Programming Language",
+      "detail": "Python"
+    },
+    {
+      "name": "Web Framework",
+      "detail": "Flask"
+    },
+    {
+      "name": "Database",
+      "detail": "PostgreSQL (Neon), diakses melalui SQLAlchemy ORM"
+    },
+    {
+      "name": "Database Migration",
+      "detail": "Flask-Migrate (Alembic)"
+    },
+    {
+      "name": "Authentication",
+      "detail": "Flask-Login (LoginManager, login_required, UserMixin)"
+    },
+    {
+      "name": "External Service",
+      "detail": "Cloudinary — penyimpanan & upload gambar menu"
+    },
+    {
+      "name": "External Service",
+      "detail": "Groq — Large Language Model API untuk chatbot"
+    },
+    {
+      "name": "Configuration Management",
+      "detail": "python-dotenv untuk load environment variables"
+    }
+  ],
+  "feature_requirements": [
+    {
+      "feature_name": "Autentikasi Admin",
+      "description": "Admin dapat masuk dan keluar dari sistem menggunakan username dan password untuk mengakses fitur manajemen toko."
+    },
+    {
+      "feature_name": "Manajemen Menu",
+      "description": "Admin dapat menambah, mengubah, serta mengaktifkan atau menyembunyikan menu yang ditampilkan kepada pelanggan, lengkap dengan foto menu."
+    },
+    {
+      "feature_name": "Manajemen Pesanan",
+      "description": "Admin dapat memantau seluruh pesanan yang masuk, mengubah statusnya dari diproses hingga selesai, membatalkan atau menghapus pesanan, serta mencetak struk."
+    },
+    {
+      "feature_name": "Pesanan Walk-in",
+      "description": "Admin dapat mencatat pesanan pelanggan yang datang langsung ke tempat tanpa melalui aplikasi online."
+    },
+    {
+      "feature_name": "Dashboard & Laporan Analitik",
+      "description": "Admin dapat melihat ringkasan performa bisnis seperti pendapatan mingguan, menu terlaris, distribusi sumber pesanan, jam ramai, dan mengunduh laporan penjualan."
+    },
+    {
+      "feature_name": "Katalog Menu & Keranjang",
+      "description": "Pelanggan dapat melihat daftar menu yang tersedia dan mengelola keranjang belanja (menambah, mengubah jumlah, atau menghapus item) tanpa perlu membuat akun."
+    },
+    {
+      "feature_name": "Pemesanan Preorder",
+      "description": "Pelanggan dapat memesan menu terlebih dahulu secara online dan mendapatkan kode pesanan unik untuk diambil nanti."
+    },
+    {
+      "feature_name": "Pelacakan Pesanan & Rating",
+      "description": "Pelanggan dapat memantau status pesanannya menggunakan kode pesanan dan memberikan rating setelah pesanan selesai."
+    },
+    {
+      "feature_name": "Rekomendasi Menu Personal",
+      "description": "Sistem memberikan saran menu yang dipersonalisasi kepada pelanggan berdasarkan riwayat keranjang mereka."
+    },
+    {
+      "feature_name": "Chatbot Asisten Pemesanan",
+      "description": "Pelanggan dapat bertanya dan memesan menu melalui percakapan dengan asisten chat berbasis AI."
+    },
+    {
+      "feature_name": "Unggah Gambar Menu",
+      "description": "Admin dapat mengunggah foto menu yang otomatis tersimpan di penyimpanan cloud."
+    }
+  ],
+  "diagrams": {
+    "system_architecture": "@startuml\nleft to right direction\nactor \"User\" as User\ncomponent \"Esteler Backend\" as Backend\ndatabase \"PostgreSQL (Neon)\" as DB\ncloud \"Cloudinary\" as Cloudinary\ncloud \"Groq AI\" as Groq\nUser --> Backend\nBackend --> DB\nBackend --> Cloudinary\nBackend --> Groq\n@enduml",
+    "component_integration": "@startuml\npackage \"Esteler Backend\" {\n  [Halaman Login] as LoginPage\n  [Halaman Manajemen Menu] as MenuMgmtPage\n  [Halaman Manajemen Pesanan] as OrderMgmtPage\n  [Halaman Dashboard] as DashboardPage\n  [Halaman Menu Customer] as CustomerMenuPage\n  [Halaman Keranjang] as CartPage\n  [Halaman Preorder] as PreorderPage\n  [Halaman Lacak Pesanan] as TrackPage\n  [Widget Chatbot] as ChatWidget\n  [AuthService] as AuthSvc\n  [MenuService] as MenuSvc\n  [OrderService] as OrderSvc\n  [AnalyticsService] as AnalyticsSvc\n  [CartService] as CartSvc\n  [RecommendationService] as RecoSvc\n  [ChatbotService] as ChatSvc\n  [UploadService] as UploadSvc\n  LoginPage --> AuthSvc\n  MenuMgmtPage --> MenuSvc\n  MenuMgmtPage --> UploadSvc\n  OrderMgmtPage --> OrderSvc\n  DashboardPage --> AnalyticsSvc\n  CustomerMenuPage --> MenuSvc\n  CustomerMenuPage --> RecoSvc\n  CartPage --> CartSvc\n  PreorderPage --> OrderSvc\n  PreorderPage --> CartSvc\n  TrackPage --> OrderSvc\n  ChatWidget --> ChatSvc\n  ChatSvc --> MenuSvc\n  ChatSvc --> CartSvc\n  ChatSvc --> OrderSvc\n  ChatSvc --> RecoSvc\n}\n@enduml",
+    "business_process_flow": "@startuml\nstart\n:Customer membuka halaman menu;\n:Customer menambahkan menu ke keranjang;\n:Customer melakukan preorder dan mengisi data;\n:Sistem membuat kode pesanan unik;\n:Sistem menyimpan order dan order items;\n:Customer diarahkan ke halaman pembayaran;\n:Admin melihat pesanan baru di daftar pesanan;\n:Admin memproses pesanan;\nif (Pesanan siap?) then (Ya)\n  :Admin menandai pesanan sebagai siap;\n  :Admin menandai pesanan sebagai selesai;\nelse (Tidak)\n  :Admin membatalkan pesanan;\nendif\n:Customer melacak status pesanan dengan kode;\n:Customer memberi rating setelah pesanan selesai;\nstop\n@enduml",
+    "use_case_diagram": "@startuml\nleft to right direction\nactor Admin\nactor Customer\nrectangle \"Esteler App\" {\n  usecase \"Login Admin\" as UC1\n  usecase \"Mengelola Menu\" as UC2\n  usecase \"Mengelola Pesanan\" as UC3\n  usecase \"Melihat Dashboard dan Laporan\" as UC4\n  usecase \"Input Pesanan Walk-in\" as UC5\n  usecase \"Melihat Daftar Menu\" as UC6\n  usecase \"Mengelola Keranjang\" as UC7\n  usecase \"Membuat Pesanan Preorder\" as UC8\n  usecase \"Melacak Status Pesanan\" as UC9\n  usecase \"Memberi Rating Pesanan\" as UC10\n  usecase \"Chat dengan Asisten AI\" as UC11\n}\nAdmin --> UC1\nAdmin --> UC2\nAdmin --> UC3\nAdmin --> UC4\nAdmin --> UC5\nCustomer --> UC6\nCustomer --> UC7\nCustomer --> UC8\nCustomer --> UC9\nCustomer --> UC10\nCustomer --> UC11\n@enduml",
+    "activity_diagrams": [
+      {
+        "activity_name": "Login Admin",
+        "description": "Proses autentikasi admin untuk masuk ke sistem manajemen backend.",
+        "actor": "Admin",
+        "pre_condition": "Admin memiliki akun dengan role admin yang terdaftar di sistem.",
+        "steps": [
+          "Admin membuka halaman login.",
+          "Admin mengisi username dan password.",
+          "Sistem memverifikasi kredensial melalui AuthService.",
+          "Jika valid, sistem membuat session login dan mengarahkan ke dashboard.",
+          "Jika tidak valid, sistem menampilkan pesan error."
+        ],
+        "diagram_script": "@startuml\nstart\n:Admin membuka halaman login;\n:Admin mengisi username dan password;\n:Sistem memverifikasi kredensial;\nif (Kredensial valid?) then (Ya)\n  :Sistem membuat session login;\n  :Sistem mengarahkan ke dashboard;\nelse (Tidak)\n  :Sistem menampilkan pesan error;\nendif\nstop\n@enduml"
+      },
+      {
+        "activity_name": "Manajemen Menu",
+        "description": "Proses admin menambah, mengubah, atau mengubah status aktif menu yang ditampilkan kepada pelanggan.",
+        "actor": "Admin",
+        "pre_condition": "Admin sudah login ke sistem.",
+        "steps": [
+          "Admin membuka halaman manajemen menu.",
+          "Admin memilih untuk menambah/mengedit menu atau mengubah status aktifnya.",
+          "Jika menambah/mengedit, admin mengisi data menu dan mengunggah gambar.",
+          "Sistem mengunggah gambar ke Cloudinary dan menyimpan data menu ke database.",
+          "Jika mengubah status, sistem memperbarui status aktif menu.",
+          "Sistem menampilkan daftar menu terbaru."
+        ],
+        "diagram_script": "@startuml\nstart\n:Admin membuka halaman manajemen menu;\nif (Aksi?) then (Tambah/Edit Menu)\n  :Admin mengisi data menu;\n  :Admin mengunggah gambar menu;\n  :Sistem mengunggah gambar ke Cloudinary;\n  :Sistem menyimpan data menu ke database;\nelse (Toggle Status)\n  :Admin memilih menu untuk diaktifkan/nonaktifkan;\n  :Sistem memperbarui status menu;\nendif\n:Sistem menampilkan daftar menu terbaru;\nstop\n@enduml"
+      },
+      {
+        "activity_name": "Manajemen Pesanan Admin",
+        "description": "Proses admin memantau dan mengubah status pesanan yang masuk hingga selesai atau dibatalkan.",
+        "actor": "Admin",
+        "pre_condition": "Terdapat pesanan yang masuk ke sistem.",
+        "steps": [
+          "Admin membuka halaman daftar pesanan.",
+          "Admin memilih pesanan yang ingin diproses.",
+          "Admin mengubah status pesanan menjadi diproses, siap, selesai, atau dibatalkan.",
+          "Sistem memperbarui status pesanan di database.",
+          "Admin dapat mencetak struk pesanan."
+        ],
+        "diagram_script": "@startuml\nstart\n:Admin membuka halaman daftar pesanan;\n:Admin memilih pesanan;\nif (Status baru?) then (Diproses)\n  :Sistem mengubah status menjadi diproses;\nelse (Lainnya)\n  if (Status baru?) then (Siap)\n    :Sistem mengubah status menjadi siap;\n  else (Lainnya)\n    if (Status baru?) then (Selesai)\n      :Sistem mengubah status menjadi selesai;\n    else (Batal)\n      :Sistem mengubah status menjadi dibatalkan;\n    endif\n  endif\nendif\n:Admin dapat mencetak struk pesanan;\nstop\n@enduml"
+      },
+      {
+        "activity_name": "Input Pesanan Walk-in",
+        "description": "Proses admin mencatat pesanan pelanggan yang datang langsung ke tempat tanpa melalui aplikasi online.",
+        "actor": "Admin",
+        "pre_condition": "Pelanggan datang langsung ke lokasi dan ingin memesan.",
+        "steps": [
+          "Admin membuka halaman input pesanan walk-in.",
+          "Admin memilih menu dan jumlah item untuk pelanggan.",
+          "Admin mengisi data pelanggan.",
+          "Sistem membuat order dengan sumber WALKIN.",
+          "Sistem menyimpan order beserta item pesanan.",
+          "Sistem menampilkan konfirmasi pesanan."
+        ],
+        "diagram_script": "@startuml\nstart\n:Admin membuka halaman input pesanan walk-in;\n:Admin memilih menu dan jumlah item;\n:Admin mengisi data pelanggan;\n:Sistem membuat order dengan sumber WALKIN;\n:Sistem menyimpan order beserta item pesanan;\n:Sistem menampilkan konfirmasi pesanan;\nstop\n@enduml"
+      },
+      {
+        "activity_name": "Customer - Keranjang dan Preorder",
+        "description": "Proses pelanggan menambahkan menu ke keranjang dan membuat pesanan preorder secara online.",
+        "actor": "Customer",
+        "pre_condition": "Customer telah membuka halaman menu.",
+        "steps": [
+          "Customer memilih menu dan menambahkannya ke keranjang.",
+          "Sistem menyimpan item keranjang berdasarkan session_id anonim.",
+          "Customer membuka halaman keranjang untuk meninjau pesanan.",
+          "Customer melanjutkan ke preorder dan mengisi data pemesanan.",
+          "Sistem membuat kode pesanan unik dan menyimpan order.",
+          "Sistem mengosongkan keranjang setelah order dibuat.",
+          "Customer diarahkan ke halaman pembayaran."
+        ],
+        "diagram_script": "@startuml\nstart\n:Customer memilih menu;\n:Customer menambahkan menu ke keranjang;\n:Sistem menyimpan item keranjang berdasarkan session_id;\n:Customer membuka halaman keranjang;\n:Customer melanjutkan ke preorder;\n:Customer mengisi data pemesanan;\n:Sistem membuat kode pesanan unik;\n:Sistem menyimpan order dan order items;\n:Sistem mengosongkan keranjang;\n:Customer diarahkan ke halaman pembayaran;\nstop\n@enduml"
+      },
+      {
+        "activity_name": "Customer - Lacak Pesanan dan Rating",
+        "description": "Proses pelanggan melacak status pesanan menggunakan kode pesanan dan memberikan rating setelah pesanan selesai.",
+        "actor": "Customer",
+        "pre_condition": "Customer memiliki kode pesanan yang valid.",
+        "steps": [
+          "Customer membuka halaman lacak pesanan.",
+          "Customer memasukkan kode pesanan.",
+          "Sistem mencari order berdasarkan kode secara case-insensitive.",
+          "Sistem menampilkan status pesanan jika ditemukan.",
+          "Jika pesanan sudah selesai, customer dapat memberikan rating.",
+          "Sistem menyimpan rating dan memperbarui rata-rata rating menu."
+        ],
+        "diagram_script": "@startuml\nstart\n:Customer membuka halaman lacak pesanan;\n:Customer memasukkan kode pesanan;\n:Sistem mencari order berdasarkan kode;\nif (Order ditemukan?) then (Ya)\n  :Sistem menampilkan status pesanan;\n  if (Status selesai?) then (Ya)\n    :Customer memberikan rating;\n    :Sistem menyimpan rating dan memperbarui rata-rata rating menu;\n  else (Tidak)\n    :Customer menunggu pesanan diproses;\n  endif\nelse (Tidak)\n  :Sistem menampilkan pesan pesanan tidak ditemukan;\nendif\nstop\n@enduml"
+      },
+      {
+        "activity_name": "Customer - Chat dengan Asisten AI",
+        "description": "Proses pelanggan berinteraksi dengan chatbot berbasis AI untuk bertanya tentang menu dan melakukan pemesanan lewat percakapan.",
+        "actor": "Customer",
+        "pre_condition": "Customer membuka fitur chat di aplikasi.",
+        "steps": [
+          "Customer mengirim pesan ke chatbot.",
+          "Sistem meneruskan pesan ke layanan AI Groq.",
+          "Sistem mendeteksi maksud pesan, apakah ada perintah aksi tertentu.",
+          "Jika ada, sistem menjalankan aksi terkait seperti mencari menu atau menambah item ke keranjang.",
+          "Sistem memeriksa apakah perlu menampilkan panel checkout.",
+          "Sistem mengirim balasan ke customer."
+        ],
+        "diagram_script": "@startuml\nstart\n:Customer mengirim pesan ke chatbot;\n:Sistem meneruskan pesan ke layanan AI;\n:Sistem mendeteksi maksud pesan;\nif (Ada aksi terdeteksi?) then (Ya)\n  :Sistem menjalankan aksi terkait, misal cari menu atau tambah ke keranjang;\nelse (Tidak)\n  :Sistem menyusun balasan langsung;\nendif\nif (Keranjang tidak kosong dan ada sinyal checkout?) then (Ya)\n  :Sistem menampilkan panel checkout;\nelse (Tidak)\nendif\n:Sistem mengirim balasan ke customer;\nstop\n@enduml"
+      }
+    ]
+  },
+  "use_cases": [
+    {
+      "use_case_id": "UC-01",
+      "actor": "Admin",
+      "pre_condition": "Admin memiliki akun dengan role admin yang valid di database.",
+      "description": "Admin dapat login ke sistem untuk mengakses seluruh fitur manajemen backend dan logout kapan saja.",
+      "acceptance_criteria": [
+        "Admin dapat login menggunakan username dan password melalui halaman /login.",
+        "Sistem menolak login dengan kredensial yang salah dan menampilkan pesan error.",
+        "Admin dapat logout melalui endpoint /logout dan session dihapus.",
+        "Admin yang belum login tidak dapat mengakses halaman /admin/*."
+      ]
+    },
+    {
+      "use_case_id": "UC-02",
+      "actor": "Admin",
+      "pre_condition": "Admin sudah login ke sistem.",
+      "description": "Admin dapat mengelola daftar menu yang ditampilkan kepada pelanggan, termasuk menambah, mengubah, dan mengatur status aktif menu.",
+      "acceptance_criteria": [
+        "Admin dapat melihat daftar menu di /admin/menu.",
+        "Admin dapat membuat menu baru lengkap dengan gambar via /admin/menu/create.",
+        "Admin dapat mengedit data menu yang sudah ada via /admin/menu/<id>/edit.",
+        "Admin dapat mengaktifkan/menonaktifkan menu via /admin/menu/<id>/toggle tanpa menghapus data menu (soft delete)."
+      ]
+    },
+    {
+      "use_case_id": "UC-03",
+      "actor": "Admin",
+      "pre_condition": "Terdapat pesanan yang masuk ke sistem, baik online maupun walk-in.",
+      "description": "Admin dapat memantau dan mengelola seluruh pesanan yang masuk dari mulai diproses sampai selesai atau dibatalkan.",
+      "acceptance_criteria": [
+        "Admin dapat melihat daftar pesanan di /admin/orders.",
+        "Admin dapat mengubah status pesanan menjadi diproses, siap, selesai, atau dibatalkan melalui endpoint terkait.",
+        "Admin dapat menghapus pesanan secara permanen via /admin/orders/<id>/delete.",
+        "Admin dapat membuat pesanan walk-in via /admin/orders/walkin.",
+        "Admin dapat mencetak struk pesanan via /admin/orders/<id>/receipt."
+      ]
+    },
+    {
+      "use_case_id": "UC-04",
+      "actor": "Admin",
+      "pre_condition": "Admin sudah login dan terdapat data pesanan historis.",
+      "description": "Admin dapat memantau ringkasan performa bisnis seperti pendapatan, menu terlaris, dan jam ramai, serta mengunduh laporan.",
+      "acceptance_criteria": [
+        "Admin dapat melihat ringkasan dashboard (total pesanan aktif, selesai hari ini, dsb.) di /admin/dashboard.",
+        "Sistem menampilkan daftar menu terlaris dan grafik pendapatan mingguan.",
+        "Sistem menampilkan distribusi sumber pesanan (online vs walk-in) dan jam paling ramai.",
+        "Admin dapat mengunduh laporan melalui /admin/report/download."
+      ]
+    },
+    {
+      "use_case_id": "UC-05",
+      "actor": "Customer",
+      "pre_condition": "Customer membuka aplikasi tanpa perlu login/registrasi.",
+      "description": "Customer dapat menjelajahi menu, mengelola keranjang belanja, dan membuat pesanan preorder.",
+      "acceptance_criteria": [
+        "Customer dapat melihat daftar menu di /menu tanpa perlu login.",
+        "Customer dapat menambahkan, mengubah jumlah, dan menghapus item di keranjang.",
+        "Customer dapat melihat ringkasan keranjang sebelum checkout di /cart/summary.",
+        "Customer dapat membuat pesanan preorder dan mendapatkan kode pesanan unik via /order/create.",
+        "Customer diarahkan ke halaman pembayaran berisi info kontak WhatsApp admin setelah order dibuat."
+      ]
+    },
+    {
+      "use_case_id": "UC-06",
+      "actor": "Customer",
+      "pre_condition": "Customer memiliki kode pesanan yang valid dari hasil order sebelumnya.",
+      "description": "Customer dapat melacak status pesanan menggunakan kode pesanan dan memberikan rating setelah pesanan selesai.",
+      "acceptance_criteria": [
+        "Customer dapat memasukkan kode pesanan di /track untuk melihat statusnya.",
+        "Sistem menampilkan status pesanan secara case-insensitive terhadap kode yang diinput.",
+        "Customer dapat mengirim rating melalui endpoint /api/order/<code>/rating.",
+        "Sistem memperbarui rata-rata rating menu berdasarkan rating yang diberikan."
+      ]
+    },
+    {
+      "use_case_id": "UC-07",
+      "actor": "Customer",
+      "pre_condition": "Customer membuka fitur chat di aplikasi.",
+      "description": "Customer dapat berinteraksi dengan chatbot berbasis AI untuk bertanya tentang menu, mendapat rekomendasi, dan melakukan pemesanan lewat percakapan.",
+      "acceptance_criteria": [
+        "Customer dapat mengirim pesan ke chatbot melalui endpoint /api/chat.",
+        "Chatbot dapat menjawab pertanyaan tentang menu dan memberikan rekomendasi berdasarkan riwayat keranjang.",
+        "Chatbot dapat menambahkan item ke keranjang customer melalui perintah percakapan.",
+        "Sistem menampilkan panel checkout otomatis saat chatbot mendeteksi sinyal checkout dan keranjang tidak kosong."
+      ]
+    }
+  ],
+  "business_flow_description": "Alur bisnis Esteler App dimulai saat pelanggan menjelajahi menu dan menambahkan pesanan ke keranjang, kemudian melanjutkan ke proses preorder untuk mendapatkan kode pesanan unik. Setelah itu pelanggan diarahkan menghubungi admin via WhatsApp untuk pembayaran, sementara admin memantau pesanan yang masuk melalui dashboard manajemen pesanan dan memperbarui statusnya seiring proses penyiapan. Pelanggan dapat memantau perkembangan pesanannya secara mandiri menggunakan kode pesanan, dan setelah pesanan selesai dapat memberikan rating sebagai bentuk umpan balik yang turut memengaruhi rekomendasi menu di masa depan.",
+  "business_flow_steps": [
+    "Customer membuka halaman menu dan melihat daftar menu yang tersedia.",
+    "Customer menambahkan menu ke keranjang belanja.",
+    "Sistem menyimpan keranjang berdasarkan session_id anonim customer.",
+    "Customer melakukan preorder dan mengisi data pemesanan.",
+    "Sistem membuat kode pesanan unik (format ORD-YYYYMMDD-XXXX) dan menyimpan order beserta item-itemnya.",
+    "Customer diarahkan ke halaman pembayaran untuk menghubungi admin via WhatsApp.",
+    "Admin melihat pesanan baru di halaman manajemen pesanan.",
+    "Admin memproses pesanan lalu mengubah statusnya menjadi siap, kemudian selesai.",
+    "Customer melacak status pesanan menggunakan kode pesanan di halaman track.",
+    "Setelah pesanan selesai, customer dapat memberikan rating terhadap menu yang dipesan.",
+    "Sistem memperbarui rata-rata rating menu berdasarkan input customer."
+  ],
+  "uat_test_cases": [
+    {
+      "test_id": "UAT-01",
+      "role": "Admin",
+      "module": "Halaman Login Admin",
+      "activity": "Login dengan kredensial valid",
+      "steps": "1. Buka halaman /login.\n2. Isi username dan password admin yang valid.\n3. Klik tombol login.",
+      "expected_result": "Sistem mengarahkan admin ke halaman dashboard dan session login tersimpan."
+    },
+    {
+      "test_id": "UAT-02",
+      "role": "Admin",
+      "module": "Halaman Login Admin",
+      "activity": "Login dengan kredensial tidak valid",
+      "steps": "1. Buka halaman /login.\n2. Isi username/password yang salah.\n3. Klik tombol login.",
+      "expected_result": "Sistem menampilkan pesan error dan tetap berada di halaman login."
+    },
+    {
+      "test_id": "UAT-03",
+      "role": "Admin",
+      "module": "Manajemen Menu",
+      "activity": "Menambah menu baru",
+      "steps": "1. Buka halaman /admin/menu/create.\n2. Isi nama, harga, kategori, dan unggah gambar menu.\n3. Klik simpan.",
+      "expected_result": "Menu baru tersimpan, gambar terupload ke Cloudinary, dan muncul di daftar menu /admin/menu."
+    },
+    {
+      "test_id": "UAT-04",
+      "role": "Admin",
+      "module": "Manajemen Menu",
+      "activity": "Mengubah status aktif menu",
+      "steps": "1. Buka halaman /admin/menu.\n2. Pilih salah satu menu.\n3. Klik toggle status aktif/nonaktif.",
+      "expected_result": "Status menu berubah dan menu nonaktif tidak lagi tampil di halaman customer."
+    },
+    {
+      "test_id": "UAT-05",
+      "role": "Admin",
+      "module": "Manajemen Pesanan",
+      "activity": "Memproses pesanan hingga selesai",
+      "steps": "1. Buka halaman /admin/orders.\n2. Pilih pesanan dengan status baru.\n3. Klik proses, lalu siap, lalu selesai secara berurutan.",
+      "expected_result": "Status pesanan berubah sesuai urutan dan tersimpan di database."
+    },
+    {
+      "test_id": "UAT-06",
+      "role": "Admin",
+      "module": "Manajemen Pesanan",
+      "activity": "Membuat pesanan walk-in",
+      "steps": "1. Buka halaman /admin/orders/walkin.\n2. Pilih menu dan jumlah item untuk pelanggan.\n3. Klik simpan pesanan.",
+      "expected_result": "Order baru dengan sumber WALKIN tersimpan dan tampil di daftar pesanan."
+    },
+    {
+      "test_id": "UAT-07",
+      "role": "Admin",
+      "module": "Dashboard Admin",
+      "activity": "Melihat ringkasan dashboard",
+      "steps": "1. Login sebagai admin.\n2. Buka /admin/dashboard.",
+      "expected_result": "Sistem menampilkan ringkasan pesanan aktif, pesanan selesai, menu terlaris, dan grafik pendapatan mingguan."
+    },
+    {
+      "test_id": "UAT-08",
+      "role": "Customer",
+      "module": "Halaman Menu dan Keranjang Customer",
+      "activity": "Menambahkan menu ke keranjang",
+      "steps": "1. Buka halaman /menu.\n2. Pilih salah satu menu.\n3. Klik tambah ke keranjang.\n4. Buka halaman /cart.",
+      "expected_result": "Item menu tersimpan di keranjang berdasarkan session_id dan tampil di halaman /cart."
+    },
+    {
+      "test_id": "UAT-09",
+      "role": "Customer",
+      "module": "Preorder Customer",
+      "activity": "Membuat pesanan preorder",
+      "steps": "1. Tambahkan menu ke keranjang.\n2. Buka halaman /preorder.\n3. Isi data pemesanan.\n4. Klik buat pesanan.",
+      "expected_result": "Sistem membuat order dengan kode pesanan unik dan mengarahkan customer ke halaman pembayaran, keranjang menjadi kosong."
+    },
+    {
+      "test_id": "UAT-10",
+      "role": "Customer",
+      "module": "Lacak Pesanan",
+      "activity": "Melacak status pesanan dengan kode",
+      "steps": "1. Buka halaman /track.\n2. Masukkan kode pesanan yang valid.\n3. Klik lacak.",
+      "expected_result": "Sistem menampilkan status pesanan terkini sesuai kode yang dimasukkan."
+    },
+    {
+      "test_id": "UAT-11",
+      "role": "Customer",
+      "module": "Chatbot AI",
+      "activity": "Chat dengan asisten AI untuk bertanya menu",
+      "steps": "1. Buka fitur chat di aplikasi.\n2. Kirim pesan menanyakan rekomendasi menu.\n3. Amati balasan chatbot.",
+      "expected_result": "Chatbot membalas dengan rekomendasi menu yang relevan berdasarkan data menu yang tersedia."
+    }
+  ]
+}
