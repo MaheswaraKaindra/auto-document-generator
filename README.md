@@ -90,9 +90,9 @@ tidak pernah meninggalkan mesin.
 
 **Gaya dokumen bisa dipilih** lewat `template_id`:
 
-- `default` — gaya acuan enterprise (header tabel hitam).
-- `premco` — meniru konvensi dokumen PREMCO/Pertamina (tabel use case biru
-  menyatu). Menyediakan SDD **dan** UAT.
+- `premco` — **(default)** meniru konvensi dokumen PREMCO/Pertamina (tabel use case
+  biru menyatu). Menyediakan SDD **dan** UAT.
+- `default` — gaya acuan enterprise netral (header tabel hitam).
 - **template hasil upload sendiri** — unggah `.docx` template perusahaan lewat
   `POST /templates`, sistem mengukur gayanya (font, tabel, struktur bab) dan
   mendaftarkannya sebagai gaya baru (fitur "V2", masih berkembang).
@@ -316,6 +316,8 @@ bernilai bukan menambah fitur, melainkan membuktikan & mengemas apa yang sudah a
 
 - [`CLAUDE.md`](CLAUDE.md) — pengetahuan permanen: arsitektur, kontrak antar-tahap,
   keterbatasan (dengan angka), dan prinsip kerja. **Baca ini kalau mau berkontribusi.**
+- [`DEMO.md`](DEMO.md) — panduan mendemokan produk: skenario ~5 menit, poin nilai
+  jual, dan antisipasi pertanyaan penguji.
 - [`CHANGELOG.md`](CHANGELOG.md) — riwayat perubahan detail + alasan tiap keputusan.
 - `SESSION.md` — catatan sesi kerja terakhir (ditimpa tiap sesi baru).
 - `scripts/validation/README.md` — cara menjalankan validasi ke repo publik nyata.

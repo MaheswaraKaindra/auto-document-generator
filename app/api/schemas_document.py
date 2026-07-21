@@ -107,10 +107,12 @@ class GenerateDocumentRequest(BaseModel):
     repositories: list[GithubRepoIn] = Field(default_factory=list)
     zip_files: Optional[list[ZipFileIn]] = None
     document_metadata: Optional[DocumentMetadata] = None
-    # Gaya dokumen: "default" (template bawaan) atau "premco" (kompilasi manual
-    # docx PREMCO, V1 roadmap tahap c — baru menyediakan SDD). Divalidasi
-    # sinkron di endpoint; kombinasi yang tidak tersedia = 422.
-    template_id: str = "default"
+    # Gaya dokumen. DEFAULT-nya "premco" (meniru konvensi dokumen PREMCO/Pertamina
+    # — tabel use case biru menyatu; menyediakan SDD & UAT), karena instance ini
+    # premco-first. "default" = gaya acuan enterprise netral (header hitam) tetap
+    # tersedia sebagai pilihan, begitu pula id template hasil upload lewat
+    # POST /templates. Divalidasi sinkron di endpoint; kombinasi tak tersedia = 422.
+    template_id: str = "premco"
     # Logo perusahaan (PNG/JPEG, base64) — muncul di header TIAP halaman dokumen,
     # seperti dokumen acuan enterprise. SENGAJA bukan field DocumentMetadata:
     # kontrak metadata itu "string yang jatuh ke penanda (diisi manual) kalau

@@ -218,7 +218,8 @@ function summarizeMapping(mappings) {
 function App() {
   const [projectName, setProjectName] = useState('')
   const [documentType, setDocumentType] = useState('SDD')
-  const [templateId, setTemplateId] = useState('default')
+  // Default 'premco': instance ini premco-first, jadi tak perlu pilih tiap kali.
+  const [templateId, setTemplateId] = useState('premco')
   const [githubToken, setGithubToken] = useState('')
   const [repositories, setRepositories] = useState([emptyRepo()])
   // Sumber kode: 'github' (URL) atau 'zip' (upload arsip). Backend memilih ZIP
@@ -258,7 +259,7 @@ function App() {
       const resp = await fetch(`${API_BASE_URL}/templates`)
       if (resp.ok) setTemplates((await resp.json()).templates || [])
     } catch {
-      // gagal ambil daftar: dropdown fallback ke 'default' (tetap valid di backend)
+      // gagal ambil daftar: dropdown fallback ke 'premco' (tetap valid di backend)
     }
   }
   useEffect(() => {
@@ -553,7 +554,7 @@ function App() {
                   const nextType = e.target.value
                   setDocumentType(nextType)
                   const chosen = templates.find((t) => t.id === templateId)
-                  if (chosen && !chosen.doc_types.includes(nextType)) setTemplateId('default')
+                  if (chosen && !chosen.doc_types.includes(nextType)) setTemplateId('premco')
                 }}
               >
                 <option value="SDD">Solution Design Document (SDD)</option>
@@ -584,7 +585,7 @@ function App() {
               Gaya Dokumen
               <select value={templateId} onChange={(e) => setTemplateId(e.target.value)}>
                 {availableTemplates.length === 0 ? (
-                  <option value="default">memuat gaya dokumen…</option>
+                  <option value="premco">memuat gaya dokumen…</option>
                 ) : (
                   availableTemplates.map((t) => (
                     <option key={t.id} value={t.id}>
