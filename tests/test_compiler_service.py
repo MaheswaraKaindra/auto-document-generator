@@ -1452,7 +1452,7 @@ def test_typography_reaches_the_generated_document(mock_plantuml_ok):
 
     document = Document(compiler_service.generate_docx("SDD", data))
 
-    section = document.styles["Heading 2"].font
-    assert section.bold and section.all_caps, "judul bab harus tebal & huruf besar"
+    section = document.styles["Heading 1"].font
+    assert section.bold and section.all_caps, "judul bab (Heading 1) harus tebal & huruf besar"
     caption = document.styles["Image Caption"].font
     assert caption.italic and caption.size.pt <= 10, "caption harus kecil & miring"

@@ -82,6 +82,14 @@ BODY_FONT = "Calibri"
 
 BLACK = "000000"
 WHITE = "FFFFFF"
+# 2026-07-21: header tabel dikembalikan ke HITAM atas aturan tipografi pemilik
+# ("Table Header: background hitam, teks putih"). Konstanta DARK tetap ada untuk
+# jalur sintesis template upload (fallback), tapi default PREMCO kembali BLACK.
+DARK = "3B3838"
+# "Semi bold" heading 3: Calibri tak punya varian Semibold di OOXML (w:b itu
+# biner), jadi diaproksimasi bold + abu gelap — terbaca lebih ringan dari H2
+# (hitam bold), memberi tingkat ketiga hierarki tanpa font tambahan.
+SEMIBOLD_INK = "595959"
 GRID = "BFBFBF"  # abu-abu garis tabel: kelihatan, tapi tidak berteriak
 CAPTION_INK = "44546A"  # biru-kelabu caption, meniru caption dokumen acuan
 
@@ -398,10 +406,10 @@ def _letterspacing(caps: bool):
 _PREMCO_STYLE = {
     "heading_font": BODY_FONT,   # tema major
     "body_font": BODY_FONT,      # tema minor
-    "title":    {"size": 22, "bold": True, "caps": False, "align": "center"},
-    "heading1": {"size": 16, "bold": True, "caps": True,  "align": "center"},
-    "heading2": {"size": 14, "bold": True, "caps": True,  "align": "center"},
-    "heading3": {"size": 12, "bold": True, "caps": False, "align": None},
+    "title":    {"size": 30, "bold": True, "caps": False, "align": "center"},
+    "heading1": {"size": 16, "bold": True, "caps": True,  "align": "center"},  # bab: besar+bold+UPPERCASE
+    "heading2": {"size": 13, "bold": True, "caps": False, "align": "left"},    # sub-bab: bold
+    "heading3": {"size": 12, "bold": True, "caps": False, "align": "left"},    # sub-sub: semibold (approx via SEMIBOLD_INK)
     "header_fill": BLACK,
     "header_text": WHITE,
 }
@@ -475,10 +483,12 @@ def build_reference(destination: Path = DEFAULT_REFERENCE, spec: dict | None = N
              caps=cfg["title"]["caps"], align=cfg["title"]["align"],
              char_spacing=_letterspacing(cfg["title"]["caps"]), before=64, after=28)
 
-    # Section = Heading 2, karena template memakai `##` (`#` dipakai judul, yang
-    # kini datang dari metadata). Di dokumen acuan judul bab DI TENGAH, bold,
-    # huruf besar — bukan rata kiri gaya Markdown. Perenggangan antar-huruf
-    # halus (char_spacing) jadi aksen visualnya.
+    # Aturan tipografi pemilik (2026-07-21): H1 = bab (besar+bold+UPPERCASE,
+    # tengah), H2 = sub-bab (bold), H3 = sub-sub (semibold, diaproksimasi bold +
+    # SEMIBOLD_INK). Template DIGESER agar bab pakai `#` = Word Heading 1 (dulu
+    # bab `##` = Heading 2; `#` bebas karena judul datang dari metadata) — supaya
+    # style Word H1/H2/H3 cocok langsung dengan aturan & penamaan Word benar saat
+    # diedit. Perenggangan antar-huruf (char_spacing) mengiringi huruf besar H1.
     _restyle(styles["Heading 1"], size=cfg["heading1"]["size"], bold=cfg["heading1"]["bold"],
              caps=cfg["heading1"]["caps"], color=BLACK, align=cfg["heading1"]["align"],
              before=28, after=12, keep_next=True,
@@ -488,16 +498,16 @@ def build_reference(destination: Path = DEFAULT_REFERENCE, spec: dict | None = N
              before=28, after=14, keep_next=True,
              char_spacing=_letterspacing(cfg["heading2"]["caps"]))
     _restyle(styles["Heading 3"], size=cfg["heading3"]["size"], bold=cfg["heading3"]["bold"],
-             caps=cfg["heading3"]["caps"], color=BLACK, align=cfg["heading3"]["align"],
+             caps=cfg["heading3"]["caps"], color=SEMIBOLD_INK, align=cfg["heading3"]["align"],
              before=16, after=8, keep_next=True,
              char_spacing=_letterspacing(cfg["heading3"]["caps"]))
 
     # Judul "Daftar Isi/Gambar/Tabel": rupa mengikuti judul bab (Heading 2, level
     # bab template), plus SELALU mulai halaman baru — di acuan tiap daftar punya
     # halamannya sendiri.
-    _restyle(styles["TOC Heading"], size=cfg["heading2"]["size"], bold=cfg["heading2"]["bold"],
-             caps=cfg["heading2"]["caps"], color=BLACK, align=cfg["heading2"]["align"],
-             before=0, after=18, char_spacing=_letterspacing(cfg["heading2"]["caps"]),
+    _restyle(styles["TOC Heading"], size=cfg["heading1"]["size"], bold=cfg["heading1"]["bold"],
+             caps=cfg["heading1"]["caps"], color=BLACK, align=cfg["heading1"]["align"],
+             before=0, after=18, char_spacing=_letterspacing(cfg["heading1"]["caps"]),
              page_break_before=True)
 
     # Caption: kecil, miring, biru-kelabu, di TENGAH — persis caption acuan.
@@ -513,8 +523,8 @@ def build_reference(destination: Path = DEFAULT_REFERENCE, spec: dict | None = N
 
     # Body JUSTIFIED (rata kiri-kanan) dengan spasi baris longgar — dua penanda
     # dokumen resmi yang paling terlihat saat disandingkan dengan acuan.
-    _restyle(styles["Body Text"], size=11, align="both", after=8, line=16)
-    _restyle(styles["First Paragraph"], size=11, align="both", after=8, line=16)
+    _restyle(styles["Body Text"], size=11, align="both", after=10, line=17)
+    _restyle(styles["First Paragraph"], size=11, align="both", after=10, line=17)
     # Compact dipakai sel tabel DAN list rapat: sedikit lebih kecil dari body.
     _restyle(styles["Compact"], size=10.5, after=2, line=14)
 

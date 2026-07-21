@@ -82,13 +82,13 @@
 | Developer | |
 | Design UI/UX | |
 
-## Document Revision History
+# Document Revision History
 
 | No. | Version | Revision Date | Changed By | Summary of Changes |
 |:---:|------|---------|---------|------------------|
 | | | | | |
 
-## Application Revision History
+# Application Revision History
 
 | No. | Version | Revision Date | Changed By | Summary of Changes |
 |:---:|------|---------|---------|------------------|
@@ -98,7 +98,7 @@
 <w:p><w:r><w:br w:type="page"/></w:r></w:p>
 ```
 
-## Persetujuan Dokumen
+# Persetujuan Dokumen
 
 Dokumen ini dibuat sebagai dasar pengembangan {{ project_name }}. Jika ada perubahan dari kesepakatan waktu yang telah disetujui sebelumnya, maka lingkup perubahan dan tata waktu pekerjaan tersebut akan ditinjau kembali antara tim pengembang dengan customer aplikasi.
 
@@ -160,7 +160,7 @@ Tanda tangan dibubuhkan pada dokumen cetak setelah dokumen ini disetujui — bag
 <w:p><w:r><w:br w:type="page"/></w:r></w:p>
 ```
 
-## 1. Deskripsi Aplikasi
+# 1. Deskripsi Aplikasi
 
 {{ app_description }}
 
@@ -174,11 +174,11 @@ Tanda tangan dibubuhkan pada dokumen cetak setelah dokumen ini disetujui — bag
 
 : Tabel 1 Informasi Role Pengguna
 
-## 2. Application Dev System Type
+# 2. Application Dev System Type
 
 {{ meta.dev_system_type }}
 
-## 3. Informasi Demografi Aplikasi
+# 3. Informasi Demografi Aplikasi
 
 | No. | Subject | Uraian | Remark |
 |:---:|----------|--------------------|-----|
@@ -192,7 +192,7 @@ Tanda tangan dibubuhkan pada dokumen cetak setelah dokumen ini disetujui — bag
 
 : Tabel 2 Informasi Demografi Aplikasi
 
-## 4. System Requirement
+# 4. System Requirement
 
 | No. | System Requirement | Uraian |
 |:---:|----------|--------------------|
@@ -202,7 +202,7 @@ Tanda tangan dibubuhkan pada dokumen cetak setelah dokumen ini disetujui — bag
 
 : Tabel 3 System Requirement
 
-## 5. How to Access
+# 5. How to Access
 
 {# Checklist 2 baris tetap — bentuk ini DIUKUR dari docx acuan (dulu satu field
    teks bebas, yang tidak pernah menyerupai tabelnya). Sama seperti checklist
@@ -214,21 +214,21 @@ Tanda tangan dibubuhkan pada dokumen cetak setelah dokumen ini disetujui — bag
 
 : Tabel 4 How to Access
 
-## 6. Infrastructure & Capacity Planning
+# 6. Infrastructure & Capacity Planning
 
 {{ meta.infrastructure_capacity }}
 
-## 7. Application Architecture
+# 7. Application Architecture
 
-### 7.1 System Architecture
+## 7.1 System Architecture
 
 ![Gambar 1 Arsitektur Sistem]({{ diagrams.system_architecture_image }}){{ diagrams.system_architecture_attr }}
 
-### 7.2 Component Integration
+## 7.2 Component Integration
 
 ![Gambar 2 Integrasi Komponen]({{ diagrams.component_integration_image }}){{ diagrams.component_integration_attr }}
 
-## 8. Application Security
+# 8. Application Security
 
 | No. | Check List | Remark |
 |:---:|------------|------------|
@@ -238,7 +238,7 @@ Tanda tangan dibubuhkan pada dokumen cetak setelah dokumen ini disetujui — bag
 
 : Tabel 5 Application Security
 
-## 9. Application Features Requirement
+# 9. Application Features Requirement
 
 | No. | Fitur Aplikasi | Deskripsi Fitur |
 |:---:|----------|----------------------|
@@ -248,7 +248,7 @@ Tanda tangan dibubuhkan pada dokumen cetak setelah dokumen ini disetujui — bag
 
 : Tabel 6 Application Features Requirement
 
-## 10. Flow Proses Bisnis
+# 10. Flow Proses Bisnis
 
 {{ business_flow_description }}
 
@@ -262,14 +262,14 @@ Tahapan alur proses bisnis:
 {# Baris kosong di bawah WAJIB — heading berikutnya harus dipisah baris kosong
    dari list (blank_before_header), kembaran aturan di blok Acceptance Criteria. #}
 
-## 11. Use Case
+# 11. Use Case
 
 {# SATU diagram use case gabungan (semua aktor dalam satu gambar), gaya UML acuan
    enterprise. Gambar 4 tetap; activity di bawah mulai Gambar 5 (loop.index + 4). #}
 ![Gambar 4 Use Case Diagram]({{ diagrams.use_case_diagram_image }}){{ diagrams.use_case_diagram_attr }}
 
 {% for uc in use_cases %}
-### 11.{{ loop.index }} Use Case {{ uc.use_case_id }} — {{ uc.actor }}
+## 11.{{ loop.index }} Use Case {{ uc.use_case_id }} — {{ uc.actor }}
 
 | Field | Isi |
 |------|--------------------|
@@ -298,10 +298,10 @@ Tahapan alur proses bisnis:
 
 {% endfor %}
 
-## 12. Activity Diagram
+# 12. Activity Diagram
 
 {% for activity in diagrams.activity_diagrams %}
-### 12.{{ loop.index }} {{ activity.activity_name }}
+## 12.{{ loop.index }} {{ activity.activity_name }}
 
 {{ activity.description }}
 
@@ -336,6 +336,6 @@ Tahapan alur proses bisnis:
    bukan dua seperti acuan: template generik tidak tahu aplikasinya punya
    platform apa saja, dan bab kosong yang tidak relevan lebih buruk daripada
    tidak ada (pelajaran yang sama dengan Daftar Gambar UAT). #}
-## 13. Mockup Antarmuka
+# 13. Mockup Antarmuka
 
 *Tampilan antarmuka (mockup UI) tidak dapat diturunkan dari source code. Bagian ini dilengkapi manual oleh tim desain — lampirkan mockup atau tangkapan layar tiap halaman aplikasi di sini.*

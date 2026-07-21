@@ -73,13 +73,13 @@
 | Developer | |
 | Design UI/UX | |
 
-## Document Revision History
+# Document Revision History
 
 | No. | Version | Revision Date | Changed By | Summary of Changes |
 |:---:|------|---------|---------|------------------|
 | | | | | |
 
-## Application Revision History
+# Application Revision History
 
 | No. | Version | Revision Date | Changed By | Summary of Changes |
 |:---:|------|---------|---------|------------------|
@@ -89,7 +89,7 @@
 <w:p><w:r><w:br w:type="page"/></w:r></w:p>
 ```
 
-## Persetujuan Dokumen
+# Persetujuan Dokumen
 
 Dokumen ini dibuat sebagai dasar pengembangan {{ project_name }}. Jika ada perubahan dari kesepakatan waktu yang telah disetujui sebelumnya, maka lingkup perubahan dan tata waktu pekerjaan tersebut akan ditinjau kembali antara tim pengembang dengan customer aplikasi.
 
@@ -138,7 +138,7 @@ Tanda tangan dibubuhkan pada dokumen cetak setelah dokumen ini disetujui — bag
 <w:p><w:r><w:br w:type="page"/></w:r></w:p>
 ```
 
-## Deskripsi Aplikasi
+# Deskripsi Aplikasi
 
 {{ app_description }}
 
@@ -150,11 +150,11 @@ Tanda tangan dibubuhkan pada dokumen cetak setelah dokumen ini disetujui — bag
 
 : Tabel 1 Informasi Role Pengguna
 
-## Application Dev System Type
+# Application Dev System Type
 
 {{ meta.dev_system_type }}
 
-## Informasi Demografi Aplikasi
+# Informasi Demografi Aplikasi
 
 | No. | Subject | Uraian | Remark |
 |:---:|----------|--------------------|-----|
@@ -175,7 +175,7 @@ Tanda tangan dibubuhkan pada dokumen cetak setelah dokumen ini disetujui — bag
    TIDAK DAPAT diturunkan dari kode — kompatibilitas browser/OS itu keputusan
    deployment, bukan sesuatu yang ada di source. Aturan V1 (mengisi, bukan
    mengarang; slot tanpa data DI-DROP) → tabel kedua tidak dibuat. #}
-## System Requirement
+# System Requirement
 
 | No. | System Requirement | Uraian | Remark |
 |:---:|----------|------------------|-----|
@@ -185,7 +185,7 @@ Tanda tangan dibubuhkan pada dokumen cetak setelah dokumen ini disetujui — bag
 
 : Tabel 3 System Requirement
 
-## How to Access
+# How to Access
 
 | No. | How to Access | Deskripsi | Remark |
 |:---:|--------------|------|--------------------------|
@@ -194,7 +194,7 @@ Tanda tangan dibubuhkan pada dokumen cetak setelah dokumen ini disetujui — bag
 
 : Tabel 4 How to Access
 
-## Infrastructure & Capacity Planning
+# Infrastructure & Capacity Planning
 
 {# Kerangka KOSONG, meniru dokumen asli: 22 baris, kolom Remark berisi URL &
    kapasitas deployment — tidak diturunkan dari kode dan tidak ditanyakan form
@@ -229,11 +229,11 @@ Tanda tangan dibubuhkan pada dokumen cetak setelah dokumen ini disetujui — bag
 
 : Tabel 5 Infrastructure and Capacity Planning
 
-## Application Architecture
+# Application Architecture
 
 ![Gambar 1 Arsitektur Sistem]({{ diagrams.system_architecture_image }}){{ diagrams.system_architecture_attr }}
 
-## Application Security
+# Application Security
 
 | No. | Check List | Remark |
 |:---:|------------|------------|
@@ -243,7 +243,7 @@ Tanda tangan dibubuhkan pada dokumen cetak setelah dokumen ini disetujui — bag
 
 : Tabel 6 Application Security
 
-## Application Features Requirement
+# Application Features Requirement
 
 | No. | Fitur Aplikasi | Deskripsi Fitur | Remark |
 |:---:|----------|----------------------|----|
@@ -253,7 +253,7 @@ Tanda tangan dibubuhkan pada dokumen cetak setelah dokumen ini disetujui — bag
 
 : Tabel 7 Application Features Requirement
 
-## Flow Proses Bisnis
+# Flow Proses Bisnis
 
 {{ business_flow_description }}
 
@@ -266,7 +266,7 @@ Tahapan alur proses bisnis:
 {% endfor %}
 {# Baris kosong di bawah WAJIB — pemisah list dari heading (blank_before_header). #}
 
-## Use Case
+# Use Case
 
 {# SATU diagram use case gabungan (semua aktor dalam satu gambar). Gambar 3 tetap;
    activity di bawah mulai Gambar 4 (loop.index + 3). #}
@@ -285,7 +285,7 @@ Tahapan alur proses bisnis:
 
 {% endfor %}
 
-## Activity Diagram
+# Activity Diagram
 
 {% for activity in diagrams.activity_diagrams %}
 {{ activity.description }}
@@ -309,10 +309,10 @@ Tahapan alur proses bisnis:
 
 {# Dokumen aslinya menutup dengan DUA bab mockup — Website dan Aplikasi.
    Keduanya placeholder manual: mockup mustahil diturunkan dari kode. #}
-## Mockup Website
+# Mockup Website
 
 *Tampilan antarmuka website (mockup UI) tidak dapat diturunkan dari source code. Bagian ini dilengkapi manual oleh tim desain.*
 
-## Mockup Aplikasi
+# Mockup Aplikasi
 
 *Tampilan antarmuka aplikasi (mockup UI) tidak dapat diturunkan dari source code. Bagian ini dilengkapi manual oleh tim desain.*

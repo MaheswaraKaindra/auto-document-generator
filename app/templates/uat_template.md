@@ -1,4 +1,4 @@
-## Informasi Dokumen
+# Informasi Dokumen
 
 {# LEBAR KOLOM tabel diatur RASIO DASH pada separator row (dibaca Pandoc karena
    --columns=30 di compiler): dash lebih banyak = kolom lebih lebar; `:---:` =
@@ -14,17 +14,17 @@
 | Reviewed By | {{ meta.reviewed_by }} |
 | Review Date | {{ meta.review_date }} |
 
-## Distribution List
+# Distribution List
 
 {{ meta.distribution_list }}
 
-## Version History
+# Version History
 
 | Ver. No. | Ver. Date | Revised By | Description | File Name |
 | --- | --- | --- | --- | --- |
 | | | | | |
 
-## Rencana Penerimaan User Acceptance Test ("UAT")
+# Rencana Penerimaan User Acceptance Test ("UAT")
 
 Dokumen ini menjelaskan prosedur pelaksanaan pengujian fungsional serta metode pengujian yang digunakan dalam rangka {{ project_name }}.
 
@@ -32,23 +32,23 @@ Persetujuan atas dokumen ini oleh perwakilan pengguna pengujian menunjukkan bahw
 
 Nama, jabatan, dan tanda tangan perwakilan user pengujian serta perwakilan pengembang dibubuhkan pada dokumen cetak saat persetujuan diberikan.
 
-## Sertifikasi Keberhasilan Pelaksanaan Pengujian
+# Sertifikasi Keberhasilan Pelaksanaan Pengujian
 
 Tanggal penyelesaian, klasifikasi hasil (Lolos/Gagal), dan tanda tangan diisi setelah seluruh kasus pengujian pada Bab 3 selesai dieksekusi. Bagian ini sengaja dikosongkan — hasilnya belum ada saat dokumen ini dibuat.
 
-## 1. Prosedur Pengujian
+# 1. Prosedur Pengujian
 
-### 1.1 Entry Criteria
+## 1.1 Entry Criteria
 
 Eksekusi pengujian hanya akan dilakukan jika kriteria-kriteria berikut sudah terpenuhi:
 
 1. Implementasi pembuatan tampilan dan fitur {{ project_name }} telah tersaji secara penuh pada environment QAS dan dapat berfungsi dengan semestinya.
 
-### 1.2 Exit Criteria
+## 1.2 Exit Criteria
 
 UAT hanya akan dianggap berhasil jika semua permasalahan yang timbul selama pelaksanaan pengujian telah diselesaikan dan ketika semua kasus pengujian, seperti yang dinyatakan dalam rencana pengujian yang telah disetujui, telah mendapat hasil yang diinginkan.
 
-### 1.3 Formulir dan Dokumentasi
+## 1.3 Formulir dan Dokumentasi
 
 Setiap kasus pengujian yang diselesaikan oleh penguji akan didokumentasikan dengan salah satu dari status berikut.
 
@@ -68,11 +68,11 @@ Semua kasus pengujian yang berstatus Gagal lebih lanjut harus dijelaskan dalam k
 
 Pada saat eksekusi semua kasus pengujian telah diselesaikan, Sertifikasi Keberhasilan Pelaksanaan Pengujian harus diisi dan ditandatangani.
 
-## 2. Ringkasan Aplikasi
+# 2. Ringkasan Aplikasi
 
 {{ app_description }}
 
-## 3. Case Pengujian
+# 3. Case Pengujian
 
 Kolom **Penguji**, **Tanggal Pengujian**, **Status**, dan **Komentar** diisi manual oleh tim penguji setelah pengujian benar-benar dilaksanakan — kolom ini tidak bisa dihasilkan otomatis dari kode.
 
