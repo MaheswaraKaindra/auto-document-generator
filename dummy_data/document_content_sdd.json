@@ -1,0 +1,83 @@
+{
+  "document_type": "SDD",
+  "app_description": "Aplikasi ini adalah sistem manajemen inventaris SPBU yang memungkinkan admin mengelola stok barang, mencatat transaksi masuk/keluar, dan memantau ketersediaan barang secara real-time melalui dashboard web.",
+  "user_roles": [
+    {
+      "role_name": "Admin",
+      "description": "Mengelola seluruh data inventaris: menambah item, mengubah stok, dan memantau dashboard."
+    }
+  ],
+  "system_requirements": [
+    {
+      "name": "Programming Language",
+      "detail": "Python 3.11+ (Backend), JavaScript/React 18 (Frontend)"
+    },
+    {
+      "name": "Web Framework",
+      "detail": "FastAPI"
+    },
+    {
+      "name": "Database",
+      "detail": "PostgreSQL 14"
+    }
+  ],
+  "feature_requirements": [
+    {
+      "feature_name": "Manajemen Inventaris",
+      "description": "Admin dapat menambah, melihat, dan mengubah data item inventaris beserta jumlah stoknya."
+    }
+  ],
+  "diagrams": {
+    "system_architecture": "@startuml\nleft to right direction\nactor \"User\"\ncomponent \"Frontend Web\" as FE\ncomponent \"Backend API\" as BE\ndatabase \"Database\" as DB\n\"User\" --> FE\nFE --> BE\nBE --> DB\n@enduml",
+    "component_integration": "@startuml\npackage \"Frontend\" {\n  [InventoryListPage]\n  [AddItemForm]\n}\npackage \"Backend\" {\n  [GET /api/inventory]\n  [POST /api/inventory/add]\n}\n[InventoryListPage] --> [GET /api/inventory]\n[AddItemForm] --> [POST /api/inventory/add]\n@enduml",
+    "business_process_flow": "@startuml\nstart\n:Admin login ke sistem;\n:Admin membuka halaman inventaris;\n:Admin menambah atau mengubah data item;\n:Sistem menyimpan perubahan ke database;\n:Dashboard menampilkan data terbaru;\nstop\n@enduml",
+    "use_case_diagram": "@startuml\nleft to right direction\nactor Admin\nrectangle \"Sistem Inventaris\" {\n  usecase \"Melihat Daftar Inventaris\" as UC1\n  usecase \"Menambah Item Baru\" as UC2\n}\nAdmin --> UC1\nAdmin --> UC2\n@enduml",
+    "activity_diagrams": [
+      {
+        "activity_name": "Proses Tambah Item Inventaris",
+        "description": "Admin menambahkan item baru ke dalam sistem inventaris melalui form input.",
+        "actor": "Admin",
+        "pre_condition": "Admin telah login dan berada di halaman inventaris.",
+        "steps": [
+          "Admin membuka form Tambah Item.",
+          "Admin mengisi nama, jumlah, dan satuan item.",
+          "Admin menekan tombol Simpan.",
+          "Sistem memvalidasi isian form.",
+          "Jika valid, sistem menyimpan item ke database dan menampilkannya di daftar."
+        ],
+        "diagram_script": "@startuml\nstart\n:Admin membuka form Tambah Item;\n:Admin mengisi data item;\n:Admin menekan Simpan;\nif (Isian valid?) then (Ya)\n  :Sistem menyimpan ke database;\nelse (Tidak)\n  :Sistem menampilkan pesan error;\nendif\nstop\n@enduml"
+      }
+    ]
+  },
+  "use_cases": [
+    {
+      "use_case_id": "UC-01",
+      "actor": "Admin",
+      "pre_condition": "Admin telah login ke sistem.",
+      "description": "Admin dapat mengelola seluruh data inventaris: menambah item baru, melihat daftar item, dan mengubah data item yang sudah ada.",
+      "acceptance_criteria": [
+        "Admin dapat menambah item inventaris baru melalui form Tambah Item.",
+        "Admin dapat melihat daftar seluruh item inventaris beserta jumlah stoknya.",
+        "Perubahan data item tersimpan ke database dan langsung terlihat di dashboard."
+      ]
+    }
+  ],
+  "business_flow_description": "Admin login ke sistem, membuka halaman inventaris, lalu menambah/mengubah data item. Setiap perubahan langsung tersinkron ke database dan tercermin di dashboard secara real-time.",
+  "business_flow_steps": [
+    "Admin login ke sistem menggunakan akun terdaftar.",
+    "Admin membuka halaman inventaris dari menu utama.",
+    "Admin menambah item baru atau mengubah data item yang sudah ada.",
+    "Sistem memvalidasi lalu menyimpan perubahan ke database.",
+    "Dashboard menampilkan data stok terbaru secara real-time."
+  ],
+  "uat_test_cases": [
+    {
+      "test_id": "UAT-01",
+      "role": "Admin",
+      "module": "Manajemen Inventaris",
+      "activity": "Menambah Item Inventaris",
+      "steps": "1. Buka halaman Inventaris\n2. Klik tombol Tambah Item\n3. Isi nama, jumlah, dan satuan\n4. Klik Simpan",
+      "expected_result": "Item baru muncul di daftar inventaris dan tersimpan di database"
+    }
+  ]
+}

@@ -1,0 +1,32 @@
+# --- Backend Framework ---
+fastapi
+uvicorn[standard]
+python-multipart
+
+# --- Environment Variables ---
+python-dotenv
+
+# --- GitHub Integration ---
+PyGithub
+requests
+
+# --- LLM & AI Orchestration (Claude) ---
+anthropic
+
+# --- Templating & Document Generation ---
+Jinja2
+python-docx
+
+# Baca dimensi PNG diagram untuk membatasi ukuran tampilnya (compiler_service).
+# Ditulis eksplisit walau selama ini sudah ikut terpasang lewat python-docx:
+# nebeng dependency transitif itu rapuh — python-docx boleh saja melepasnya, dan
+# aplikasi ini akan rusak karena alasan yang tidak masuk akal.
+Pillow
+pypandoc
+
+# --- Code Parsing (generic, multi-language) ---
+tree-sitter
+tree-sitter-language-pack
+
+# --- Testing ---
+pytest

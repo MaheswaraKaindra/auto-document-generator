@@ -1,0 +1,94 @@
+{
+  "_comment": [
+    "Daftar kasus validasi. Tiap kasus sengaja dipilih untuk menguji SATU asumsi",
+    "produk, bukan asal menumpuk repo. Kolom 'expect' ditulis SEBELUM dijalankan —",
+    "kalau hasilnya beda jauh dari ekspektasi, di situlah temuannya, entah karena",
+    "produknya kurang atau karena ekspektasi kita yang keliru.",
+    "",
+    "Satu kasus bisa berisi >1 repo (lihat realworld-fullstack) untuk menguji",
+    "cross-repo mapping FE<->BE."
+  ],
+  "cases": [
+    {
+      "name": "flask",
+      "asumsi_yang_diuji": "Baseline Python: repo yang didukung penuh harus menghasilkan coverage tinggi.",
+      "expect": "coverage >0.5, banyak class/function terdeteksi. Kalau baseline ini saja jelek, masalahnya di parser, bukan di bahasanya.",
+      "repos": [
+        { "repo_tag": "Backend", "repo_url": "https://github.com/pallets/flask" }
+      ]
+    },
+    {
+      "name": "express",
+      "asumsi_yang_diuji": "Baseline JS: deteksi Express-style call harus jalan di repo Express-nya sendiri.",
+      "expect": "coverage sedang-tinggi, endpoint terdeteksi.",
+      "repos": [
+        { "repo_tag": "Backend", "repo_url": "https://github.com/expressjs/express" }
+      ]
+    },
+    {
+      "name": "realworld-fullstack",
+      "asumsi_yang_diuji": "Cross-repo mapping (FE fetch <-> BE endpoint) — pembeda utama produk ini, dan satu-satunya kasus yang benar-benar mengujinya.",
+      "expect": "Kedua repo terparse; BE memunculkan api_endpoints, FE memunculkan ui_component. Kualitas mapping-nya cuma bisa dinilai di Tahap 2 dengan membaca dokumennya.",
+      "repos": [
+        { "repo_tag": "Backend", "repo_url": "https://github.com/gothinkster/node-express-realworld-example-app" },
+        { "repo_tag": "FE-Web", "repo_url": "https://github.com/gothinkster/react-redux-realworld-example-app" }
+      ]
+    },
+    {
+      "name": "saleor-django",
+      "asumsi_yang_diuji": "Aplikasi bisnis Python yang BUKAN FastAPI. Deteksi endpoint kita cuma mengenali decorator berbentuk app.<method>('path'); Django menaruh route di urls.py lewat path(), bukan decorator. Django adalah framework paling umum di aplikasi bisnis Python, jadi kalau ini kosong, 'dukungan Python' kita sebenarnya cuma 'dukungan FastAPI'.",
+      "expect": "Parse berhasil; manifest (pyproject.toml, name=saleor) menyaring ke folder saleor/. Endpoint ~0 — bukan karena parser rusak, tapi karena Django tidak memakai decorator. Coverage sedang: models.py dan schema.py tertangkap heuristik ('model'/'schema'), tapi views.py/urls.py/admin.py jatuh ke 'other'. Pertanyaan sebenarnya ada di Tahap 2: dengan 0 endpoint, apakah LLM tetap menulis fitur dengan percaya diri? Kalau ya, itu karangan. CONFOUND yang harus diakui: saleor GraphQL-first, jadi 0 endpoint punya dua sebab yang menyatu (Django + GraphQL). Untuk memisahkannya perlu kasus Django-REST tersendiri.",
+      "repos": [
+        { "repo_tag": "Backend", "repo_url": "https://github.com/saleor/saleor" }
+      ]
+    },
+    {
+      "name": "medusa-monorepo",
+      "asumsi_yang_diuji": "narrow_to_product() di MONOREPO. Deteksi manifest sejauh ini cuma diuji pada repo satu-paket (fastapi, flask, express, requests). Monorepo Turborepo menaruh package.json di root yang cuma mendeklarasikan workspace, sementara kode aslinya di packages/*/ dengan package.json masing-masing.",
+      "expect": "Manifest root diduga TIDAK menunjuk ke kode mana pun (tidak ada 'files', 'name'-nya tidak cocok dengan folder mana pun) -> desain fail-open menyimpan SEMUA file. Kalau benar, www/ (situs dokumentasi) dan integration-tests/ ikut terbawa — kelas bug yang sama persis dengan docs_src/ fastapi yang dulu bikin SDD menyebut 'Manajemen Hero' sebagai fitur produk. Mungkin juga menembus batas MAX_TOTAL_FILES (5.000). Fail-open memang disengaja (filter rakus lebih berbahaya daripada noise), tapi monorepo bikin 'tidak yakin' jadi kasus UMUM, bukan pengecualian — dan itu yang belum pernah diukur.",
+      "repos": [
+        { "repo_tag": "Backend", "repo_url": "https://github.com/medusajs/medusa" }
+      ]
+    },
+    {
+      "name": "esteler-flask",
+      "asumsi_yang_diuji": "Kode NYATA yang bukan aplikasi contoh. Semua kasus lain di daftar ini ditulis untuk dipamerkan (framework populer, atau realworld yang sengaja dibuat rapi sebagai referensi). Ini aplikasi Flask sungguhan milik anggota tim — konvensinya apa adanya, tidak dirapikan untuk siapa pun. Sekaligus menguji URL berakhiran '.git' (bentuk yang orang salin dari tombol Clone).",
+      "expect": "22 file, coverage 55%, 38 endpoint, 16 class, tipe {other:10, service:8, controller:3, model:1}. PENJAGA PALING PENTING (sejak url_prefix diperbaiki 2026-07-16): TEPAT 18 endpoint harus berawalan /admin/ dan TIDAK BOLEH ADA path yang muncul dua kali. admin_bp punya url_prefix='/admin' di konstruktor Blueprint-nya, sementara auth_bp & customer_bp tidak berprefix — kalau prefix bocor ke dua yang terakhir, path yang selama ini benar justru rusak. Dulu bentrok: 'GET /' dan 'GET /menu' masing-masing diklaim admin.py DAN customer.py. Ekspektasi ASLI (sebelum dijalankan) memperkirakan endpoint ~0 karena 'route' bukan anggota HTTP_METHODS — itu benar, dan sudah diperbaiki 2026-07-16.",
+      "repos": [
+        { "repo_tag": "Backend", "repo_url": "https://github.com/yudhasw/esteler-app.git" }
+      ]
+    },
+    {
+      "name": "requests-library",
+      "asumsi_yang_diuji": "Apakah produk ini diam-diam mengasumsikan setiap repo adalah aplikasi web? requests adalah LIBRARY: tanpa endpoint, tanpa aktor, tanpa alur bisnis.",
+      "expect": "Parse lancar tapi 0 endpoint. Pertanyaan sebenarnya ada di Tahap 2: apakah LLM mengarang use case/aktor yang tidak ada? Kalau ya, itu masalah serius — dokumen terdengar meyakinkan padahal fiktif.",
+      "repos": [
+        { "repo_tag": "Backend", "repo_url": "https://github.com/psf/requests" }
+      ]
+    },
+    {
+      "name": "gin-go",
+      "asumsi_yang_diuji": "Bahasa di luar Python/TS-JS. Go jatuh ke fallback 'other'.",
+      "expect": "coverage ~0 (hampir semua file 'other'). Ini BUKAN kegagalan — ini mengukur seberapa besar lubangnya. Angkanya menentukan seberapa mendesak dukungan Go.",
+      "repos": [
+        { "repo_tag": "Backend", "repo_url": "https://github.com/gin-gonic/gin" }
+      ]
+    },
+    {
+      "name": "spring-petclinic-java",
+      "asumsi_yang_diuji": "Java + Spring MVC, bahasa enterprise yang paling mungkin dipakai calon pengguna SDD/UAT. SEJAK 2026-07-16 parser Java didukung, jadi kasus ini berpindah peran: dulu mengukur seberapa besar lubangnya, sekarang penjaga regresi untuk dukungan Java.",
+      "expect": "33 file, 17 endpoint, 25 class, coverage 33%, tipe {controller: 6, repository: 3, model: 2}. Endpoint yang butuh penyambungan prefix class harus utuh: PetController @RequestMapping('/owners/{ownerId}') + @GetMapping('/pets/new') = /owners/{ownerId}/pets/new. Cuma SATU endpoint boleh berpath '/' (WelcomeController) — kalau muncul dua, bentuk array posisional @GetMapping({'/vets'}) pecah lagi dan path-nya diam-diam jatuh ke '/'. CATATAN UKURAN: 33 file terlalu kecil untuk menjawab 'apakah repo Java enterprise muat di context window'. Densitasnya terukur 0,64 KB/file (sebanding saleor 0,81), tapi petclinic nyaris tanpa Javadoc; repo enterprise ber-Javadoc padat bisa jauh lebih berat. Butuh aplikasi Java besar tersendiri untuk menutup pertanyaan itu.",
+      "repos": [
+        { "repo_tag": "Backend", "repo_url": "https://github.com/spring-projects/spring-petclinic" }
+      ]
+    },
+    {
+      "name": "fastapi-large",
+      "asumsi_yang_diuji": "Skala. Repo Python besar dengan banyak endpoint — menguji waktu ingest, ukuran Contract A, dan (di Tahap 2) apakah diagramnya membengkak.",
+      "expect": "Parse berhasil tapi lambat; Contract A besar. Inilah kandidat utama yang dulu memicu bug 414 mermaid.ink — sekarang harusnya lolos berkat encoding pako.",
+      "repos": [
+        { "repo_tag": "Backend", "repo_url": "https://github.com/tiangolo/fastapi" }
+      ]
+    }
+  ]
+}

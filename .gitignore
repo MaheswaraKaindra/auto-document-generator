@@ -1,0 +1,51 @@
+.env
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+PERAN1_NOTES.md
+*.msi
+
+# Dokumen hasil generate + file lock Word. Pola lama `output_*.docx` cuma cocok
+# dengan nama yang DULU dipakai kode; dokumen yang diunduh lewat browser mendarat
+# dengan nama apa pun (mis. dokumen.docx, Solution_Design_Document.docx) di folder
+# unduhan — yang saat demo ternyata root project ini.
+*.docx
+~$*
+
+# ...KECUALI kerangka tampilan Pandoc, yang WAJIB ikut repo. Tanpa file ini,
+# --reference-doc menunjuk ke file yang tidak ada dan SETIAP generate gagal di
+# mesin yang baru clone — sementara di mesin yang sudah menjalankan
+# build_reference_docx.py semuanya terlihat normal. Persis "works on my machine".
+# (Pola `*.docx` di atas ditulis saat repo ini memang belum punya .docx yang perlu
+#  di-commit. Itu berubah beberapa jam kemudian.)
+!app/templates/reference.docx
+
+# Artefak run validasi (Contract A, docx, laporan) — hasil eksperimen, bukan
+# bagian dari repo. Yang di-commit cuma harness dan daftar kasusnya.
+scripts/validation/out/
+
+# Dokumen referensi internal (mis. SDD contoh dari perusahaan, plus template
+# SDD/UAT dari vendor lain yang dikumpulkan untuk V2) — repo ini ditujukan jadi
+# produk publik, jangan sampai ikut ter-commit. `.doc` (format biner Word lama)
+# ditutup terpisah karena pola `*.docx` di atas TIDAK mencocokkannya.
+*.pdf
+*.doc
+
+# Database SQLite (status job + dokumen hasil) — dibuat otomatis saat runtime.
+data/
+
+# Binary tool pihak ketiga yang diunduh manual (plantuml.jar — 29 MB, lihat
+# setup di CLAUDE.md). Terlalu besar untuk di-commit, dan versinya urusan
+# masing-masing mesin.
+tools/
+
+# Catatan belajar pribadi + bekal presentasi — bukan dokumentasi produk.
+PELAJARAN.md
+
+# Gambar nyasar di root (screenshot yang ditaruh untuk didiskusikan, dsb.) —
+# `git add -A` pernah menyapu satu screenshot browser ke repo publik. Root-only
+# (pola berawalan /): aset gambar frontend di frontend/public/ tidak kena.
+/*.png
+/*.jpg
+/*.jpeg

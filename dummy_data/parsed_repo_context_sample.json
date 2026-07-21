@@ -1,0 +1,190 @@
+{
+  "project_name": "task-manager-demo",
+  "repositories": [
+    {
+      "repo_tag": "Backend",
+      "files": [
+        {
+          "file_name": "auth_controller.py",
+          "file_path": "app/api/auth_controller.py",
+          "type": "controller",
+          "dependencies": ["fastapi", "app.services.auth_service"],
+          "classes": [
+            {
+              "class_name": "AuthController",
+              "methods": [
+                {
+                  "method_name": "login",
+                  "parameters": ["email", "password"],
+                  "return_type": "TokenResponse",
+                  "description": "Autentikasi user dengan email dan password, mengembalikan access token dan refresh token."
+                },
+                {
+                  "method_name": "logout",
+                  "parameters": ["refresh_token"],
+                  "return_type": "None",
+                  "description": "Mencabut refresh token yang sedang aktif sehingga sesi user berakhir."
+                },
+                {
+                  "method_name": "refresh_token",
+                  "parameters": ["refresh_token"],
+                  "return_type": "TokenResponse",
+                  "description": "Menerbitkan access token baru menggunakan refresh token yang masih valid."
+                }
+              ]
+            }
+          ],
+          "functions": [],
+          "api_endpoints": [
+            {"method": "POST", "path": "/api/auth/login", "payload": "email, password"},
+            {"method": "POST", "path": "/api/auth/logout", "payload": "refresh_token"},
+            {"method": "POST", "path": "/api/auth/refresh", "payload": "refresh_token"}
+          ]
+        },
+        {
+          "file_name": "task_controller.py",
+          "file_path": "app/api/task_controller.py",
+          "type": "controller",
+          "dependencies": ["fastapi", "app.services.task_service"],
+          "classes": [
+            {
+              "class_name": "TaskController",
+              "methods": [
+                {
+                  "method_name": "list_tasks",
+                  "parameters": ["status_filter", "assignee_filter"],
+                  "return_type": "list[TaskResponse]",
+                  "description": "Menampilkan daftar task milik user yang sedang login, bisa difilter berdasarkan status dan assignee."
+                },
+                {
+                  "method_name": "create_task",
+                  "parameters": ["title", "description", "due_date", "assignee_id"],
+                  "return_type": "TaskResponse",
+                  "description": "Membuat task baru dan menugaskannya ke salah satu anggota tim."
+                },
+                {
+                  "method_name": "update_task",
+                  "parameters": ["task_id", "title", "description", "status", "due_date"],
+                  "return_type": "TaskResponse",
+                  "description": "Mengubah detail task yang sudah ada, termasuk mengubah status pengerjaan."
+                },
+                {
+                  "method_name": "delete_task",
+                  "parameters": ["task_id"],
+                  "return_type": "None",
+                  "description": "Menghapus task dari sistem secara permanen."
+                }
+              ]
+            }
+          ],
+          "functions": [],
+          "api_endpoints": [
+            {"method": "GET", "path": "/api/tasks", "payload": "status_filter, assignee_filter (query params)"},
+            {"method": "POST", "path": "/api/tasks", "payload": "title, description, due_date, assignee_id"},
+            {"method": "PUT", "path": "/api/tasks/{task_id}", "payload": "title, description, status, due_date"},
+            {"method": "DELETE", "path": "/api/tasks/{task_id}", "payload": null}
+          ]
+        },
+        {
+          "file_name": "user_controller.py",
+          "file_path": "app/api/user_controller.py",
+          "type": "controller",
+          "dependencies": ["fastapi", "app.services.user_service"],
+          "classes": [
+            {
+              "class_name": "UserController",
+              "methods": [
+                {
+                  "method_name": "list_users",
+                  "parameters": [],
+                  "return_type": "list[UserResponse]",
+                  "description": "Menampilkan daftar seluruh anggota tim yang terdaftar di sistem. Hanya bisa diakses oleh role Admin."
+                },
+                {
+                  "method_name": "invite_user",
+                  "parameters": ["email", "role"],
+                  "return_type": "UserResponse",
+                  "description": "Mengundang anggota tim baru melalui email dengan role tertentu (Admin/Member). Hanya bisa diakses oleh role Admin."
+                }
+              ]
+            }
+          ],
+          "functions": [],
+          "api_endpoints": [
+            {"method": "GET", "path": "/api/users", "payload": null},
+            {"method": "POST", "path": "/api/users/invite", "payload": "email, role"}
+          ]
+        }
+      ]
+    },
+    {
+      "repo_tag": "FE-Web",
+      "files": [
+        {
+          "file_name": "LoginPage.tsx",
+          "file_path": "src/pages/LoginPage.tsx",
+          "type": "ui_component",
+          "dependencies": ["react", "axios"],
+          "classes": [],
+          "functions": [
+            {
+              "function_name": "LoginPage",
+              "parameters": [],
+              "return_type": "JSX.Element",
+              "description": "Halaman login dengan form email & password, memanggil endpoint POST /api/auth/login."
+            }
+          ],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "TaskListPage.tsx",
+          "file_path": "src/pages/TaskListPage.tsx",
+          "type": "ui_component",
+          "dependencies": ["react", "axios"],
+          "classes": [],
+          "functions": [
+            {
+              "function_name": "TaskListPage",
+              "parameters": [],
+              "return_type": "JSX.Element",
+              "description": "Halaman daftar task dengan filter status dan assignee, memanggil endpoint GET /api/tasks. Menyediakan tombol hapus yang memanggil DELETE /api/tasks/{id}."
+            }
+          ],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "TaskFormPage.tsx",
+          "file_path": "src/pages/TaskFormPage.tsx",
+          "type": "ui_component",
+          "dependencies": ["react", "axios"],
+          "classes": [],
+          "functions": [
+            {
+              "function_name": "TaskFormPage",
+              "parameters": [],
+              "return_type": "JSX.Element",
+              "description": "Form untuk membuat task baru (memanggil POST /api/tasks) dan mengubah task yang sudah ada (memanggil PUT /api/tasks/{id})."
+            }
+          ],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "UserManagementPage.tsx",
+          "file_path": "src/pages/UserManagementPage.tsx",
+          "type": "ui_component",
+          "dependencies": ["react", "axios"],
+          "classes": [],
+          "functions": [
+            {
+              "function_name": "UserManagementPage",
+              "parameters": [],
+              "return_type": "JSX.Element",
+              "description": "Halaman khusus Admin untuk melihat daftar anggota tim (GET /api/users) dan mengundang anggota baru (POST /api/users/invite)."
+            }
+          ],
+          "api_endpoints": []
+        }
+      ]
+    }
+  ]
+}

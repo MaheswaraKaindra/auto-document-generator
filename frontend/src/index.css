@@ -1,0 +1,97 @@
+/* Token desain.
+
+   Produk ini membuat dokumen resmi — UI-nya meminjam bahasa itu: latar kertas
+   hangat, teks tinta, aksen biru dokumen. BUKAN ungu template bawaan: warna itu
+   tidak punya hubungan apa pun dengan produk ini.
+
+   Dua peran aksen sengaja dipisah karena kebutuhannya bertentangan di dark mode:
+   --accent-ink   = teks/ikon aksen (harus TERANG di latar gelap agar terbaca)
+   --accent-solid = latar tombol    (harus cukup GELAP agar teks putihnya kontras) */
+:root {
+  --bg: #f4f2ec;
+  --surface: #ffffff;
+  --text: #4d5560;
+  --text-h: #171f28;
+  --border: #e0dcd2;
+  --border-strong: #c6c1b4;
+  --accent-ink: #1c4e7e;
+  --accent-solid: #1c4e7e;
+  --accent-solid-hover: #153e66;
+  --accent-soft: rgba(28, 78, 126, 0.07);
+  --ring: rgba(28, 78, 126, 0.3);
+  --ok: #1a7a44;
+  --ok-bg: #edf7f0;
+  --ok-border: #bfe3cc;
+  --err: #b3261e;
+  --err-bg: #fdf1f0;
+  --err-border: #f2c9c5;
+  --shadow: 0 1px 2px rgba(23, 31, 40, 0.04), 0 10px 28px -14px rgba(23, 31, 40, 0.14);
+
+  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
+  --serif: Georgia, Cambria, 'Times New Roman', serif;
+  --mono: ui-monospace, Consolas, monospace;
+
+  font: 16px/1.55 var(--sans);
+  color-scheme: light dark;
+  color: var(--text);
+  background: var(--bg);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14161a;
+    --surface: #1d2026;
+    --text: #a6adb8;
+    --text-h: #edf0f4;
+    --border: #2d313a;
+    --border-strong: #3f4450;
+    --accent-ink: #85b4e0;
+    --accent-solid: #2f6494;
+    --accent-solid-hover: #3a74a9;
+    --accent-soft: rgba(133, 180, 224, 0.1);
+    --ring: rgba(133, 180, 224, 0.35);
+    --ok: #5cbd84;
+    --ok-bg: #182720;
+    --ok-border: #2d4b3a;
+    --err: #e57e77;
+    --err-bg: #2b1b1a;
+    --err-border: #55302b;
+    --shadow: none;
+  }
+}
+
+body {
+  margin: 0;
+}
+
+#root {
+  width: 760px;
+  max-width: 100%;
+  margin: 0 auto;
+  min-height: 100svh;
+  box-sizing: border-box;
+  padding: 40px 20px 64px;
+}
+
+h1,
+h2 {
+  color: var(--text-h);
+  margin: 0;
+}
+
+p {
+  margin: 0;
+}
+
+a {
+  color: var(--accent-ink);
+}
+
+::selection {
+  background: var(--accent-soft);
+  color: var(--text-h);
+}

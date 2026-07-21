@@ -1,0 +1,510 @@
+/* ==== Masthead ============================================================ */
+
+.masthead {
+  margin-bottom: 32px;
+}
+
+.kicker {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent-ink);
+  margin-bottom: 10px;
+}
+
+.masthead h1 {
+  /* Serif, meniru kepala dokumen resmi — produknya dokumen, judulnya ikut. */
+  font-family: var(--serif);
+  font-size: 40px;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  margin-bottom: 12px;
+}
+
+.subtitle {
+  max-width: 60ch;
+}
+
+/* ==== Panel bernomor ====================================================== */
+/* Form dipecah jadi section bernomor seperti bab SDD — bukan gaya-gayaan:
+   pengguna produk ini akan MENERIMA dokumen berbab-nomor, jadi form-nya
+   berbicara dengan bahasa yang sama. */
+
+form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 22px 24px;
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.panel-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-h);
+  margin: 0;
+}
+
+.panel-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: var(--accent-solid);
+  color: #fff;
+  font-size: 12px;
+  letter-spacing: 0;
+}
+
+/* ==== Field =============================================================== */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--text-h);
+  text-align: left;
+}
+
+input,
+select,
+textarea {
+  font: inherit;
+  font-size: 15px;
+  padding: 9px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--text-h);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--text);
+  opacity: 0.55;
+}
+
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+button:focus-visible,
+summary:focus-visible {
+  outline: none;
+  border-color: var(--accent-ink);
+  box-shadow: 0 0 0 3px var(--ring);
+}
+
+textarea {
+  resize: vertical;
+}
+
+.hint {
+  opacity: 0.78;
+  font-size: 13.5px;
+  line-height: 1.5;
+  margin: 0;
+  font-weight: 400;
+}
+
+/* ==== Repositori ========================================================== */
+
+.repo-group {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.repo-group legend {
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--text-h);
+  padding: 0;
+  margin-bottom: 6px;
+}
+
+.repo-row {
+  display: grid;
+  grid-template-columns: 150px 1fr 130px auto;
+  gap: 8px;
+}
+
+@media (max-width: 620px) {
+  .repo-row {
+    grid-template-columns: 1fr auto;
+  }
+  .repo-row input:nth-child(2) {
+    grid-column: 1 / -1;
+  }
+}
+
+/* Baris ZIP: tag + input file + tombol hapus (3 kolom, tanpa kolom branch). */
+.zip-row {
+  display: grid;
+  grid-template-columns: 150px 1fr auto;
+  gap: 8px;
+  align-items: center;
+}
+
+@media (max-width: 620px) {
+  .zip-row {
+    grid-template-columns: 1fr auto;
+  }
+  .zip-row input[type='file'] {
+    grid-column: 1 / -1;
+  }
+}
+
+.zip-status {
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 4px 0 2px;
+  opacity: 0.8;
+}
+
+.zip-status.error {
+  color: var(--err);
+  opacity: 1;
+}
+
+/* ==== Tombol ============================================================== */
+
+button {
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 9px 14px;
+  cursor: pointer;
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--text-h);
+}
+
+button:hover:not(:disabled) {
+  border-color: var(--accent-ink);
+  color: var(--accent-ink);
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.remove-repo-btn {
+  padding: 9px 12px;
+}
+
+.submit-btn {
+  font-size: 16px;
+  padding: 13px 18px;
+  background: var(--accent-solid);
+  border-color: transparent;
+  color: #fff;
+}
+
+.submit-btn:hover:not(:disabled) {
+  background: var(--accent-solid-hover);
+  color: #fff;
+  border-color: transparent;
+}
+
+/* ==== Informasi Dokumen (opsional) ======================================== */
+
+.metadata-details {
+  padding: 0;
+  gap: 0;
+}
+
+.metadata-details summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 20px 24px;
+  border-radius: 10px;
+}
+
+.metadata-details summary::-webkit-details-marker {
+  display: none;
+}
+
+/* Chevron sebagai penanda buka/tutup — marker bawaan browser tidak bisa
+   di-style konsisten. */
+.metadata-details summary::after {
+  content: '';
+  margin-left: auto;
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid var(--text);
+  border-bottom: 2px solid var(--text);
+  transform: rotate(45deg);
+  transition: transform 0.15s ease;
+}
+
+.metadata-details[open] summary::after {
+  transform: rotate(-135deg);
+}
+
+.metadata-details .metadata-body {
+  padding: 0 24px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.optional-tag {
+  font-weight: 500;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  padding: 2px 9px;
+}
+
+.metadata-details fieldset {
+  border: 0;
+  border-top: 1px solid var(--border);
+  padding: 16px 0 0;
+  margin: 16px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.metadata-details legend {
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-h);
+  padding-right: 10px;
+}
+
+/* ==== Log tahapan ========================================================= */
+/* Pesan progress dari server dirender sebagai daftar: yang lewat dapat
+   centang, yang berjalan dapat spinner. Murni dari data yang diterima —
+   tidak ada pencocokan string, jadi mengubah tahapan di backend tidak
+   pernah merusak tampilan ini. */
+
+.run-panel {
+  margin-top: 24px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 18px 22px;
+  box-shadow: var(--shadow);
+}
+
+.stage-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.stage {
+  display: grid;
+  grid-template-columns: 20px 1fr;
+  gap: 10px;
+  align-items: start;
+  padding: 5px 0;
+  font-size: 14.5px;
+}
+
+.stage-icon {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  line-height: 1;
+  margin-top: 2px;
+}
+
+.stage-done {
+  color: var(--text);
+}
+
+.stage-done .stage-icon {
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+}
+
+.stage-active {
+  color: var(--text-h);
+  font-weight: 600;
+}
+
+.stage-active .stage-icon {
+  border: 2px solid var(--border-strong);
+  border-top-color: var(--accent-ink);
+  animation: spin 0.8s linear infinite;
+  box-sizing: border-box;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stage-active .stage-icon {
+    animation: none;
+    border-top-color: var(--border-strong);
+    background: var(--accent-soft);
+  }
+}
+
+.stage-failed {
+  color: var(--err);
+  font-weight: 600;
+}
+
+.stage-failed .stage-icon {
+  background: var(--err-bg);
+  color: var(--err);
+  border: 1px solid var(--err-border);
+}
+
+.elapsed {
+  margin-top: 10px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  font-size: 13px;
+  opacity: 0.8;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ==== Hasil / error ======================================================= */
+
+.alert {
+  margin-top: 16px;
+  border-radius: 10px;
+  padding: 14px 18px;
+  font-size: 14.5px;
+  line-height: 1.55;
+  border: 1px solid;
+  /* Pesan error server bisa panjang dan berparagraf — jangan diratakan. */
+  white-space: pre-wrap;
+}
+
+.alert-error {
+  background: var(--err-bg);
+  border-color: var(--err-border);
+  color: var(--err);
+}
+
+.alert-success {
+  background: var(--ok-bg);
+  border-color: var(--ok-border);
+  color: var(--ok);
+}
+
+.alert-success a {
+  color: inherit;
+  font-weight: 600;
+}
+
+/* ==== Upload template (V2) ================================================ */
+/* Widget kecil di dalam panel Dokumen: user meng-upload .docx template
+   perusahaannya, sistem mendaftarkannya sebagai Gaya Dokumen baru. */
+
+.upload-box {
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+  margin-top: 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.checkbox-row {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  font-weight: 400;
+  font-size: 14px;
+}
+
+.checkbox-row input {
+  width: auto;
+  margin: 0;
+}
+
+.upload-msg {
+  font-size: 13.5px;
+  line-height: 1.5;
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 7px;
+  background: var(--ok-bg);
+  border: 1px solid var(--ok-border);
+  color: var(--ok);
+}
+
+.upload-msg.error {
+  background: var(--err-bg);
+  border-color: var(--err-border);
+  color: var(--err);
+}
+
+/* ==== Preview logo ======================================================== */
+/* Menampilkan thumbnail logo yang dipilih — supaya salah pilih file (mis.
+   screenshot) langsung ketahuan sebelum generate. */
+
+.logo-preview {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.logo-preview img {
+  height: 40px;
+  max-width: 160px;
+  object-fit: contain;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  padding: 3px;
+  background: #fff;   /* logo transparan tetap terlihat di atas putih */
+  flex-shrink: 0;
+}
+
+.logo-preview .hint {
+  flex: 1;
+}
