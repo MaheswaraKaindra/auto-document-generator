@@ -1371,7 +1371,25 @@ def test_tall_diagram_is_capped_by_height_not_width(tmp_path):
     tall = tmp_path / "tall.png"
     tall.write_bytes(_white_png(4000, 20000))
 
-    assert compiler_service._image_attr(str(tall)) == "{height=8.0in}"
+    assert compiler_service._image_attr(str(tall)) == (
+        f"{{height={compiler_service._PAGE_HEIGHT_IN}in}}"
+    )
+
+
+def test_tallest_diagram_still_fits_with_its_group(tmp_path):
+    """Gambar tidak pernah berjalan sendirian: judul sub-bab, pengantar, dan
+    caption terikat padanya. Batas tinggi harus menyisakan ruang untuk rombongan
+    itu — kalau tidak, kelompoknya tak akan pernah muat sehalaman dan Word
+    memindahkan SEMUANYA, meninggalkan halaman berisi 4 baris lalu 8 inci putih
+    (terjadi betulan di render esteler halaman 13 sebelum batas ini dikoreksi)."""
+    tall = tmp_path / "tall.png"
+    tall.write_bytes(_white_png(4000, 20000))
+
+    height_in = float(
+        re.search(r"height=([\d.]+)in", compiler_service._image_attr(str(tall))).group(1)
+    )
+
+    assert height_in + compiler_service._FIGURE_GROUP_RESERVE_IN <= compiler_service._TEXT_HEIGHT_IN
 
 
 def test_wide_diagram_is_capped_by_width(tmp_path):

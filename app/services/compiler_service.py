@@ -229,11 +229,19 @@ _PLANTUML_STYLE_PREAMBLE = ("!theme plain", f"skinparam dpi {_PLANTUML_DPI}")
 
 # Ruang yang benar-benar tersedia di halaman, dipakai _image_attr untuk membatasi
 # ukuran tampil diagram. Lebar: 8,5 inci dikurangi margin 1 inci di dua sisi.
-# Tinggi: 11 dikurangi margin, dikurangi lagi ruang untuk judul sub-bab dan
-# caption di bawah gambar — 8 inci konservatif, dan lebih baik diagram sedikit
-# lebih kecil daripada tumpah ke halaman berikutnya.
 _PAGE_WIDTH_IN = 6.5
-_PAGE_HEIGHT_IN = 8.0
+
+# Tinggi maksimum diagram. BUKAN sekadar "tinggi halaman dikurangi margin":
+# gambar tidak pernah berjalan sendirian — judul sub-bab, kalimat pengantar, dan
+# caption terikat padanya (keepNext, lihat _bind_lead_in_to_figure). Kalau
+# batasnya dibiarkan setinggi mungkin, kelompok itu tak akan pernah muat di satu
+# halaman, dan Word memindahkan SELURUHNYA — meninggalkan halaman yang isinya
+# cuma sisa paragraf sebelumnya lalu 8 inci putih (terlihat di render esteler
+# halaman 13: 4 baris teks, sisanya kosong). Jadi batas ini menyisakan ruang
+# untuk rombongannya sendiri.
+_TEXT_HEIGHT_IN = 9.0  # 11 inci - margin 1 inci atas & bawah
+_FIGURE_GROUP_RESERVE_IN = 2.0  # judul sub-bab + pengantar + caption
+_PAGE_HEIGHT_IN = _TEXT_HEIGHT_IN - _FIGURE_GROUP_RESERVE_IN
 
 # Berapa piksel PNG per inci TAMPIL di dokumen — penentu ukuran teks di dalam
 # diagram, dan teks itu harus seragam ANTAR diagram. 360 px/inci pada render 300
