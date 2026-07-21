@@ -13,14 +13,15 @@
 
 ## Ringkasan satu paragraf
 
-Satu permintaan, satu deliverable: **halaman cover SDD didesain ulang** dari
-tumpukan tiga tabel berbingkai jadi hierarki bertingkat (label kecil → nama
-project besar → pita identitas → blok kodifikasi & tim, semua tanpa kotak).
-Benchmark-nya PREMCO, tapi yang ditiru **urutan & isinya, bukan kotak-kotaknya**
-— justru bingkai tabel yang membuat cover acuan terlihat tua. Sekalian: 11 sel
-yang dulu kosong permanen (kodifikasi, katalog, 7 nama Tim Project) jadi field
-form; kosong → placeholder `(diisi manual)`. **299 test hijau**, frontend
-build/lint hijau, biaya **$0**.
+Sesi redesign visual DOCX, tiga bagian, **semuanya $0** (nol panggilan LLM).
+(1) **Cover SDD** didesain ulang dari tumpukan tabel berbingkai jadi hierarki
+bertingkat. (2) **Visual di luar cover**: tabel (akar cacat justified), diagram
+(lantai ukuran dinaikkan, dibatasi ukuran huruf), pagination (keep-together).
+(3) **Tiga keterbatasan lama ditutup** (TTL dokumen, `template_id` di job,
+landscape per-section) + **validasi ke dokumen NYATA** (esteler, 29 halaman,
+di-render ulang dari Contract B tersimpan). Benchmark PREMCO diukur berulang —
+dan dua kali pengukuran itu **membantah** asumsi yang sedang dikerjakan.
+**312 test hijau**, frontend build/lint hijau.
 
 ## Yang selesai sesi ini
 
@@ -56,6 +57,22 @@ build/lint hijau, biaya **$0**.
 9. **Refactor** (perilaku tetap): `_take_table_marker()` menyatukan deteksi+
    pembuangan marker tabel dari 3 tempat; sekalian menutup bug style-loss laten.
 
+### Bagian 3 — tutup keterbatasan lama + validasi ke dokumen nyata
+
+10. **Validasi esteler $0** — Contract B dari run berbayar pagi ini di-render ulang
+    lewat compiler baru (LLM tak dipanggil). Diagram NYATA mendarat di **77-90%**
+    (dummy_data tak bisa memperlihatkan ini). Menemukan halaman berisi 4 baris
+    lalu 8 inci putih → `_PAGE_HEIGHT_IN` jadi turunan eksplisit
+    `_TEXT_HEIGHT_IN 9.0 − _FIGURE_GROUP_RESERVE_IN 2.0 = 7.0`. 30 → 29 halaman.
+11. **TTL dokumen** — `purge_expired_documents()`, 30 hari, status jadi 410 Gone.
+    Dipanggil di titik yang sama dengan reaper (startup + lazy GET) — nol scheduler.
+12. **`template_id` disimpan di job** + dikembalikan di GET status.
+13. **Landscape per-section (V2) SELESAI** — outline kini membawa `orient`,
+    generator memancarkan `((LANDSCAPE))`/`((PORTRAIT))` saat BERUBAH,
+    `_apply_orientation_markers` menangani N transisi. Diverifikasi end-to-end
+    pada docx sintetis potret→landscape→potret **yang dibuat sendiri**.
+14. **Ukuran heading diselaraskan** 16/13/12 → **14/12/11** (terukur dari PDF acuan).
+
 ## Kejadian yang layak diingat (jebakan & pelajaran)
 
 - **Prinsip #1 terbukti dua kali.** (a) Span PDF PREMCO di-dump sebelum mendesain
@@ -86,17 +103,26 @@ build/lint hijau, biaya **$0**.
 - **Catatan lama "Word mengabaikan pPr dari table style" TIDAK berlaku untuk
   trPr/tcPr** — `cantSplit` & `vAlign` dari style jalan (diprobe langsung).
 
+- **Salah membandingkan LEVEL heading** bikin laporan percaya-diri tapi keliru:
+  yang diukur sub-heading (12pt kiri), disangka heading bab. Bab PREMCO ternyata
+  **14pt UPPERCASE tengah** — sama dengan gaya kita. Gate keputusan yang saya
+  ajukan ke pemilik ternyata PALSU. Ukur bagian yang BENAR, bukan sekadar "ukur".
+- **"Butuh input eksternal" kadang berarti "butuh input", bukan "dari orang lain".**
+  Landscape per-section dicatat tak bisa diverifikasi tanpa template asing —
+  padahal templatenya bisa dibuat sendiri dengan python-docx.
+
 ## Kalau melanjutkan, mulai dari sini
 
 **Arah pemilik masih: BERHENTI nambah fitur, kemas & buktikan.**
 - **Laporan magang**: lengkapi `[ISI: ...]` di `LAPORAN_MAGANG_draf.md` (luar repo).
-- **Demo**: ikuti `DEMO.md`. Dokumen contoh di folder Magang — **catatan: contoh
-  yang ada dibuat SEBELUM cover baru**; regenerate kalau mau dipakai demo.
-- **Batas yang masih terbuka (jujur):** cover baru belum pernah dilihat pada
-  dokumen hasil generate NYATA (yang dirender sesi ini pakai `dummy_data` +
-  metadata contoh) — bentuknya deterministik, tapi kalau ada kesempatan generate
-  berbayar berikutnya, lihat halaman 1-nya. Sub-heading H2/H3 template `default`
-  juga masih belum dilihat halaman-per-halaman (utang dari sesi lalu).
+- **Demo**: ikuti `DEMO.md`. Dokumen contoh TERBARU (semua perubahan visual sesi
+  ini, isi esteler nyata): `C:\Kuliah\Magang\Contoh_SDD_EstelerApp_visual_v2.docx`.
+- **Batas yang masih terbuka (jujur):** (a) isi dokumen contoh itu dari Contract B
+  **21 Juli pagi** — visualnya terbaru, isinya tidak; generate dari nol butuh LLM
+  (~$0,10). (b) Sub-heading H2/H3 template `default` masih belum dilihat
+  halaman-per-halaman (premco tak punya sub-bab). (c) Diagram kita masih rantai
+  vertikal sementara PREMCO swimlane — itu bentuk script PlantUML dari LLM, jadi
+  **tak bisa diperbaiki dari renderer**.
 
 **Sisa teknis $0:** cleanup `data/documents/` (TTL), job simpan `template_id`.
 **Butuh input eksternal:** Trek A (template sumber lain) → UI edit peta bab +

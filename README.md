@@ -169,7 +169,7 @@ app/
   main.py            entrypoint FastAPI
 
 frontend/            React + Vite (satu form: pilih sumber, generate, unduh)
-tests/               pytest (296 test) — LLM/PlantUML/GitHub selalu di-mock
+tests/               pytest (312 test) — LLM/PlantUML/GitHub selalu di-mock
 dummy_data/          fixture Contract A/B untuk testing manual tanpa ingest+LLM
 scripts/             utilitas dev + validation/ (uji ke repo publik nyata)
 CLAUDE.md            pengetahuan permanen (arsitektur, kontrak, keterbatasan)
@@ -246,7 +246,7 @@ Daftar lengkap + perilaku error tiap endpoint ada di [`CLAUDE.md`](CLAUDE.md).
 ## Testing
 
 ```bash
-pytest                                       # 296 test; LLM/PlantUML/GitHub di-mock, $0
+pytest                                       # 312 test; LLM/PlantUML/GitHub di-mock, $0
 python scripts/validation/run_validation.py  # ingest+parse ke repo publik nyata, gratis
 ```
 
