@@ -8,6 +8,12 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000
 
 const emptyRepo = () => ({ repo_tag: '', repo_url: '', branch: '' })
 
+// Satu repo yang di-upload sebagai ZIP. base64-nya data URL utuh
+// ("data:application/zip;base64,...") — backend menoleransi & membuang prefiksnya
+// sendiri, persis pola logo_base64. `error` untuk pesan per-baris (file
+// kebesaran / gagal dibaca) supaya kegagalan satu ZIP tidak menjatuhkan yang lain.
+const emptyZip = () => ({ repo_tag: '', filename: '', base64: '', error: '' })
+
 // Field metadata dokumen: hal yang manusianya tahu tapi kode tidak akan pernah
 // tahu (nomor RFC, demografi, remark security). Ditulis sebagai data, bukan JSX
 // berulang, supaya menambah field cuma menambah satu baris di sini.
@@ -177,6 +183,12 @@ function buildMetadataPayload(metadata, documentType) {
 // penggunanya tahu detik itu juga, bukan setelah request bolak-balik.
 const LOGO_MAX_BYTES = 2 * 1024 * 1024
 
+// ZIP source code biasanya < 10 MB kalau node_modules/venv dikecualikan.
+// base64-in-JSON membengkak ~33%, jadi batasi di 50 MB supaya tab tidak membeku
+// saat encode dan body POST tidak membengkak tak wajar. Backend sendiri tak punya
+// batas keras ini (cuma guard zip-bomb di ingestion) — ini pencegahan sisi klien.
+const ZIP_MAX_BYTES = 50 * 1024 * 1024
+
 // Gaya dokumen di-AMBIL dari server (GET /templates) saat mount — bukan hardcoded.
 // Jadi template hasil-upload (V2) otomatis muncul, dan doc_types selalu sinkron
 // dengan backend (dulu daftar statis bikin `premco` UAT ketinggalan diam-diam
@@ -209,6 +221,10 @@ function App() {
   const [templateId, setTemplateId] = useState('default')
   const [githubToken, setGithubToken] = useState('')
   const [repositories, setRepositories] = useState([emptyRepo()])
+  // Sumber kode: 'github' (URL) atau 'zip' (upload arsip). Backend memilih ZIP
+  // kalau field zip_files terisi; kalau tidak, jatuh ke repositories GitHub.
+  const [sourceType, setSourceType] = useState('github')
+  const [zipRepos, setZipRepos] = useState([emptyZip()])
   const [metadata, setMetadata] = useState({})
   // { name, base64 } | null — base64-nya data URL utuh; backend menoleransi
   // (dan membuang) prefiks "data:image/...;base64," sendiri.
@@ -262,6 +278,40 @@ function App() {
 
   const removeRepo = (index) =>
     setRepositories((prev) => prev.filter((_, i) => i !== index))
+
+  const updateZip = (index, patch) =>
+    setZipRepos((prev) => prev.map((zip, i) => (i === index ? { ...zip, ...patch } : zip)))
+
+  const addZip = () => setZipRepos((prev) => [...prev, emptyZip()])
+
+  const removeZip = (index) =>
+    setZipRepos((prev) => prev.filter((_, i) => i !== index))
+
+  // File .zip -> base64 (data URL) via FileReader, pola sama dengan logo. File
+  // kebesaran/gagal-baca disimpan sebagai error per-baris, bukan dilempar.
+  const handleZipFile = (index, event) => {
+    const file = event.target.files?.[0]
+    if (!file) {
+      updateZip(index, { filename: '', base64: '', error: '' })
+      return
+    }
+    if (file.size > ZIP_MAX_BYTES) {
+      event.target.value = ''
+      updateZip(index, {
+        filename: '',
+        base64: '',
+        error:
+          `File ${(file.size / 1024 / 1024).toFixed(1)} MB — maksimum 50 MB. ` +
+          'Kecualikan node_modules, venv, dan folder build dari ZIP; itu tidak dibaca dan cuma memperbesar unggahan.',
+      })
+      return
+    }
+    const reader = new FileReader()
+    reader.onload = () => updateZip(index, { filename: file.name, base64: reader.result, error: '' })
+    reader.onerror = () =>
+      updateZip(index, { filename: '', base64: '', error: 'Gagal membaca file ZIP — coba pilih ulang.' })
+    reader.readAsDataURL(file)
+  }
 
   const updateMetadata = (key, value) =>
     setMetadata((prev) => ({ ...prev, [key]: value }))
@@ -330,6 +380,20 @@ function App() {
 
   const handleSubmit = async (event) => {
     event.preventDefault()
+
+    // Sumber kode dipilih di section 2. Kalau ZIP, kumpulkan hanya baris yang
+    // file-nya sudah terbaca DAN punya tag, lalu tolak lebih awal (dengan pesan
+    // jelas) daripada mengirim request yang pasti gagal di server.
+    const usingZip = sourceType === 'zip'
+    const zipFiles = zipRepos
+      .filter((zip) => zip.base64 && zip.repo_tag.trim())
+      .map((zip) => ({ repo_tag: zip.repo_tag.trim(), filename: zip.filename, zip_base64: zip.base64 }))
+    if (usingZip && zipFiles.length === 0) {
+      setPhase('failed')
+      setErrorMessage('Pilih minimal satu file ZIP beserta Tag-nya sebelum generate.')
+      return
+    }
+
     setPhase('running')
     setStages(['Mengirim permintaan ke server…'])
     setSeconds(0)
@@ -339,12 +403,17 @@ function App() {
     const payload = {
       project_name: projectName || null,
       document_type: documentType,
-      github_token: githubToken || null,
-      repositories: repositories.map((repo) => ({
-        repo_tag: repo.repo_tag,
-        repo_url: repo.repo_url,
-        branch: repo.branch || null,
-      })),
+      // ZIP dan GitHub saling menggantikan: kirim salah satu, kosongkan yang lain
+      // supaya backend memilih jalur yang benar (zip_files menang kalau terisi).
+      github_token: usingZip ? null : githubToken || null,
+      repositories: usingZip
+        ? []
+        : repositories.map((repo) => ({
+            repo_tag: repo.repo_tag,
+            repo_url: repo.repo_url,
+            branch: repo.branch || null,
+          })),
+      zip_files: usingZip ? zipFiles : null,
       document_metadata: buildMetadataPayload(metadata, documentType),
       logo_base64: logo?.base64 || null,
       template_id: templateId,
@@ -445,7 +514,7 @@ function App() {
         <p className="kicker">Solution Design · User Acceptance Test</p>
         <h1>Auto Document Generator</h1>
         <p className="subtitle">
-          Tunjuk ke repo GitHub, dan sistem membaca source code-nya lalu menyusun draf dokumen{' '}
+          Tunjuk ke repo GitHub atau upload ZIP source code-nya, dan sistem membacanya lalu menyusun draf dokumen{' '}
           <strong>.docx</strong> — deskripsi aplikasi, daftar fitur, use case, diagram, dan test
           case. Sekitar 2-3 menit. Hasilnya draf untuk diedit, bukan dokumen final.
         </p>
@@ -603,72 +672,151 @@ function App() {
 
           <div className="field">
             <label>
-              GitHub Token (Personal Access Token)
-              <input
-                type="password"
-                value={githubToken}
-                onChange={(e) => setGithubToken(e.target.value)}
-                placeholder="ghp_xxxxxxxxxxxx (kosongkan untuk repo publik)"
-              />
+              Dari mana source code-nya?
+              <select value={sourceType} onChange={(e) => setSourceType(e.target.value)}>
+                <option value="github">Repo GitHub (URL)</option>
+                <option value="zip">Upload file ZIP</option>
+              </select>
             </label>
             <p className="hint">
-              Perlu hanya untuk <strong>repo privat</strong>; repo publik jalan tanpa token. Token
-              dipakai sekali untuk mengunduh repo — tidak ikut disimpan bersama job dan tidak
-              ditulis ke log.
+              {sourceType === 'github' ? (
+                <>
+                  Tunjuk URL repo GitHub — <strong>publik</strong> jalan tanpa token,{' '}
+                  <strong>privat</strong> perlu token di bawah.
+                </>
+              ) : (
+                <>
+                  Upload arsip <strong>.zip</strong> berisi source code — untuk repo yang tidak ada
+                  di GitHub atau yang aksesnya tidak ingin Anda bagikan. Diproses lewat pipeline
+                  yang sama (baca kode → AI → .docx).
+                </>
+              )}
             </p>
           </div>
 
-          <fieldset className="repo-group">
-            <legend>Repositori</legend>
-            <p className="hint">
-              <strong>Tag</strong> menyatakan peran repo — <em>Backend</em>, <em>FE-Web</em>,{' '}
-              <em>FE-CMS</em>. Bukan sekadar label: kalau frontend dan backend dimasukkan sebagai
-              repo terpisah, tag inilah yang dipakai untuk memetakan pemanggilan API di frontend
-              ke endpoint backend-nya, sehingga diagram integrasi komponennya benar. Satu repo
-              saja juga tidak masalah.
-            </p>
-
-            {repositories.map((repo, index) => (
-              <div className="repo-row" key={index}>
-                <input
-                  type="text"
-                  value={repo.repo_tag}
-                  onChange={(e) => updateRepo(index, 'repo_tag', e.target.value)}
-                  placeholder="Tag (Backend / FE-Web)"
-                  aria-label="Tag peran repositori"
-                  required
-                />
-                <input
-                  type="text"
-                  value={repo.repo_url}
-                  onChange={(e) => updateRepo(index, 'repo_url', e.target.value)}
-                  placeholder="https://github.com/org/repo"
-                  aria-label="URL repositori GitHub"
-                  required
-                />
-                <input
-                  type="text"
-                  value={repo.branch}
-                  onChange={(e) => updateRepo(index, 'branch', e.target.value)}
-                  placeholder="Branch (opsional)"
-                  aria-label="Branch (opsional)"
-                />
-                <button
-                  type="button"
-                  className="remove-repo-btn"
-                  onClick={() => removeRepo(index)}
-                  disabled={repositories.length === 1}
-                  aria-label="Hapus repositori ini"
-                >
-                  ✕
-                </button>
+          {sourceType === 'github' ? (
+            <>
+              <div className="field">
+                <label>
+                  GitHub Token (Personal Access Token)
+                  <input
+                    type="password"
+                    value={githubToken}
+                    onChange={(e) => setGithubToken(e.target.value)}
+                    placeholder="ghp_xxxxxxxxxxxx (kosongkan untuk repo publik)"
+                  />
+                </label>
+                <p className="hint">
+                  Perlu hanya untuk <strong>repo privat</strong>; repo publik jalan tanpa token.
+                  Token dipakai sekali untuk mengunduh repo — tidak ikut disimpan bersama job dan
+                  tidak ditulis ke log.
+                </p>
               </div>
-            ))}
 
-            <button type="button" onClick={addRepo}>
-              + Tambah Repositori
-            </button>
-          </fieldset>
+              <fieldset className="repo-group">
+                <legend>Repositori</legend>
+                <p className="hint">
+                  <strong>Tag</strong> menyatakan peran repo — <em>Backend</em>, <em>FE-Web</em>,{' '}
+                  <em>FE-CMS</em>. Bukan sekadar label: kalau frontend dan backend dimasukkan
+                  sebagai repo terpisah, tag inilah yang dipakai untuk memetakan pemanggilan API di
+                  frontend ke endpoint backend-nya, sehingga diagram integrasi komponennya benar.
+                  Satu repo saja juga tidak masalah.
+                </p>
+
+                {repositories.map((repo, index) => (
+                  <div className="repo-row" key={index}>
+                    <input
+                      type="text"
+                      value={repo.repo_tag}
+                      onChange={(e) => updateRepo(index, 'repo_tag', e.target.value)}
+                      placeholder="Tag (Backend / FE-Web)"
+                      aria-label="Tag peran repositori"
+                      required
+                    />
+                    <input
+                      type="text"
+                      value={repo.repo_url}
+                      onChange={(e) => updateRepo(index, 'repo_url', e.target.value)}
+                      placeholder="https://github.com/org/repo"
+                      aria-label="URL repositori GitHub"
+                      required
+                    />
+                    <input
+                      type="text"
+                      value={repo.branch}
+                      onChange={(e) => updateRepo(index, 'branch', e.target.value)}
+                      placeholder="Branch (opsional)"
+                      aria-label="Branch (opsional)"
+                    />
+                    <button
+                      type="button"
+                      className="remove-repo-btn"
+                      onClick={() => removeRepo(index)}
+                      disabled={repositories.length === 1}
+                      aria-label="Hapus repositori ini"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+
+                <button type="button" onClick={addRepo}>
+                  + Tambah Repositori
+                </button>
+              </fieldset>
+            </>
+          ) : (
+            <fieldset className="repo-group">
+              <legend>Repositori (ZIP)</legend>
+              <p className="hint">
+                Satu ZIP = satu repo. Seperti jalur GitHub, <strong>Tag</strong>-nya (
+                <em>Backend</em>, <em>FE-Web</em>) yang dipakai memetakan pemanggilan API di
+                frontend ke endpoint backend, sehingga diagram integrasinya benar. Kecualikan{' '}
+                <em>node_modules</em>, <em>venv</em>, dan folder build dari ZIP — tidak dibaca dan
+                cuma memperbesar unggahan.
+              </p>
+
+              {zipRepos.map((zip, index) => (
+                <div key={index}>
+                  <div className="zip-row">
+                    <input
+                      type="text"
+                      value={zip.repo_tag}
+                      onChange={(e) => updateZip(index, { repo_tag: e.target.value })}
+                      placeholder="Tag (Backend / FE-Web)"
+                      aria-label="Tag peran repositori"
+                      required
+                    />
+                    <input
+                      type="file"
+                      accept=".zip,application/zip"
+                      onChange={(e) => handleZipFile(index, e)}
+                      aria-label="File ZIP repositori"
+                      required
+                    />
+                    <button
+                      type="button"
+                      className="remove-repo-btn"
+                      onClick={() => removeZip(index)}
+                      disabled={zipRepos.length === 1}
+                      aria-label="Hapus ZIP ini"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  {zip.error ? (
+                    <p className="zip-status error">{zip.error}</p>
+                  ) : zip.filename ? (
+                    <p className="zip-status">{zip.filename} — siap diunggah.</p>
+                  ) : null}
+                </div>
+              ))}
+
+              <button type="button" onClick={addZip}>
+                + Tambah ZIP
+              </button>
+            </fieldset>
+          )}
         </section>
 
         {/* Tertutup default: yang cuma ingin mencoba tidak dihadang tembok input,

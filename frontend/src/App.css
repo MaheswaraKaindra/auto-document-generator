@@ -165,6 +165,35 @@ textarea {
   }
 }
 
+/* Baris ZIP: tag + input file + tombol hapus (3 kolom, tanpa kolom branch). */
+.zip-row {
+  display: grid;
+  grid-template-columns: 150px 1fr auto;
+  gap: 8px;
+  align-items: center;
+}
+
+@media (max-width: 620px) {
+  .zip-row {
+    grid-template-columns: 1fr auto;
+  }
+  .zip-row input[type='file'] {
+    grid-column: 1 / -1;
+  }
+}
+
+.zip-status {
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 4px 0 2px;
+  opacity: 0.8;
+}
+
+.zip-status.error {
+  color: var(--err);
+  opacity: 1;
+}
+
 /* ==== Tombol ============================================================== */
 
 button {

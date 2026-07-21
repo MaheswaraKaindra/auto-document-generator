@@ -1,4 +1,4 @@
-# Catatan Sesi — 2026-07-20 (balik ke satu diagram use case gabungan; split per-aktor dibuang)
+# Catatan Sesi — 2026-07-21 (UI upload ZIP di frontend)
 
 > **File ini ditimpa habis setiap sesi baru.** Isinya cuma satu hal: apa yang
 > dikerjakan sesi kemarin, supaya sesi berikutnya tidak mulai dari nol.
@@ -12,106 +12,81 @@
 
 ## Ringkasan satu paragraf
 
-Pemilik berubah pikiran: split diagram use case per-aktor (sesi lalu, untuk fix
-panah menyilang Flowy) **DIBATALKAN** — mau **SATU diagram gabungan** saja (semua
-aktor dalam satu gambar), asal rapi. Kandidat sesi lalu (Graphviz `dot`) diinvestigasi
-**$0 dulu** (instruksi pemilik: timbang trade-off dependency sebelum kerja besar) dan
-**premisnya gugur**: (1) `dot` ternyata SUDAH dibundel di `plantuml.jar` (Windows
-auto-extract ke `%TEMP%\_graphviz\`, jadi bukan dependency baru di Windows), TAPI
-(2) `dot` ≈ `smetana` dan **tak ada engine yang menghapus panah menyilang** untuk
-diagram gabungan padat — itu **struktural**, bukan kualitas engine (diukur visual
-smetana/dot/elk pada 3 aktor × 13 use case); (3) kasus NYATA cuma 2 aktor / 5-8 use
-case, dan di situ **smetana pun sudah bersih**. Keputusan otonom (premis pemilik
-gugur): **Opsi A — balik ke gabungan, tetap smetana** (paling sederhana, nol
-dependency, dot tak menolong dense & keunggulannya hilang di deploy Linux). Revert
-bersih + verifikasi visual default & premco. **288 test hijau, $0.** Belum commit
-(nunggu review pemilik).
+Melanjutkan langsung dari sesi kemarin: backend jalur ZIP → dokumen sudah jadi
+(field `zip_files` base64 di `POST /documents/generate`), yang tersisa cuma **UI
+upload ZIP di frontend**. Itu yang dikerjakan sesi ini — $0, tanpa LLM, reversible.
+Section "Sumber Kode" sekarang punya pemilih **GitHub vs Upload ZIP**; mode ZIP =
+daftar baris (satu ZIP = satu repo) dengan Tag + input file `.zip` yang dibaca
+base64 (pola persis logo), dikirim sebagai `zip_files`. `vite build` + `oxlint`
+hijau. **Belum di-commit** (nunggu review pemilik), dan **belum dijalankan
+browser→generate penuh** karena itu memicu job LLM berbayar (gate pemilik) —
+jalur sinkron decode/reject-nya sendiri sudah di-unit-test backend kemarin.
 
 ## Yang dikerjakan
 
-1. **Investigasi layout $0** (sebelum kerja besar, per instruksi pemilik):
-   - `java -jar plantuml.jar -version` → PlantUML **menemukan** Graphviz 2.44.1;
-     jejaknya `%TEMP%\_graphviz\dot.exe` (kelas `GraphvizWindowsLite` di jar
-     29 MB). Shell tak lihat dot (bukan PATH/registry), tapi PlantUML pakai.
-   - Render **3 engine** pada kasus padat (3 aktor × 13 use case): `smetana`
-     (kusut), `dot` (sedikit lebih halus, TETAP menyilang), `elk` (orthogonal
-     tapi 2204px — mustahil potret, tetap menyilang). → crossing **struktural**.
-   - Render kasus **tipikal** (2 aktor × 8 use case): smetana & dot **dua-duanya
-     bersih**. → Flowy patologis, bukan norma.
-2. **Revert split → gabungan** (Opsi A, smetana). File: `compiler_service.py`
-   (buang `_usecase_plantuml_to_ir`/`_split_usecase_images`/regex `_UC_*`/flag
-   `splits_usecase`/param `split_usecase`/context `use_case_diagrams_by_actor`+
-   `use_case_figure_count`), `sdd_template.md` + `sdd_premco_template.md` +
-   `template_generator_service._BODY[USE_CASES]` (loop per-aktor → satu
-   `![Use Case Diagram]`), offset gambar activity balik hardcode (default `+4`,
-   premco `+3`), `template_compiler_service` manifest tak tulis `splits_usecase`,
-   `tests/test_usecase_split.py` **dihapus**, 2 tes lain dibersihkan.
-3. **Verifikasi VISUAL $0** (docx → PDF Word COM → PNG → dilihat) pada Contract B
-   2-aktor (Customer+Admin): **default** `Gambar 4 Use Case`(1 gambar, 2 aktor)→
-   `Gambar 5 Activity`; **premco** `Gambar 3`→`Gambar 4` + bar biru use case utuh.
-   Penomoran benar ujung-ke-ujung.
-4. **Dok**: entri Riwayat baru (+ split lama ditandai DIBALIK); SESSION.md ini.
-5. **BONUS — pisah changelog dari CLAUDE.md** (permintaan pemilik: CLAUDE.md boros
-   token). "Riwayat Perubahan Penting" (~65% isi, ~30k token, di-load tiap sesi)
-   dipindah ke **`CHANGELOG.md`** (dibaca on-demand). CLAUDE.md **~47,5k → ~17,5k
-   token (−63%)**. Ditambah seksi **"Prinsip Kerja"** (8 pola distilasi) supaya
-   pelajaran tetap ter-load. Memory checkpoint + header model-file di-update: entri
-   baru → CHANGELOG.md, CLAUDE.md hanya kalau pengetahuan permanen berubah. 48 entri
-   terbawa utuh. Lihat entri teratas CHANGELOG.md.
-6. **BONUS — sambung jalur ZIP → dokumen (backend)** ("kerjakan yang bisa
-   dilakukan"). Gap lama: `/documents/generate` cuma terima `repositories` GitHub.
-   Sekarang ada field **`zip_files`** (base64-in-JSON, pola sama `logo_base64`;
-   non-breaking, `repositories` default `[]`). ZIP → pipeline yang SAMA (ingest →
-   parse → LLM → compile). base64 rusak = 422 sinkron; isi ZIP rusak = 422 di job.
-   Diverifikasi: 2 test baru + $0 sanity (ekstrak class/function/endpoint benar).
-   **290 test hijau.** Sisa: **UI upload ZIP di frontend** (API siap, form belum).
+1. **Baca kontrak backend dua sisi dulu** (sebelum sentuh frontend): `zip_files`
+   di `schemas_document.py` = `list[{repo_tag, filename, zip_base64}]`, precedence
+   di atas `repositories`; `_decode_zip_files` di `routes_document.py` membuang
+   prefiks `data:…;base64,` sendiri → aman kirim data-URL utuh dari FileReader.
+2. **`frontend/src/App.jsx`**:
+   - State baru: `sourceType` ('github'|'zip'), `zipRepos` (list `{repo_tag,
+     filename, base64, error}`), factory `emptyZip()`, konstanta `ZIP_MAX_BYTES`
+     (50 MB).
+   - Handler: `updateZip`/`addZip`/`removeZip`/`handleZipFile` (FileReader →
+     base64 data URL; file >50 MB atau gagal-baca → error per-baris, bukan lempar).
+   - `handleSubmit`: cabang `usingZip` — kumpulkan `zipFiles` (hanya baris yang
+     base64 & tag-nya terisi), tolak lebih awal kalau kosong, kirim `zip_files`
+     ATAU `repositories` (yang satunya dikosongkan) + `github_token` null di ZIP.
+   - JSX section 2: pemilih sumber + render kondisional (GitHub lama utuh di satu
+     cabang, grup ZIP di cabang lain). Subtitle masthead dikoreksi.
+3. **`frontend/src/App.css`**: `.zip-row` (grid 3 kolom: tag/file/hapus, +
+   responsif <620px) & `.zip-status` (pesan filename siap / error merah).
+4. **Verifikasi $0**: `vite build` (17 modul transformed) + `npm run lint`
+   (oxlint) dua-duanya bersih.
+5. **Dok**: entri CHANGELOG.md baru (teratas); butir keterbatasan ZIP di CLAUDE.md
+   di-update (UI SELESAI 2026-07-21, sisa cuma efisiensi base64); SESSION.md ini.
 
 ## Kejadian yang layak diingat (jebakan)
 
-- **`dot` dibundel `plantuml.jar` di Windows** (`GraphvizWindowsLite`, extract ke
-  `%TEMP%\_graphviz\`). "dot: command not found" sesi lalu MENYESATKAN — shell tak
-  lihat, PlantUML lihat. Cukup buang `-Playout=smetana` untuk pakai dot. Tapi ini
-  Windows-only (Linux deploy tak dapat).
-- **Panah use case menyilang di diagram GABUNGAN itu STRUKTURAL**, bukan bug engine.
-  Banyak aktor berbagi banyak use case dalam satu kolom = pasti menyilang. dot/elk
-  tak menyelesaikannya. Satu-satunya solusi "selalu bersih" = split per-aktor (yang
-  justru dibuang). Untuk dokumen normal (2-3 aktor) gabungan sudah bersih.
-- **Premis yang tak pernah diuji** ("dot jauh lebih rapi") menahan pekerjaan &
-  menyesatkan arah. Ukur $0 dulu sebelum install/refactor — persis pola repo ini.
-- **`app/diagram/` (IR + renderer) kini tak dipakai pipeline live lagi** (split
-  adalah satu-satunya pemakainya). Balik jadi fondasi-saja; modul + tesnya utuh.
+- **`FileReader.readAsDataURL` untuk .zip bisa memberi MIME beda di Windows**
+  (`application/x-zip-compressed`), TAPI tak masalah — backend `.partition(",")[2]`
+  membuang prefiks `data:` apa pun. Jangan tergoda "membersihkan" prefiks di
+  frontend; backend sudah menoleransinya (konsisten dgn `logo_base64`).
+- **`required` pada input yang dirender kondisional**: input repositori GitHub
+  punya `required`. Karena mode ZIP me-render cabang LAIN (input GitHub tak ada di
+  DOM), `required`-nya tak memblokir submit mode ZIP. Itu sebabnya render
+  kondisional (bukan `hidden`) yang dipilih.
+- **Full E2E = bayar LLM**: `POST /documents/generate` balik 202 lalu job jalan di
+  latar belakang MEMANGGIL LLM. Jadi "coba upload ZIP lewat browser sampai dokumen
+  jadi" bukan verifikasi $0 — itu gate pemilik. Reject-path (bad base64 → 422
+  sinkron) bisa diuji $0 tapi sudah di-unit-test backend kemarin.
 
 ## Kalau melanjutkan, mulai dari sini
 
-**#0 (permintaan pemilik sesi ini) — ✅ SELESAI.** Diagram use case balik ke satu
-gabungan, split dibuang, smetana dipertahankan, diverifikasi visual. Batas jujur
-yang diterima pemilik: dokumen ultra-padat (Flowy) tetap menyilang di bentuk
-gabungan — tak terhindarkan tanpa split. **Belum di-commit** (nunggu review).
+**Jalur ZIP → dokumen: SELESAI end-to-end** (backend kemarin + UI hari ini).
+Sisa cuma efisiensi base64-in-JSON untuk repo besar (cukup untuk MVP).
 
 **#1 (Trek A — PALING BERNILAI selagi magang):** kumpulkan/bawa template SDD/UAT
-sumber lain, jalankan lewat mesin (`compile_template_from_docx` + lihat). Sudah 4
-kelas struktur tertutup; template BEDA struktur masih mungkin memancing bug. Kerja
+sumber lain, jalankan lewat mesin (`compile_template_from_docx` + lihat). Kerja
 yang tak bisa diambil setelah keluar magang.
 
 **#2 (sisa V2, $0):** UI tinjauan/**EDIT** peta bab sebelum generate (tampilkan
 `mappings` dari `GET /templates/{id}`, user sunting binding lalu generate) +
-orientasi landscape per-section (spec `orientations[]` terukur `None` di 3 template
-— pengukuran + penerapan sama-sama belum jalan) + job simpan `template_id`.
+orientasi landscape per-section (spec `orientations[]` terukur `None` di 3
+template — pengukuran + penerapan sama-sama belum jalan) + job simpan `template_id`.
 
 **Utang lama (cepat):** revoke `GOOGLE_API_KEY` & `LLAMA_API_KEY`; isi `GITHUB_TOKEN`.
 
 ## Yang perlu dilakukan manusia
 
-- **Semua sudah di-commit + PUSH ke origin/develop** (3 commit sesi ini di atas
-  8 commit lama yg juga baru ke-push): (1) revert use case → satu gabungan; (2)
-  pisah changelog; (3) sambung ZIP → dokumen. Working tree bersih. Verifikasi
-  visual revert use case: scratchpad `verify_default_p12.png` (Gambar 4, 2 aktor
-  1 gambar) & `verify_premco_p12.png` (Gambar 3, bar biru); perbandingan engine
-  `uc_smetana/dot/elk.png` (kenapa dot tak menolong dense).
-- **Server dev DIMATIKAN** (masih, dari sesi lalu). Kalau mau testing lewat
-  frontend: `uvicorn app.main:app --reload` + `npm --prefix frontend run dev`.
-  (Verifikasi sesi ini tak butuh server — render langsung lewat compiler.)
-- **Keputusan opsional**: kalau kelak mau diagram gabungan sedikit lebih halus DAN
-  siap bayar dependency Graphviz di deploy Linux, tinggal buang `-Playout=smetana`
-  di `_run_plantuml` (khusus use case) + install graphviz di Linux. Aku sengaja
-  TIDAK ambil ini (marginal, hilang di Linux, nambah knob).
+- **BELUM DI-COMMIT.** Perubahan sesi ini (App.jsx, App.css, CLAUDE.md,
+  CHANGELOG.md, SESSION.md) masih di working tree — nunggu review pemilik sebelum
+  commit. Tak ada perubahan backend/test, jadi `pytest` tak perlu dijalankan ulang
+  (frontend-only).
+- **Uji manual kalau mau** (opsional, tapi ZIP-nya baru diuji lewat build+lint,
+  belum diklik di browser): `uvicorn app.main:app --reload` +
+  `npm --prefix frontend run dev`, pilih "Upload file ZIP", upload .zip source
+  code kecil (kecualikan node_modules/venv), beri Tag, generate. **Ini memicu LLM
+  berbayar** — lakukan hanya kalau memang mau menguji end-to-end.
+- **Server dev DIMATIKAN** (belum dinyalakan sesi ini — verifikasi lewat build
+  saja, tak butuh server).
