@@ -129,8 +129,14 @@ def main() -> int:
                     continue
                 print(f"{label:24} OK     {_shape(produced)}")
                 if out_dir:
-                    shutil.copyfile(
-                        produced, out_dir / f"{path.stem}__{doc_type}_{template_id}.docx")
+                    # Satu subfolder per fixture. Dulu semuanya datar di satu
+                    # folder: 10 fixture x 2 jenis x 2 template = 40 file dengan
+                    # nama panjang berulang — praktis tak bisa ditelusuri mata.
+                    # Dikelompokkan per fixture, tiap folder cuma berisi 4 file
+                    # bernama pendek (SDD_premco.docx, dst).
+                    target = out_dir / path.stem
+                    target.mkdir(parents=True, exist_ok=True)
+                    shutil.copyfile(produced, target / f"{doc_type}_{template_id}.docx")
         print()
 
     summary = f"Selesai. {failures} gagal"

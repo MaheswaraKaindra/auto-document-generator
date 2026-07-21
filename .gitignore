@@ -49,3 +49,11 @@ PELAJARAN.md
 /*.png
 /*.jpg
 /*.jpeg
+
+# Dokumen acuan, template sumber lain, dan keluaran lama — bahan kerja yang
+# ADA di mesin pengembang tapi tidak boleh ikut repo (dokumen internal klien,
+# installer, screenshot). Dikumpulkan di ref/ supaya root tetap cuma berisi
+# file konfigurasi/dokumen, sesuai aturan di CLAUDE.md. Pola per-ekstensi di
+# atas sudah menutup .docx/.doc/.pdf/.msi di mana pun, TAPI `/*.png` cuma
+# menutup root — jadi folder ini ditutup seluruhnya, bukan per-ekstensi.
+ref/

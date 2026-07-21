@@ -19,9 +19,11 @@ Lakukan **sebelum** di depan penguji — jangan setup live.
 - [ ] Pandoc terpasang (`python -c "import pypandoc; print(pypandoc.get_pandoc_version())"`).
 - [ ] Backend jalan: `uvicorn app.main:app --reload` → cek `http://127.0.0.1:8000/docs`.
 - [ ] Frontend jalan: `npm --prefix frontend run dev` → buka `http://127.0.0.1:5173`.
-- [ ] **Dokumen contoh sudah jadi** sebagai cadangan kalau live gagal
-      (mis. `Contoh_SDD_EstelerApp_PREMCO.docx`) — buka duluan di Word supaya
-      Daftar Isi/Gambar sudah ter-refresh.
+- [ ] **Dokumen contoh sudah jadi** sebagai cadangan kalau live gagal —
+      terbaru: `C:\Kuliah\Magang\Contoh_SDD_EstelerApp_visual_v2.docx` (29 hlm).
+      Buka duluan di Word (klik **Yes** saat ditanya update field) supaya Daftar
+      Isi/Gambar/Tabel sudah ter-refresh. Butuh contoh lain? `python
+      scripts/render_fixtures.py --out hasil/` membuat ulang semuanya, **$0**.
 - [ ] Siapkan **satu repo target** yang cepat & hasilnya bagus, mis.
       `https://github.com/yudhasw/esteler-app` (Flask, ~22 file, hasil berjejak).
 
