@@ -159,11 +159,11 @@ Tanda tangan dibubuhkan pada dokumen cetak setelah dokumen ini disetujui — bag
    menjalankan field (bukan Word). #}
 ```{=openxml}
 <w:p><w:pPr><w:pStyle w:val="TOCHeading"/></w:pPr><w:r><w:t>Daftar Isi</w:t></w:r></w:p>
-<w:p><w:fldSimple w:instr=" TOC \o &quot;1-3&quot; \h \z \u "><w:r><w:t>Daftar ini diisi otomatis saat dokumen dibuka di Microsoft Word.</w:t></w:r></w:fldSimple></w:p>
+<w:p><w:fldSimple w:instr=" TOC \o &quot;1-3&quot; \h \z \u "><w:r><w:t>Daftar ini terisi otomatis saat field diperbarui — di Word tekan Ctrl+A lalu F9, atau klik kanan di sini &gt; Update Field.</w:t></w:r></w:fldSimple></w:p>
 <w:p><w:pPr><w:pStyle w:val="TOCHeading"/></w:pPr><w:r><w:t>Daftar Gambar</w:t></w:r></w:p>
-<w:p><w:fldSimple w:instr=" TOC \h \z \t &quot;Image Caption&quot; \c "><w:r><w:t>Daftar ini diisi otomatis saat dokumen dibuka di Microsoft Word.</w:t></w:r></w:fldSimple></w:p>
+<w:p><w:fldSimple w:instr=" TOC \h \z \t &quot;Image Caption&quot; \c "><w:r><w:t>Daftar ini terisi otomatis saat field diperbarui — di Word tekan Ctrl+A lalu F9, atau klik kanan di sini &gt; Update Field.</w:t></w:r></w:fldSimple></w:p>
 <w:p><w:pPr><w:pStyle w:val="TOCHeading"/></w:pPr><w:r><w:t>Daftar Tabel</w:t></w:r></w:p>
-<w:p><w:fldSimple w:instr=" TOC \h \z \t &quot;Table Caption&quot; \c "><w:r><w:t>Daftar ini diisi otomatis saat dokumen dibuka di Microsoft Word.</w:t></w:r></w:fldSimple></w:p>
+<w:p><w:fldSimple w:instr=" TOC \h \z \t &quot;Table Caption&quot; \c "><w:r><w:t>Daftar ini terisi otomatis saat field diperbarui — di Word tekan Ctrl+A lalu F9, atau klik kanan di sini &gt; Update Field.</w:t></w:r></w:fldSimple></w:p>
 ```
 
 {# Pemisah daftar-daftar dari isi dokumen. SATU-SATUNYA page break manual

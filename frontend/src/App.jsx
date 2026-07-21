@@ -60,6 +60,7 @@ const SDD_FIELD_GROUPS = [
     // namanya -- nama orang tidak ada di repo mana pun.
     legend: 'Cover — Tim Project',
     fields: [
+      { key: 'entitas', label: 'Entitas', placeholder: 'Nama perusahaan/organisasi (gaya premco)' },
       { key: 'team_application_requestor', label: 'Application Requestor', placeholder: 'Nama' },
       { key: 'team_business_process_owner', label: 'Business Process Owner', placeholder: 'Nama' },
       { key: 'team_pic', label: 'PIC', placeholder: 'Nama' },

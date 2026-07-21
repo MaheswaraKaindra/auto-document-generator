@@ -25,7 +25,7 @@ from typing import Any
 import docx
 import pypandoc
 from docx.enum.section import WD_ORIENT
-from docx.enum.table import WD_ROW_HEIGHT_RULE
+from docx.enum.table import WD_ALIGN_VERTICAL, WD_ROW_HEIGHT_RULE
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
@@ -123,6 +123,9 @@ REFERENCE_DOCX = TEMPLATES_DIR / "reference.docx"
 # hasil-kompilasi upload membawa flag ini di manifest-nya.
 _BUILTIN_GROUPS_TEST_CASES = {"premco"}   # sisanya (default) pakai tabel test flat
 _BUILTIN_UAT_TOC = {"default"}            # sisanya (premco) tanpa Daftar Isi
+# Cover SDD di-align KANAN (blok judul + identitas), meniru cover PREMCO — atas
+# permintaan pemilik (2026-07-21 lanjutan 11). Hanya premco; default tetap tengah.
+_BUILTIN_COVER_ALIGN_RIGHT = {"premco"}
 
 
 @dataclass(frozen=True)
@@ -136,6 +139,7 @@ class _ResolvedTemplate:
     uses_component_integration: bool  # render diagram Component Integration?
     groups_test_cases: bool           # UAT: kelompokkan test-case per modul?
     uat_toc: bool                     # UAT: pasang --toc?
+    cover_align_right: bool           # SDD: ratakan kanan blok judul cover?
 
 
 def _load_compiled_manifest(template_id: str) -> dict | None:
@@ -193,6 +197,7 @@ def _resolve_template(template_id: str, normalized_type: str) -> _ResolvedTempla
             uses_component_integration=template_id in _TEMPLATES_USING_COMPONENT_INTEGRATION,
             groups_test_cases=template_id in _BUILTIN_GROUPS_TEST_CASES,
             uat_toc=template_id in _BUILTIN_UAT_TOC,
+            cover_align_right=template_id in _BUILTIN_COVER_ALIGN_RIGHT,
         )
     manifest = _load_compiled_manifest(template_id)
     if manifest is None:
@@ -207,6 +212,7 @@ def _resolve_template(template_id: str, normalized_type: str) -> _ResolvedTempla
         uses_component_integration=manifest.get("uses_component_integration", False),
         groups_test_cases=manifest.get("groups_test_cases", True),
         uat_toc=manifest.get("uat_toc", False),
+        cover_align_right=manifest.get("cover_align_right", False),
     )
 
 # Ketajaman render PlantUML. Default PlantUML 96 dpi — cukup untuk layar, buram
@@ -292,6 +298,21 @@ _MANUAL_PLACEHOLDER = "*(diisi manual)*"
 # bukan ditebak.
 _TITLE_BAR_MARKER = "((BAR))"
 _TITLE_BAR_FILL = "9CC3E5"
+
+# Bar judul HITAM blok tanda tangan gaya PREMCO (Perwakilan User/Pengembang).
+# Mekanisme sama dengan ((BAR)) biru — baris pertama tabel di-merge jadi satu bar
+# berjudul — tapi latarnya HITAM dengan teks PUTIH, dan baris di bawahnya jadi
+# ruang tanda tangan yang ditinggikan. Diukur dari docx PREMCO asli: bar fill
+# 000000, tabel 3 baris × 2 kolom (bar, ruang tanda tangan, nama/jabatan).
+_SIGNATURE_BAR_MARKER = "((SIGBAR))"
+_SIGNATURE_BAR_FILL = "000000"
+_WHITE_INK = "FFFFFF"
+
+# Kolom "Entitas" tabel Tim Project cover gaya PREMCO di-merge VERTIKAL: satu
+# nilai perusahaan memayungi seluruh baris tim. Pipe table Markdown tak bisa
+# merge vertikal, jadi template menandai sel HEADER kolom itu dengan marker ini;
+# post-process yang menggabung sel data kolom 0 (baris 1..N) jadi satu.
+_COVER_MERGE_MARKER = "((CVMERGE))"
 
 # Pemisah baris DI DALAM sel tabel. Markdown pipe table tidak bisa memuat baris
 # baru, dan `<br/>` DIBUANG diam-diam oleh writer docx Pandoc (raw HTML tidak
@@ -753,6 +774,59 @@ def _pandoc_args(normalized_type: str, title: str, reference_docx: Path = REFERE
     return args
 
 
+def _merge_first_row_into_bar(table, fill: str, white_text: bool) -> None:
+    """Gabung SELURUH sel baris pertama tabel jadi satu BAR judul berwarna: sel
+    tunggal selebar tabel, teks bold di tengah, latar `fill`.
+
+    Dipakai dua bar gaya PREMCO yang beda warna: ((BAR)) biru (use case/activity,
+    teks gelap) dan ((SIGBAR)) hitam (blok tanda tangan, teks putih). Conditional
+    formatting `firstRow` table style (header hitam) DIMATIKAN dulu — kalau tidak,
+    warna bar tertimpa hitam bawaan dan teksnya jadi putih-di-atas-warna.
+    """
+    first_row = table.rows[0]
+    title = first_row.cells[0].text.strip()
+
+    _disable_conditional_header(table)
+
+    merged = first_row.cells[0]
+    for cell in first_row.cells[1:]:
+        merged = merged.merge(cell)
+    # `merged.text = ...` membuang paragraf sel BESERTA style-nya (jadi Normal,
+    # bukan Compact seperti sel tabel lain) — bar judul jadi berhuruf 11pt di
+    # antara isi 10,5pt dan berspasi beda. Yang diganti cukup teksnya; paragraf
+    # pertama dipertahankan.
+    paragraph = merged.paragraphs[0]
+    for extra in merged.paragraphs[1:]:
+        extra._p.getparent().remove(extra._p)
+    for extra_run in paragraph.runs[1:]:
+        extra_run._r.getparent().remove(extra_run._r)
+    if paragraph.runs:
+        paragraph.runs[0].text = title
+    else:
+        paragraph.add_run(title)
+    paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    for run in paragraph.runs:
+        run.bold = True
+        if white_text:
+            run.font.color.rgb = RGBColor.from_string(_WHITE_INK)
+    shading = OxmlElement("w:shd")
+    shading.set(qn("w:val"), "clear")
+    shading.set(qn("w:color"), "auto")
+    shading.set(qn("w:fill"), fill)
+    merged._tc.get_or_add_tcPr().append(shading)
+
+
+def _keep_table_together(table) -> None:
+    """Ikat semua baris kecuali yang terakhir (keepNext) supaya tabel UTUH pindah
+    halaman — tanpa ini tabel kecil gampang patah tepat sesudah barisnya, dan bar
+    header (yang juga tblHeader) terulang membingungkan (terlihat di probe V1)."""
+    rows = list(table.rows)
+    for row in rows[:-1]:
+        for cell in row.cells:
+            for cell_paragraph in cell.paragraphs:
+                _set_keep_next(cell_paragraph._p)
+
+
 def _apply_title_bars(document) -> None:
     """Ubah baris pertama tabel yang ditandai _TITLE_BAR_MARKER jadi BAR JUDUL
     gaya PREMCO: satu sel merged selebar tabel, latar biru muda, teks bold di
@@ -766,45 +840,92 @@ def _apply_title_bars(document) -> None:
     for table in document.tables:
         if _take_table_marker(table, _TITLE_BAR_MARKER) is None:
             continue
-        first_row = table.rows[0]
-        title = first_row.cells[0].text.strip()
+        _merge_first_row_into_bar(table, _TITLE_BAR_FILL, white_text=False)
+        _keep_table_together(table)
 
-        _disable_conditional_header(table)
 
-        merged = first_row.cells[0]
-        for cell in first_row.cells[1:]:
-            merged = merged.merge(cell)
-        # `merged.text = ...` membuang paragraf sel BESERTA style-nya (jadi
-        # Normal, bukan Compact seperti sel tabel lain) — bar judul jadi berhuruf
-        # 11pt di antara isi 10,5pt dan berspasi beda. Yang diganti cukup
-        # teksnya; paragraf pertama dipertahankan.
-        paragraph = merged.paragraphs[0]
-        for extra in merged.paragraphs[1:]:
-            extra._p.getparent().remove(extra._p)
-        for extra_run in paragraph.runs[1:]:
-            extra_run._r.getparent().remove(extra_run._r)
-        if paragraph.runs:
-            paragraph.runs[0].text = title
-        else:
-            paragraph.add_run(title)
-        paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        for run in paragraph.runs:
-            run.bold = True
-        shading = OxmlElement("w:shd")
-        shading.set(qn("w:val"), "clear")
-        shading.set(qn("w:color"), "auto")
-        shading.set(qn("w:fill"), _TITLE_BAR_FILL)
-        merged._tc.get_or_add_tcPr().append(shading)
+def _apply_signature_bars(document) -> None:
+    """Ubah tabel bertanda _SIGNATURE_BAR_MARKER jadi blok tanda tangan gaya
+    PREMCO: bar judul HITAM (teks putih) selebar tabel, lalu ruang tanda tangan
+    di bawahnya. Diukur dari docx asli (Perwakilan User/Pengembang): 3 baris ×
+    2 kolom — bar, ruang tanda tangan (ditinggikan ±1 inci), lalu baris nama.
 
-        # Ikat tabelnya supaya UTUH pindah halaman — tanpa ini tabel kecil
-        # ber-bar gampang patah tepat sesudah bar-nya, dan bar (yang juga
-        # tblHeader) terulang membingungkan (terlihat di probe V1, kembaran
-        # persis kasus blok tanda tangan).
-        rows = list(table.rows)
-        for row in rows[:-1]:
-            for cell in row.cells:
-                for cell_paragraph in cell.paragraphs:
-                    _set_keep_next(cell_paragraph._p)
+    Beda dari `_heighten_signature_rows` (yang dipakai template `default`, dikenali
+    dari header kolom "Tanda Tangan"): di sini judul ADA DI DALAM bar hitam, bukan
+    label bold di atas tabel, dan tabelnya 2 kolom tanpa baris header teks.
+    """
+    for table in document.tables:
+        if _take_table_marker(table, _SIGNATURE_BAR_MARKER) is None:
+            continue
+        _merge_first_row_into_bar(table, _SIGNATURE_BAR_FILL, white_text=True)
+        # Baris pertama di bawah bar = ruang tanda tangan basah (±1 inci, seperti
+        # kotak tanda tangan acuan); baris berikutnya (nama/jabatan) tetap.
+        body = list(table.rows)[1:]
+        if body:
+            body[0].height = Inches(1.0)
+            body[0].height_rule = WD_ROW_HEIGHT_RULE.AT_LEAST
+        _keep_table_together(table)
+
+
+def _merge_cover_entity_column(document) -> None:
+    """Gabung VERTIKAL kolom pertama (Entitas) tabel Tim Project cover bertanda
+    _COVER_MERGE_MARKER: satu nilai perusahaan memayungi seluruh baris tim,
+    persis tabel "Entitas | Jabatan | Nama" docx PREMCO asli (sel Entitas
+    di-merge lintas baris). Nilainya diambil dari sel data pertama; sel di
+    bawahnya (sengaja kosong di template) ikut lebur ke atas."""
+    for table in document.tables:
+        if _take_table_marker(table, _COVER_MERGE_MARKER) is None:
+            continue
+        body = table.rows[1:]  # lewati baris header
+        if len(body) < 2:
+            continue
+        merged = body[0].cells[0]
+        for row in body[1:]:
+            merged = merged.merge(row.cells[0])
+        merged.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
+
+
+# Style paragraf blok judul cover (eyebrow, judul, baris identitas) — hanya ini
+# yang di-align kanan; tabel kodifikasi/tim di bawahnya tak tersentuh.
+_COVER_HEADER_STYLES = ("Cover Eyebrow", "Title", "Cover Subtitle")
+
+
+def _right_align_cover(document) -> None:
+    """Ratakan KANAN blok judul cover (eyebrow "SOLUTION DESIGN DOCUMENT", judul
+    project, dan baris identitas No/Versi/RFC/Klasifikasi) — permintaan pemilik
+    untuk template premco (meniru posisi identitas cover PREMCO). Dipanggil SESUDAH
+    `_split_cover_title` supaya paragraf eyebrow-nya sudah ada. Hanya menyentuh
+    paragraf bergaya cover; tabel Fungsi/Katalog/Tim di bawahnya tetap kiri."""
+    for paragraph in document.paragraphs:
+        if paragraph.style.name in _COVER_HEADER_STYLES:
+            paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+
+
+def _is_infra_table(table) -> bool:
+    """Tabel Infrastructure & Capacity Planning premco, dikenali dari HEADER-nya
+    yang khas: `No. | Resources | <kosong> | Remark` (kolom ke-3 header kosong).
+    Tabel lain (Demografi/System Requirement/How to Access/Features) selalu punya
+    judul di kolom ke-3, jadi tak mungkin salah kena; template default tak punya
+    tabel ini sama sekali (pakai teks bebas)."""
+    if not table.rows or len(table.rows[0].cells) != 4:
+        return False
+    h = [c.text.strip() for c in table.rows[0].cells]
+    return h[0] == "No." and h[1] == "Resources" and h[2] == "" and h[3] == "Remark"
+
+
+def _merge_infra_empty_cells(document) -> None:
+    """Di tabel Infrastructure premco, gabung sel kolom sub-environment (idx 2) &
+    Remark (idx 3) pada baris yang KEDUANYA kosong — persis docx PREMCO asli, di
+    mana baris tanpa sub-environment (Infrastructure Tech Req, Network, Data
+    Center) memakai satu sel lebar, bukan dua sel kosong bersebelahan. Baris yang
+    sub-environment-nya terisi (Akses URL → Development/QA/…) tidak disentuh."""
+    for table in document.tables:
+        if not _is_infra_table(table):
+            continue
+        for row in table.rows[1:]:  # lewati header
+            cells = row.cells
+            if len(cells) == 4 and not cells[2].text.strip() and not cells[3].text.strip():
+                cells[2].merge(cells[3])
 
 
 def _apply_green_headers(document) -> None:
@@ -1299,15 +1420,21 @@ def _apply_orientation_markers(document) -> None:
         _set_section_orientation(section, orient)
 
 
-def _postprocess_docx(docx_path: str, logo_bytes: bytes | None = None) -> None:
+def _postprocess_docx(docx_path: str, logo_bytes: bytes | None = None,
+                      cover_align_right: bool = False) -> None:
     """Sentuhan yang tidak bisa dititipkan ke reference.docx maupun Pandoc —
     satu kali buka-simpan untuk semuanya."""
     document = docx.Document(docx_path)
     _apply_title_bars(document)  # sebelum center: baris pertama masih utuh per-sel
+    _apply_signature_bars(document)  # bar hitam blok tanda tangan premco (idem)
+    _merge_cover_entity_column(document)  # kolom Entitas cover premco -> merge vertikal
+    _merge_infra_empty_cells(document)  # tabel Infrastructure premco -> gabung sel kosong
     _apply_green_headers(document)  # header hijau tabel test-case UAT premco
     _expand_line_break_markers(document)
     _center_table_headers(document)
     _split_cover_title(document)  # judul cover -> label + nama project
+    if cover_align_right:
+        _right_align_cover(document)  # SESUDAH split: eyebrow sudah ada untuk di-align
     _style_cover_blocks(document)  # SESUDAH center: daftar cover kembali rata kiri
     _bind_lead_in_to_figure(document)
     _move_table_captions_below(document)
@@ -1435,5 +1562,9 @@ def generate_docx(
             "`python -c \"import pypandoc; pypandoc.download_pandoc()\"` sekali."
         ) from e
 
-    _postprocess_docx(str(output_path), logo_bytes)
+    _postprocess_docx(
+        str(output_path),
+        logo_bytes,
+        cover_align_right=resolved.cover_align_right and normalized_type == "SDD",
+    )
     return str(output_path)

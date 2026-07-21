@@ -14,7 +14,19 @@
        arsitektur. (Aturan V1: template MENGISI, tidak merestrukturisasi; slot
        yang tidak ada di-drop, bukan dikarang.)
     4. Tabel Features membawa kolom Remark kosong (konvensi dokumen asli).
-    5. DUA bab mockup (Website & Aplikasi) — dokumen aslinya memang dua.
+    5. DUA mockup (Website & Aplikasi) — dokumen aslinya memang dua. Keduanya kini
+       SUB-BAB (Heading 2, bernomor 3 & 4) di bawah Flow Proses Bisnis, bukan bab
+       tersendiri — bersama Use Case (1) & Activity Diagram (2). Meniru Daftar Isi
+       docx asli (2026-07-21 lanjutan 10).
+
+    7. COVER & BLOK TANDA TANGAN gaya PREMCO (2026-07-21 lanjutan 10, permintaan
+       pemilik "persis docx PREMCO"): cover = tiga tabel berbingkai header gelap
+       (Fungsi/Kodifikasi, Katalog, Entitas/Jabatan/Nama) — BUKAN cover minimalis
+       borderless ((CVBAND))/((CVLIST)) milik `default`. Kolom Entitas di-merge
+       vertikal (marker ((CVMERGE))). Perwakilan User/Pengembang = bar judul HITAM
+       selebar tabel + 2 kolom × 2 baris (marker ((SIGBAR))). Detail di compiler.
+       Lanjutan 11: blok judul cover (eyebrow + judul + baris identitas) di-align
+       KANAN oleh compiler (`_right_align_cover`, flag `cover_align_right` premco).
 
     6. How to Access & Infrastructure & Capacity Planning berbentuk TABEL
        (diukur dari docx asli): How to Access = checklist 2 baris tetap dengan
@@ -40,61 +52,50 @@
   persis dengan aslinya.
 #}
 {# ================= HALAMAN COVER =================
-   Urutannya meniru cover dokumen acuan (halaman 1 dibaca sebagai gambar DAN
-   diukur span-nya): label jenis dokumen, NAMA PROJECT sebagai puncak, lalu
-   identitas (versi/RFC/klasifikasi) yang mengecil, baru kodifikasi & tim.
+   Cover gaya PREMCO — DIUKUR dari halaman 1 docx aslinya (ref/benchmark):
+   label jenis dokumen + nama project (dari --metadata title, dipecah compiler
+   `_split_cover_title`), lalu identitas (No/Versi/RFC/Klasifikasi), baru TIGA
+   tabel header-gelap: Fungsi/Kodifikasi, Katalog Proses Bisnis, dan Tim Project
+   (Entitas | Jabatan | Nama).
 
-   Judul dua tingkat (label + nama project) TIDAK ditulis di sini: Pandoc
-   memancarkannya dari `--metadata title`, dan compiler yang memecahnya jadi dua
-   paragraf (`_split_cover_title`). Satu sumber judul, dipakai cover DAN kaki
-   halaman.
-
-   Blok di bawah ditulis sebagai pipe table supaya kolomnya lurus, tapi RUPA
-   tabelnya dilepas compiler lewat marker ((CVBAND))/((CVLIST)) — cover acuan
-   memang tumpukan tabel berbingkai, dan justru itu yang sengaja tidak ditiru:
-   yang ditiru urutan & isinya, bukan kotak-kotaknya. Baris header yang KOSONG
-   (`|  |  |`) bukan kelalaian — Pandoc membacanya sebagai "tabel tanpa header",
-   yang memang dibutuhkan daftar label→nilai. #}
+   Berbeda dari template `default` (yang memakai cover minimalis TANPA kotak
+   lewat marker ((CVBAND))/((CVLIST))): di sini pemilik project minta cover
+   PERSIS PREMCO — tabel berbingkai header gelap. Jadi blok-blok ini ditulis
+   sebagai pipe table BIASA; style tabel bawaan reference.docx sudah memberi
+   baris header latar hitam + teks putih (fill PREMCO 3b3838/252525 praktis sama
+   dengan hitam). Tak butuh marker khusus KECUALI kolom Entitas yang di dokumen
+   asli di-merge vertikal — ditandai ((CVMERGE)), compiler yang menggabungnya. #}
 ::: {custom-style="Cover Subtitle"}
-No. Solution Design {{ meta.solution_design_no }}
+No. Solution Design {{ meta.solution_design_no }}  ·  Versi {{ meta.version }}
+:::
+
+::: {custom-style="Cover Subtitle"}
+RFC # {{ meta.rfc_number }}  ·  Document Classification: {{ meta.document_classification }}
 :::
 
 ::: {custom-style="Cover Rule"}
 &nbsp;
 :::
 
-| ((CVBAND))Versi | RFC # | Document Classification |
-|:-------------:|:-------------:|:-------------:|
-| {{ meta.version }} | {{ meta.rfc_number }} | {{ meta.document_classification }} |
-
-::: {custom-style="Cover Rule"}
-&nbsp;
-:::
-
-::: {custom-style="Cover Section Label"}
-Kodifikasi & Katalog Proses Bisnis
-:::
-
-|  |  |
-|-----------------|--------------------------|
-| ((CVLIST))Business Relationship | {{ meta.business_relationship_no }} |
+| Fungsi | No Kodifikasi |
+|------------------------|------------------|
+| Business Relationship | {{ meta.business_relationship_no }} |
 | Business IT Solution | {{ meta.business_it_solution_no }} |
-| Proses Value Chain | {{ meta.value_chain }} |
+
+| Katalog Proses Bisnis | No. Kategori Proses |
+|------------------------|------------------|
+| Value Chain | {{ meta.value_chain }} |
 | Application Landscape | {{ meta.application_landscape }} |
 
-::: {custom-style="Cover Section Label"}
-Tim Project
-:::
-
-|  |  |
-|-----------------|--------------------------|
-| ((CVLIST))Application Requestor | {{ meta.team_application_requestor }} |
-| Business Process Owner | {{ meta.team_business_process_owner }} |
-| PIC | {{ meta.team_pic }} |
-| Lead Coordinator | {{ meta.team_lead_coordinator }} |
-| IT Solution Analyst | {{ meta.team_it_solution_analyst }} |
-| Developer | {{ meta.team_developer }} |
-| Design UI/UX | {{ meta.team_design_uiux }} |
+| ((CVMERGE))Entitas | Jabatan | Nama |
+|------------------|------------------------|------------------------|
+| {{ meta.entitas }} | Application Requestor | {{ meta.team_application_requestor }} |
+|  | Business Process Owner | {{ meta.team_business_process_owner }} |
+|  | PIC | {{ meta.team_pic }} |
+|  | Lead Coordinator | {{ meta.team_lead_coordinator }} |
+|  | IT Solution Analyst | {{ meta.team_it_solution_analyst }} |
+|  | Developer | {{ meta.team_developer }} |
+|  | Design UI/UX | {{ meta.team_design_uiux }} |
 
 ```{=openxml}
 <w:p><w:r><w:br w:type="page"/></w:r></w:p>
@@ -136,29 +137,30 @@ Dokumen ini dibuat sebagai dasar pengembangan {{ project_name }}. Jika ada perub
 |--------|--------|
 | | |
 
-**Perwakilan User**
+{# Blok tanda tangan gaya PREMCO (diukur dari docx asli): bar judul HITAM
+   selebar tabel (baris pertama ditandai ((SIGBAR)) — compiler me-merge sel +
+   mewarnai 000000 + teks putih), lalu 2 kolom × 2 baris (ruang tanda tangan di
+   atas, nama/jabatan di bawah). Nama sengaja KOSONG: dibubuhkan tangan setelah
+   dokumen disetujui, bukan data yang bisa dihasilkan sistem. #}
+| ((SIGBAR))Perwakilan User | |
+|:------:|:------:|
+| | |
+| | |
 
-| Nama | Jabatan | Tanda Tangan |
-|--------|--------|--------|
-| | | |
-| | | |
-
-**Perwakilan Pengembang**
-
-| Nama | Jabatan | Tanda Tangan |
-|--------|--------|--------|
-| | | |
-| | | |
+| ((SIGBAR))Perwakilan Pengembang | |
+|:------:|:------:|
+| | |
+| | |
 
 Tanda tangan dibubuhkan pada dokumen cetak setelah dokumen ini disetujui — bagian ini tidak dapat dihasilkan oleh sistem.
 
 ```{=openxml}
 <w:p><w:pPr><w:pStyle w:val="TOCHeading"/></w:pPr><w:r><w:t>Daftar Isi</w:t></w:r></w:p>
-<w:p><w:fldSimple w:instr=" TOC \o &quot;1-3&quot; \h \z \u "><w:r><w:t>Daftar ini diisi otomatis saat dokumen dibuka di Microsoft Word.</w:t></w:r></w:fldSimple></w:p>
+<w:p><w:fldSimple w:instr=" TOC \o &quot;1-3&quot; \h \z \u "><w:r><w:t>Daftar ini terisi otomatis saat field diperbarui — di Word tekan Ctrl+A lalu F9, atau klik kanan di sini &gt; Update Field.</w:t></w:r></w:fldSimple></w:p>
 <w:p><w:pPr><w:pStyle w:val="TOCHeading"/></w:pPr><w:r><w:t>Daftar Gambar</w:t></w:r></w:p>
-<w:p><w:fldSimple w:instr=" TOC \h \z \t &quot;Image Caption&quot; \c "><w:r><w:t>Daftar ini diisi otomatis saat dokumen dibuka di Microsoft Word.</w:t></w:r></w:fldSimple></w:p>
+<w:p><w:fldSimple w:instr=" TOC \h \z \t &quot;Image Caption&quot; \c "><w:r><w:t>Daftar ini terisi otomatis saat field diperbarui — di Word tekan Ctrl+A lalu F9, atau klik kanan di sini &gt; Update Field.</w:t></w:r></w:fldSimple></w:p>
 <w:p><w:pPr><w:pStyle w:val="TOCHeading"/></w:pPr><w:r><w:t>Daftar Tabel</w:t></w:r></w:p>
-<w:p><w:fldSimple w:instr=" TOC \h \z \t &quot;Table Caption&quot; \c "><w:r><w:t>Daftar ini diisi otomatis saat dokumen dibuka di Microsoft Word.</w:t></w:r></w:fldSimple></w:p>
+<w:p><w:fldSimple w:instr=" TOC \h \z \t &quot;Table Caption&quot; \c "><w:r><w:t>Daftar ini terisi otomatis saat field diperbarui — di Word tekan Ctrl+A lalu F9, atau klik kanan di sini &gt; Update Field.</w:t></w:r></w:fldSimple></w:p>
 ```
 
 ```{=openxml}
@@ -228,7 +230,11 @@ Tanda tangan dibubuhkan pada dokumen cetak setelah dokumen ini disetujui — bag
    (lihat schemas_document.py). Kolom No./Resources sengaja dikosongkan pada
    baris lanjutan: itu tiruan sel ter-merge vertikal dokumen asli, yang tidak
    bisa dinyatakan pipe table. Sel kosong, BUKAN `(diisi manual)` — sama dengan
-   konvensi Timeline & Cost Estimation di bab Persetujuan. #}
+   konvensi Timeline & Cost Estimation di bab Persetujuan.
+   Baris yang kolom sub-environment (idx 2) & Remark (idx 3) DUA-DUANYA kosong
+   (Infrastructure Tech Req, Network, Data Center) digabung jadi satu sel lebar
+   oleh compiler (`_merge_infra_empty_cells`) — meniru docx asli; baris ber-sub-env
+   (Akses URL → Development/QA) tetap terpisah. #}
 | No. | Resources | | Remark |
 |:---:|-----------------|------------|--------------------|
 | 1 | Infrastructure Technology Requirement | | |
@@ -293,7 +299,12 @@ Tahapan alur proses bisnis:
 {% endfor %}
 {# Baris kosong di bawah WAJIB — pemisah list dari heading (blank_before_header). #}
 
-# Use Case
+{# Use Case, Activity Diagram, dan dua Mockup adalah SUB-BAB (Heading 2, bernomor
+   1-4) di bawah "Flow Proses Bisnis" — hierarki & penomoran DIUKUR dari Daftar
+   Isi docx PREMCO asli (bab utama tanpa nomor, sub-bab ber-nomor 1..4). Nomornya
+   ditulis manual di teks heading; Word menampilkannya apa adanya di Daftar Isi.
+   TOC \o "1-3" tetap mengoleksi Heading 2 ini (terindentasi di bawah babnya). #}
+## 1. Use Case
 
 {# SATU diagram use case gabungan (semua aktor dalam satu gambar). Gambar 3 tetap;
    activity di bawah mulai Gambar 4 (loop.index + 3). #}
@@ -312,7 +323,7 @@ Tahapan alur proses bisnis:
 
 {% endfor %}
 
-# Activity Diagram
+## 2. Activity Diagram
 
 {% for activity in diagrams.activity_diagrams %}
 {{ activity.description }}
@@ -334,12 +345,13 @@ Tahapan alur proses bisnis:
 
 {% endfor %}
 
-{# Dokumen aslinya menutup dengan DUA bab mockup — Website dan Aplikasi.
-   Keduanya placeholder manual: mockup mustahil diturunkan dari kode. #}
-# Mockup Website
+{# Dokumen aslinya menutup dengan DUA sub-bab mockup — Website dan Aplikasi
+   (sub-bab 3 & 4 di bawah Flow Proses Bisnis, sesuai Daftar Isi asli). Keduanya
+   placeholder manual: mockup mustahil diturunkan dari kode. #}
+## 3. Mockup Website
 
 *Tampilan antarmuka website (mockup UI) tidak dapat diturunkan dari source code. Bagian ini dilengkapi manual oleh tim desain.*
 
-# Mockup Aplikasi
+## 4. Mockup Aplikasi
 
 *Tampilan antarmuka aplikasi (mockup UI) tidak dapat diturunkan dari source code. Bagian ini dilengkapi manual oleh tim desain.*

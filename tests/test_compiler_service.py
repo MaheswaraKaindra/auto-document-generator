@@ -14,7 +14,9 @@ from unittest.mock import Mock, patch
 import pypandoc
 import pytest
 from docx import Document
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
+from docx.shared import Inches
 
 from app.domain.exceptions import DiagramRenderError
 from app.services import compiler_service
@@ -129,6 +131,11 @@ _FULL_SDD_METADATA = {
     "team_developer": "Fajar Ramadhan",
     "team_design_uiux": "Nadia Puspita",
 }
+
+# `entitas` HANYA dipakai template premco (kolom pertama tabel Tim Project cover);
+# sengaja tak masuk _FULL_SDD_METADATA supaya test "semua nilai muncul" pada
+# template default tidak menuntutnya. Digabung inline di test premco yang butuh.
+_PREMCO_ONLY_METADATA = {"entitas": "PT Contoh Nusantara"}
 
 _FULL_UAT_METADATA = {
     "related_rfc_number": "RFC-2026-088",
@@ -1167,6 +1174,166 @@ def test_how_to_access_is_a_two_row_checklist_table(mock_plantuml_ok):
         assert "Published to Internet" in text, template_id
         assert _FULL_SDD_METADATA["access_internal_remark"] in text, template_id
         assert _FULL_SDD_METADATA["access_published_internet_remark"] in text, template_id
+
+
+# --- Cover, tanda tangan, & hierarki premco (request pemilik 2026-07-21) --------
+#
+# Pemilik project minta cover & blok tanda tangan premco PERSIS docx PREMCO asli
+# (bukan lagi gaya minimalis template default): tabel berbingkai header gelap,
+# kolom Entitas di-merge vertikal, bar tanda tangan HITAM 2×2, dan Use Case/
+# Activity/Mockup jadi sub-bab bernomor. Diukur langsung dari docx benchmark.
+
+
+def test_premco_cover_uses_boxed_dark_header_tables(mock_plantuml_ok):
+    """Cover premco = TIGA tabel berbingkai header gelap (Fungsi/Kodifikasi,
+    Katalog Proses Bisnis, Entitas/Jabatan/Nama), BUKAN cover minimalis tanpa
+    kotak (CVBAND/CVLIST) seperti default. Marker tak boleh bocor ke teks."""
+    data = _load_fixture("document_content_sdd.json")
+
+    output_path = compiler_service.generate_docx(
+        "SDD", data, document_metadata={**_FULL_SDD_METADATA, **_PREMCO_ONLY_METADATA},
+        template_id="premco",
+    )
+
+    document = Document(output_path)
+    heads = {t.rows[0].cells[0].text.strip() for t in document.tables if t.rows}
+    assert {"Fungsi", "Katalog Proses Bisnis", "Entitas"} <= heads
+    # Premco tak memakai cover borderless: TIDAK ada tabel yang garisnya dilepas.
+    assert not _cover_block_tables(document), "cover premco tak boleh borderless"
+    text = _docx_text(output_path)
+    assert _PREMCO_ONLY_METADATA["entitas"] in text
+    for marker in ("((CVMERGE))", "((CVBAND))", "((CVLIST))"):
+        assert marker not in text, f"marker {marker} bocor ke dokumen"
+
+
+def test_premco_cover_entity_column_is_vertically_merged(mock_plantuml_ok):
+    """Kolom Entitas tabel Tim Project di-merge VERTIKAL — satu perusahaan
+    memayungi seluruh baris tim, meniru sel Entitas yang di-merge di docx asli.
+    Semua sel data kolom 0 harus menunjuk ke satu <w:tc> yang sama."""
+    data = _load_fixture("document_content_sdd.json")
+
+    output_path = compiler_service.generate_docx(
+        "SDD", data, document_metadata={**_FULL_SDD_METADATA, **_PREMCO_ONLY_METADATA},
+        template_id="premco",
+    )
+
+    document = Document(output_path)
+    entity = next(t for t in document.tables
+                  if t.rows and t.rows[0].cells[0].text.strip() == "Entitas")
+    body_cells = [entity.rows[r].cells[0]._tc for r in range(1, len(entity.rows))]
+    assert len({id(c) for c in body_cells}) == 1, "kolom Entitas tidak lebur jadi satu sel"
+
+
+def test_premco_signature_blocks_are_black_bar_two_by_two(mock_plantuml_ok):
+    """Perwakilan User & Pengembang = bar judul HITAM (000000) selebar tabel +
+    2 kolom × 2 baris ruang tanda tangan — diukur dari docx PREMCO asli, bukan
+    tabel 3-kolom Nama/Jabatan/Tanda Tangan template default."""
+    data = _load_fixture("document_content_sdd.json")
+
+    output_path = compiler_service.generate_docx("SDD", data, template_id="premco")
+
+    document = Document(output_path)
+    sig = [t for t in document.tables
+           if t.rows and t.rows[0].cells[0].text.strip()
+           in ("Perwakilan User", "Perwakilan Pengembang")]
+    assert len(sig) == 2, "tabel Perwakilan User & Pengembang tidak ketemu"
+    for table in sig:
+        assert len(table.columns) == 2, "blok tanda tangan harus 2 kolom"
+        assert len(table.rows) == 3, "bar + 2 baris badan (ruang tanda tangan)"
+        bar = table.rows[0].cells[0]
+        shd = bar._tc.find(qn("w:tcPr")).find(qn("w:shd"))
+        assert shd is not None and shd.get(qn("w:fill")) == "000000", "bar tidak hitam"
+        assert table.rows[1].height is not None and table.rows[1].height >= Inches(1), \
+            "ruang tanda tangan kurang tinggi"
+    # tabel 3-kolom lama tidak boleh ada lagi di premco
+    assert "Tanda Tangan" not in _docx_text(output_path)
+
+
+def test_premco_use_case_and_activity_are_numbered_subsections(mock_plantuml_ok):
+    """Sesuai Daftar Isi docx PREMCO: Use Case, Activity Diagram, dan dua Mockup
+    adalah SUB-BAB (Heading 2) bernomor 1-4 di bawah Flow Proses Bisnis — bukan
+    bab Heading 1 tersendiri. Word menampilkannya terindentasi & bernomor di
+    Daftar Isi."""
+    data = _load_fixture("document_content_sdd.json")
+
+    output_path = compiler_service.generate_docx("SDD", data, template_id="premco")
+
+    document = Document(output_path)
+    h2 = [p.text.strip() for p in document.paragraphs if p.style.name == "Heading 2"]
+    assert h2 == ["1. Use Case", "2. Activity Diagram",
+                  "3. Mockup Website", "4. Mockup Aplikasi"]
+    h1 = [p.text.strip() for p in document.paragraphs if p.style.name == "Heading 1"]
+    assert "Flow Proses Bisnis" in h1
+    assert "Use Case" not in h1, "Use Case tak boleh lagi bab Heading 1 tersendiri"
+
+
+_COVER_HEADER_STYLES = ("Cover Eyebrow", "Title", "Cover Subtitle")
+
+
+def test_premco_cover_header_is_right_aligned(mock_plantuml_ok):
+    """Permintaan pemilik: blok judul cover premco (eyebrow, judul, baris
+    identitas) di-align KANAN, meniru cover PREMCO. Tabel kodifikasi/tim di
+    bawahnya tetap penuh (tak ikut)."""
+    data = _load_fixture("document_content_sdd.json")
+
+    output_path = compiler_service.generate_docx(
+        "SDD", data, project_name="Contoh App",
+        document_metadata={**_FULL_SDD_METADATA, **_PREMCO_ONLY_METADATA},
+        template_id="premco",
+    )
+
+    document = Document(output_path)
+    header = [p for p in document.paragraphs if p.style.name in _COVER_HEADER_STYLES]
+    assert header, "paragraf blok judul cover tidak ketemu"
+    for paragraph in header:
+        assert paragraph.alignment == WD_ALIGN_PARAGRAPH.RIGHT, \
+            f"paragraf cover {paragraph.style.name!r} tidak rata kanan"
+
+
+def test_default_cover_header_is_not_right_aligned(mock_plantuml_ok):
+    """Align-kanan cover HANYA milik premco; template default mempertahankan
+    cover tengah yang sudah disetujui pemilik."""
+    data = _load_fixture("document_content_sdd.json")
+
+    output_path = compiler_service.generate_docx(
+        "SDD", data, project_name="Contoh App",
+        document_metadata=_FULL_SDD_METADATA, template_id="default",
+    )
+
+    document = Document(output_path)
+    header = [p for p in document.paragraphs if p.style.name in _COVER_HEADER_STYLES]
+    assert header, "paragraf blok judul cover tidak ketemu"
+    assert all(p.alignment != WD_ALIGN_PARAGRAPH.RIGHT for p in header), \
+        "cover default tidak boleh ikut rata kanan"
+
+
+def test_premco_infra_merges_empty_subenv_and_remark(mock_plantuml_ok):
+    """Di tabel Infrastructure premco, baris tanpa sub-environment (Infrastructure
+    Tech Req, Network, Data Center) menggabung sel kolom sub-env + Remark yang
+    keduanya kosong jadi satu sel lebar — persis docx PREMCO. Baris ber-sub-env
+    (Akses URL → Development) TETAP terpisah."""
+    data = _load_fixture("document_content_sdd.json")
+
+    output_path = compiler_service.generate_docx(
+        "SDD", data, document_metadata=_FULL_SDD_METADATA, template_id="premco"
+    )
+
+    document = Document(output_path)
+    infra = next(t for t in document.tables if compiler_service._is_infra_table(t))
+    by_resource = {}
+    for row in infra.rows[1:]:
+        key = row.cells[1].text.strip()
+        if key:
+            by_resource[key] = row
+    # baris tanpa sub-env: sel idx 2 & 3 harus satu <w:tc> (ter-merge)
+    merged_row = by_resource["Infrastructure Technology Requirement"]
+    assert merged_row.cells[2]._tc is merged_row.cells[3]._tc, \
+        "sel sub-env + Remark kosong tidak digabung"
+    # baris ber-sub-env (Akses URL) TIDAK boleh ter-merge
+    akses = by_resource["Akses URL"]
+    assert akses.cells[2].text.strip() == "Development"
+    assert akses.cells[2]._tc is not akses.cells[3]._tc, \
+        "baris ber-sub-env tidak boleh ikut ter-merge"
 
 
 def test_document_font_is_calibri_not_pandoc_default(mock_plantuml_ok):

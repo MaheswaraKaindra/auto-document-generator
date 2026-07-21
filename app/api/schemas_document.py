@@ -58,6 +58,13 @@ class DocumentMetadata(BaseModel):
     # Tim project (halaman cover). Peran-perannya TETAP (diambil dari dokumen
     # acuan); yang ditanyakan cuma namanya. Tidak diturunkan dari kode: nama
     # orang tidak ada di repo mana pun.
+    #
+    # `entitas` = kolom PERTAMA tabel Tim Project gaya PREMCO ("Entitas | Jabatan
+    # | Nama"): nama perusahaan/organisasi pemilik, satu nilai untuk seluruh tim
+    # (di dokumen PREMCO sel ini di-merge vertikal — compiler menirunya lewat
+    # marker ((CVMERGE))). Kosong = jatuh ke penanda *(diisi manual)* seperti
+    # field cover lain.
+    entitas: Optional[str] = None
     team_application_requestor: Optional[str] = None
     team_business_process_owner: Optional[str] = None
     team_pic: Optional[str] = None
