@@ -453,9 +453,15 @@ _PREMCO_STYLE = {
     "heading_font": BODY_FONT,   # tema major
     "body_font": BODY_FONT,      # tema minor
     "title":    {"size": 30, "bold": True, "caps": False, "align": "center"},
-    "heading1": {"size": 16, "bold": True, "caps": True,  "align": "center"},  # bab: besar+bold+UPPERCASE
-    "heading2": {"size": 13, "bold": True, "caps": False, "align": "left"},    # sub-bab: bold
-    "heading3": {"size": 12, "bold": True, "caps": False, "align": "left"},    # sub-sub: semibold (approx via SEMIBOLD_INK)
+    # Ukuran heading DIUKUR dari PDF acuan (span per baris, 2026-07-21), bukan
+    # ditebak: bab "DESKRIPSI APLIKASI"/"SYSTEM REQUIREMENT" = Calibri-Bold 14pt
+    # huruf besar di TENGAH; sub-bab "2.10. Activity Diagram ..." = Calibri-Bold
+    # 12pt rata KIRI. Aturan tipografi pemilik (bab besar+bold+UPPERCASE+tengah,
+    # sub-bab bold) tetap dipenuhi — yang berubah cuma angkanya, dari 16/13 yang
+    # ditebak jadi 14/12 yang terukur.
+    "heading1": {"size": 14, "bold": True, "caps": True,  "align": "center"},  # bab: besar+bold+UPPERCASE
+    "heading2": {"size": 12, "bold": True, "caps": False, "align": "left"},    # sub-bab: bold
+    "heading3": {"size": 11, "bold": True, "caps": False, "align": "left"},    # sub-sub: semibold (approx via SEMIBOLD_INK)
     "header_fill": BLACK,
     "header_text": WHITE,
 }
