@@ -39,39 +39,66 @@
   satu. Begitu gap itu ditutup (butuh Contract B), penomoran ini otomatis sama
   persis dengan aslinya.
 #}
-| Field | Isi |
-|----------|--------------------|
-| Nama Project | {{ project_name }} |
-| No. Solution Design | {{ meta.solution_design_no }} |
-| RFC # | {{ meta.rfc_number }} |
-| Versi | {{ meta.version }} |
-| Document Classification | {{ meta.document_classification }} |
+{# ================= HALAMAN COVER =================
+   Urutannya meniru cover dokumen acuan (halaman 1 dibaca sebagai gambar DAN
+   diukur span-nya): label jenis dokumen, NAMA PROJECT sebagai puncak, lalu
+   identitas (versi/RFC/klasifikasi) yang mengecil, baru kodifikasi & tim.
 
-| Fungsi | No Kodifikasi |
-|--------|------------|
-| Business Relationship | |
-| Business IT Solution | |
+   Judul dua tingkat (label + nama project) TIDAK ditulis di sini: Pandoc
+   memancarkannya dari `--metadata title`, dan compiler yang memecahnya jadi dua
+   paragraf (`_split_cover_title`). Satu sumber judul, dipakai cover DAN kaki
+   halaman.
 
-| Katalog Proses Bisnis | Kategori |
-|--------|------------|
-| Proses Value Chain | |
-| Application Landscape | |
+   Blok di bawah ditulis sebagai pipe table supaya kolomnya lurus, tapi RUPA
+   tabelnya dilepas compiler lewat marker ((CVBAND))/((CVLIST)) — cover acuan
+   memang tumpukan tabel berbingkai, dan justru itu yang sengaja tidak ditiru:
+   yang ditiru urutan & isinya, bukan kotak-kotaknya. Baris header yang KOSONG
+   (`|  |  |`) bukan kelalaian — Pandoc membacanya sebagai "tabel tanpa header",
+   yang memang dibutuhkan daftar label→nilai. #}
+::: {custom-style="Cover Subtitle"}
+No. Solution Design {{ meta.solution_design_no }}
+:::
+
+::: {custom-style="Cover Rule"}
+&nbsp;
+:::
+
+| ((CVBAND))Versi | RFC # | Document Classification |
+|:-------------:|:-------------:|:-------------:|
+| {{ meta.version }} | {{ meta.rfc_number }} | {{ meta.document_classification }} |
+
+::: {custom-style="Cover Rule"}
+&nbsp;
+:::
+
+::: {custom-style="Cover Section Label"}
+Kodifikasi & Katalog Proses Bisnis
+:::
+
+|  |  |
+|-----------------|--------------------------|
+| ((CVLIST))Business Relationship | {{ meta.business_relationship_no }} |
+| Business IT Solution | {{ meta.business_it_solution_no }} |
+| Proses Value Chain | {{ meta.value_chain }} |
+| Application Landscape | {{ meta.application_landscape }} |
+
+::: {custom-style="Cover Section Label"}
+Tim Project
+:::
+
+|  |  |
+|-----------------|--------------------------|
+| ((CVLIST))Application Requestor | {{ meta.team_application_requestor }} |
+| Business Process Owner | {{ meta.team_business_process_owner }} |
+| PIC | {{ meta.team_pic }} |
+| Lead Coordinator | {{ meta.team_lead_coordinator }} |
+| IT Solution Analyst | {{ meta.team_it_solution_analyst }} |
+| Developer | {{ meta.team_developer }} |
+| Design UI/UX | {{ meta.team_design_uiux }} |
 
 ```{=openxml}
 <w:p><w:r><w:br w:type="page"/></w:r></w:p>
 ```
-
-**Tim & Peran**
-
-| Jabatan / Peran | Nama |
-|--------|------------|
-| Application Requestor | |
-| Business Process Owner | |
-| PIC | |
-| Lead Coordinator | |
-| IT Solution Analyst | |
-| Developer | |
-| Design UI/UX | |
 
 # Document Revision History
 

@@ -29,7 +29,7 @@ from docx.enum.table import WD_ROW_HEIGHT_RULE
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
-from docx.shared import Inches
+from docx.shared import Inches, Pt, RGBColor
 from jinja2 import Environment, FileSystemLoader
 from PIL import Image, UnidentifiedImageError
 
@@ -235,13 +235,45 @@ _PLANTUML_STYLE_PREAMBLE = ("!theme plain", f"skinparam dpi {_PLANTUML_DPI}")
 _PAGE_WIDTH_IN = 6.5
 _PAGE_HEIGHT_IN = 8.0
 
-# Berapa piksel PNG per inci TAMPIL di dokumen. Ini kunci dua cacat visual
-# sekaligus: (1) diagram kecil yang DIRENTANGKAN selebar halaman jadi buram +
-# hurufnya raksasa — jangan pernah upscale; (2) teks diagram harus seragam antar
-# diagram. 360 px/inci pada render 300 dpi ≈ teks ~9pt di kertas (sedikit di
-# bawah body 11pt, seperti diagram dokumen acuan) dengan ketajaman efektif
-# 360 dpi. Menaikkan angka ini = teks lebih kecil & lebih tajam.
+# Berapa piksel PNG per inci TAMPIL di dokumen — penentu ukuran teks di dalam
+# diagram, dan teks itu harus seragam ANTAR diagram. 360 px/inci pada render 300
+# dpi ≈ teks ~9pt di kertas (sedikit di bawah body 11pt, seperti diagram dokumen
+# acuan). Menaikkan angka ini = teks lebih kecil & lebih tajam.
 _DIAGRAM_DISPLAY_DPI = 360
+
+# Lantai ukuran diagram (lihat _image_attr aturan 2 & 3). Diagram yang lebih
+# kecil dari `TARGET_WIDTH_FRAC` x lebar area teks dibesarkan sampai menyentuhnya.
+# 0,80 = tengah-tengah pita 75-90% yang diminta pemilik, dan masih di dalam pita
+# 43-95% yang TERUKUR dari diagram dokumen acuan.
+_DIAGRAM_TARGET_WIDTH_FRAC = 0.80
+
+# Ketajaman minimum yang masih pantas dicetak (ambang yang sama dengan komentar
+# _PLANTUML_DPI). Salah satu dari dua batas pembesaran, DITURUNKAN bukan ditebak:
+# gambar dirender _PLANTUML_DPI dan ditampilkan pada _DIAGRAM_DISPLAY_DPI, jadi
+# memperbesar n kali menurunkan kerapatan efektif jadi _PLANTUML_DPI/n.
+_DIAGRAM_MIN_EFFECTIVE_DPI = 150
+
+# Batas kedua, dan biasanya inilah yang menggigit: UKURAN TEKS DI DALAM DIAGRAM.
+# Memperbesar gambar ikut memperbesar hurufnya, dan diagram berhuruf lebih besar
+# dari teks badan terbaca seperti poster — tidak ada dokumen enterprise yang
+# begitu (di PDF acuan teks diagram justru LEBIH KECIL dari teks badan).
+#
+# Ukuran alaminya dihitung, bukan ditebak: PlantUML memakai font 14 px pada 96
+# dpi, dirender pada _PLANTUML_DPI, lalu ditampilkan pada _DIAGRAM_DISPLAY_DPI.
+_DIAGRAM_NATURAL_TEXT_PT = 14 * (_PLANTUML_DPI / 96) / _DIAGRAM_DISPLAY_DPI * 72
+# 12,5pt = sedikit di atas teks badan 11pt: cukup longgar supaya diagram boleh
+# membesar, cukup ketat supaya tidak pernah terbaca sebagai poster.
+_DIAGRAM_MAX_TEXT_PT = 12.5
+
+# Konsekuensi yang DISENGAJA dari dua batas di atas: diagram yang secara
+# struktur sederhana (use case 1 aktor 2 oval) TIDAK akan mencapai target lebar,
+# karena lebar dan ukuran huruf terkunci satu sama lain — melebarkannya sampai
+# 80% berarti hurufnya jadi 17pt. Diagram yang RUMIT (yang memang perlu ruang)
+# mencapainya. Lantainya naik tanpa ada yang jadi poster.
+_DIAGRAM_MAX_UPSCALE = min(
+    _PLANTUML_DPI / _DIAGRAM_MIN_EFFECTIVE_DPI,
+    _DIAGRAM_MAX_TEXT_PT / _DIAGRAM_NATURAL_TEXT_PT,
+)
 
 _MANUAL_PLACEHOLDER = "*(diisi manual)*"
 
@@ -275,6 +307,26 @@ _GREEN_HEADER_FILL = "a8d08d"
 # memecah section di situ dan memutar sisanya jadi landscape. Pandoc tidak punya
 # konsep "section landscape sebagian", jadi ini satu-satunya tempat deterministik.
 _LANDSCAPE_MARKER = "((LANDSCAPE))"
+
+# Blok cover yang TANPA kotak-kotak tabel. Keduanya tetap ditulis sebagai pipe
+# table di template — itu satu-satunya cara Markdown menjamin kolom yang lurus —
+# lalu post-process MELEPAS rupa tabelnya. Hasilnya: perataan seakurat tabel,
+# tampilan setenang teks. Marker ditaruh di sel PERTAMA (pola yang sama dengan
+# ((GH))), dan dibuang saat diproses.
+#
+#   ((CVBAND)) = pita identitas 3 kolom (Versi | RFC # | Classification):
+#                tanpa garis sama sekali, label kecil-abu di atas nilai besar.
+#   ((CVLIST)) = daftar label→nilai 2 kolom (kodifikasi, katalog, tim project):
+#                cuma hairline antar-baris, tanpa bingkai luar.
+_COVER_BAND_MARKER = "((CVBAND))"
+_COVER_LIST_MARKER = "((CVLIST))"
+
+# Abu-abu garis & teks sekunder cover. Nilainya SAMA dengan yang dipakai
+# reference_synthesis_service (GRID / SEMIBOLD_INK); di-copy sebagai konstanta
+# lokal karena compiler tidak boleh bergantung ke modul sintesis reference —
+# reference.docx bisa datang dari template hasil upload (V2).
+_COVER_RULE_INK = "BFBFBF"
+_COVER_LABEL_INK = "595959"
 
 # Logo di header: tinggi standar meniru logo dokumen acuan (~0,45 inci di kanan
 # atas tiap halaman). Logo pita yang sangat lebar dibatasi LEBARNYA supaya tidak
@@ -489,16 +541,30 @@ def _render_diagram_to_image(diagram_script: str, images_dir: Path) -> str:
 def _image_attr(image_path: str) -> str:
     """Atribut ukuran Pandoc (`{width=...}` / `{height=...}`) untuk satu diagram.
 
-    Dua aturan, dua cacat yang dicegah:
+    Tiga aturan, tiga cacat yang dicegah:
 
-    1. JANGAN UPSCALE. Ukuran tampil alami = piksel / _DIAGRAM_DISPLAY_DPI.
-       Aturan lama merentangkan SEMUA diagram selebar halaman — diagram kecil
-       (mis. component diagram 3 kotak) jadi buram dengan huruf raksasa, dan
-       ukuran teks antar diagram tidak konsisten. Kalau muat, pakai ukuran alami.
-    2. Kalau tidak muat, ciutkan di sisi yang lebih dulu mentok: diagram lebar
-       dibatasi LEBARNYA, diagram tinggi dibatasi TINGGINYA — sisi satunya ikut
-       proporsional, jadi tidak ada yang gepeng. (Kasus lama yang terukur pada
-       esteler: 5 dari 11 diagram setinggi 9,7-17,2 inci di halaman 11 inci.)
+    1. JANGAN MELUBER. Diagram yang lebih besar dari area teks diciutkan di sisi
+       yang lebih dulu mentok — diagram lebar dibatasi LEBARnya, diagram tinggi
+       dibatasi TINGGInya, sisi satunya ikut proporsional jadi tak ada yang
+       gepeng. (Kasus terukur pada esteler: 5 dari 11 diagram setinggi 9,7-17,2
+       inci di halaman 11 inci.)
+    2. JANGAN KEKECILAN. Diagram sederhana (use case 1 aktor 2 oval) keluar
+       cuma 0,55 x 0,27 inci pada ukuran alaminya — terukur 42% lebar area teks
+       dengan lautan putih di kiri-kanannya. Kalau masih di bawah
+       `_DIAGRAM_TARGET_WIDTH_FRAC`, diagram DIBESARKAN sampai menyentuh target.
+    3. JANGAN JADI POSTER, JANGAN BURAM. Pembesarannya dibatasi
+       `_DIAGRAM_MAX_UPSCALE` — dua ambang terukur sekaligus: huruf di dalam
+       diagram tak boleh melewati `_DIAGRAM_MAX_TEXT_PT`, dan kerapatan efektif
+       tak boleh turun di bawah `_DIAGRAM_MIN_EFFECTIVE_DPI`. Konsekuensinya
+       jujur: diagram yang secara STRUKTUR sederhana tidak akan mencapai target
+       lebar — lebar dan ukuran huruf terkunci satu sama lain, dan huruf 17pt di
+       dalam diagram lebih merusak daripada diagram yang 60% lebar.
+
+    Aturan 2 sengaja TIDAK memaksa setiap diagram selebar halaman. Diukur dari
+    PDF acuan (87 halaman, tiap gambar diukur): diagramnya sendiri memakai
+    43-95% lebar area teks — mayoritas activity diagram justru 43-54%. Yang
+    membuat diagram acuan terlihat berwibawa bukan lebarnya, melainkan tidak
+    adanya diagram MUNGIL. Target di sini menaikkan lantai, bukan menyamaratakan.
 
     Pillow, bukan parsing header PNG manual: JPEG yang dibaca sebagai PNG
     menghasilkan angka ngawur TANPA error (65536 x 4293001688 — betulan terjadi
@@ -508,11 +574,25 @@ def _image_attr(image_path: str) -> str:
         width, height = image.size
     natural_width_in = width / _DIAGRAM_DISPLAY_DPI
     natural_height_in = height / _DIAGRAM_DISPLAY_DPI
-    if natural_width_in <= _PAGE_WIDTH_IN and natural_height_in <= _PAGE_HEIGHT_IN:
+
+    # Terlalu besar -> ciutkan di sisi yang lebih dulu mentok.
+    if natural_width_in > _PAGE_WIDTH_IN or natural_height_in > _PAGE_HEIGHT_IN:
+        if height / width > _PAGE_HEIGHT_IN / _PAGE_WIDTH_IN:
+            return f"{{height={_PAGE_HEIGHT_IN}in}}"
+        return f"{{width={_PAGE_WIDTH_IN}in}}"
+
+    # Terlalu kecil -> besarkan sampai target, dibatasi ketajaman DAN tinggi
+    # halaman (diagram jangkung tak boleh terdorong keluar halaman oleh aturan
+    # lebar).
+    target_width_in = _PAGE_WIDTH_IN * _DIAGRAM_TARGET_WIDTH_FRAC
+    scale = min(
+        target_width_in / natural_width_in,
+        _PAGE_HEIGHT_IN / natural_height_in,
+        _DIAGRAM_MAX_UPSCALE,
+    )
+    if scale <= 1:
         return f"{{width={natural_width_in:.2f}in}}"
-    if height / width > _PAGE_HEIGHT_IN / _PAGE_WIDTH_IN:
-        return f"{{height={_PAGE_HEIGHT_IN}in}}"
-    return f"{{width={_PAGE_WIDTH_IN}in}}"
+    return f"{{width={natural_width_in * scale:.2f}in}}"
 
 
 def _build_sdd_context(data: dict[str, Any], render_integration: bool = True) -> dict[str, Any]:
@@ -669,23 +749,29 @@ def _apply_title_bars(document) -> None:
     tidak terbaca. Keduanya cuma bisa dilakukan sesudah docx jadi.
     """
     for table in document.tables:
-        if not table.rows:
+        if _take_table_marker(table, _TITLE_BAR_MARKER) is None:
             continue
         first_row = table.rows[0]
-        if not first_row.cells[0].text.startswith(_TITLE_BAR_MARKER):
-            continue
-        title = first_row.cells[0].text[len(_TITLE_BAR_MARKER):].strip()
+        title = first_row.cells[0].text.strip()
 
-        # Matikan header hitam kondisional (firstRow) untuk tabel INI saja.
-        tbl_look = table._tbl.tblPr.find(qn("w:tblLook"))
-        if tbl_look is not None:
-            tbl_look.set(qn("w:firstRow"), "0")
+        _disable_conditional_header(table)
 
         merged = first_row.cells[0]
         for cell in first_row.cells[1:]:
             merged = merged.merge(cell)
-        merged.text = title
+        # `merged.text = ...` membuang paragraf sel BESERTA style-nya (jadi
+        # Normal, bukan Compact seperti sel tabel lain) — bar judul jadi berhuruf
+        # 11pt di antara isi 10,5pt dan berspasi beda. Yang diganti cukup
+        # teksnya; paragraf pertama dipertahankan.
         paragraph = merged.paragraphs[0]
+        for extra in merged.paragraphs[1:]:
+            extra._p.getparent().remove(extra._p)
+        for extra_run in paragraph.runs[1:]:
+            extra_run._r.getparent().remove(extra_run._r)
+        if paragraph.runs:
+            paragraph.runs[0].text = title
+        else:
+            paragraph.add_run(title)
         paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
         for run in paragraph.runs:
             run.bold = True
@@ -716,17 +802,11 @@ def _apply_green_headers(document) -> None:
     tetap ditangani _center_table_headers (yang meratakan baris pertama tiap tabel).
     """
     for table in document.tables:
-        if not table.rows:
+        if _take_table_marker(table, _GREEN_HEADER_MARKER) is None:
             continue
         header = table.rows[0]
-        if not header.cells[0].text.startswith(_GREEN_HEADER_MARKER):
-            continue
-        header.cells[0].text = header.cells[0].text[len(_GREEN_HEADER_MARKER):].strip()
 
-        # Matikan header hitam kondisional (firstRow) untuk tabel INI saja.
-        tbl_look = table._tbl.tblPr.find(qn("w:tblLook"))
-        if tbl_look is not None:
-            tbl_look.set(qn("w:firstRow"), "0")
+        _disable_conditional_header(table)
 
         for cell in header.cells:
             shading = OxmlElement("w:shd")
@@ -786,6 +866,192 @@ def _center_table_headers(document) -> None:
                 paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
 
+def _split_cover_title(document) -> None:
+    """Pecah judul cover jadi DUA tingkat: label jenis dokumen di atas, nama
+    project sebagai judul besar di bawahnya — urutan yang sama dengan cover
+    dokumen acuan (label "Solution Design #..." lalu nama project yang lebih
+    besar).
+
+    Pandoc menulis SATU paragraf style `Title` berisi "<label> — <project>"
+    (lihat `_document_title`), dan teks gabungan itu memang harus tetap utuh:
+    dia juga judul di docProps yang dibaca field TITLE di kaki tiap halaman —
+    satu sumber, dua tempat. Yang dipecah cuma TAMPILANNYA di halaman cover.
+
+    Kalau tidak ada em dash (project_name kosong), paragraf dibiarkan apa
+    adanya — cover jatuh ke rupa lama, bukan error.
+    """
+    for paragraph in document.paragraphs:
+        if paragraph.style.name != "Title":
+            continue
+        label, separator, project = paragraph.text.partition(" — ")
+        if not separator:
+            return
+        eyebrow = paragraph.insert_paragraph_before(label, style="Cover Eyebrow")
+        # Judul besar mewarisi napas atasnya DARI eyebrow yang baru — tanpa ini
+        # jarak `before` style Title menumpuk jadi lubang di tengah cover.
+        paragraph.paragraph_format.space_before = Pt(0)
+        # Tulis ulang isi paragraf judul jadi nama project saja, sambil menjaga
+        # run pertamanya (formatnya ikut style Title).
+        for extra_run in paragraph.runs[1:]:
+            extra_run._r.getparent().remove(extra_run._r)
+        if paragraph.runs:
+            paragraph.runs[0].text = project
+        else:
+            paragraph.add_run(project)
+        del eyebrow  # cuma disisipkan; tidak ada lagi yang perlu dilakukan padanya
+        return
+
+
+def _strip_marker_in_cell(cell, marker: str) -> None:
+    """Buang marker dari sel TANPA menyentuh paragrafnya.
+
+    Sengaja tidak memakai `cell.text = ...`: assignment itu membuang seluruh
+    paragraf sel dan menggantinya dengan paragraf baru bergaya Normal — sel
+    bermarker jadi lebih tinggi dan berhuruf lebih besar daripada sel lain di
+    tabel yang sama (terlihat jelas di probe: baris pertama tiap blok cover
+    menonjol sendiri). Yang diganti cukup teks run pertamanya.
+    """
+    for paragraph in cell.paragraphs:
+        for run in paragraph.runs:
+            if run.text.startswith(marker):
+                run.text = run.text[len(marker):].lstrip()
+                return
+    cell.text = cell.text[len(marker):].strip()  # jaring pengaman
+
+
+def _take_table_marker(table, *markers: str) -> str | None:
+    """Marker mana yang menandai tabel ini? Sekaligus MEMBUANGnya dari selnya.
+
+    Template menyatakan maksud ("tabel ini bar judul biru / header hijau / blok
+    cover") lewat marker di sel pertama, karena Markdown tak punya cara
+    menyatakannya. Deteksi + pembuangannya identik di semua pemakai, jadi
+    disatukan di sini — termasuk jaminan bahwa pembuangan marker tidak
+    menjatuhkan style paragraf selnya (lihat `_strip_marker_in_cell`).
+
+    Kembalikan marker yang cocok, atau None kalau tabel ini bukan miliknya.
+    """
+    if not table.rows:
+        return None
+    first_cell = table.rows[0].cells[0]
+    text = first_cell.text
+    for marker in markers:
+        if text.startswith(marker):
+            _strip_marker_in_cell(first_cell, marker)
+            return marker
+    return None
+
+
+def _clear_table_borders(table) -> None:
+    """Lepas SEMUA garis tabel (termasuk yang datang dari table style)."""
+    borders = OxmlElement("w:tblBorders")
+    for edge in ("top", "left", "bottom", "right", "insideH", "insideV"):
+        element = OxmlElement(f"w:{edge}")
+        element.set(qn("w:val"), "none")
+        element.set(qn("w:sz"), "0")
+        borders.append(element)
+    tbl_pr = table._tbl.tblPr
+    for old in tbl_pr.findall(qn("w:tblBorders")):
+        tbl_pr.remove(old)
+    tbl_pr.append(borders)
+
+
+def _set_row_bottom_rule(row, color: str) -> None:
+    """Hairline di bawah satu baris — dipasang per SEL, karena tblBorders sudah
+    dimatikan seluruhnya (garis per-sel yang menang, bukan sebaliknya)."""
+    for cell in row.cells:
+        tc_pr = cell._tc.get_or_add_tcPr()
+        for old in tc_pr.findall(qn("w:tcBorders")):
+            tc_pr.remove(old)
+        borders = OxmlElement("w:tcBorders")
+        bottom = OxmlElement("w:bottom")
+        bottom.set(qn("w:val"), "single")
+        bottom.set(qn("w:sz"), "4")
+        bottom.set(qn("w:color"), color)
+        borders.append(bottom)
+        tc_pr.append(borders)
+
+
+def _flush_cover_cell_margins(table) -> None:
+    """Nolkan padding KIRI/KANAN sel blok cover; sisakan padding atas/bawah.
+
+    Tanpa ini isi blok masuk ~0,08 inci ke dalam relatif label section dan garis
+    pemisah di atasnya — tepi kiri cover jadi bergerigi, dan itu persis yang
+    paling terlihat pada desain yang bersandar pada perataan. Padding vertikal
+    tetap ada: yang memberi baris ruang bernapas.
+    """
+    tbl_pr = table._tbl.tblPr
+    for old in tbl_pr.findall(qn("w:tblCellMar")):
+        tbl_pr.remove(old)
+    margins = OxmlElement("w:tblCellMar")
+    for edge, width in (("top", 70), ("left", 0), ("bottom", 70), ("right", 0)):
+        element = OxmlElement(f"w:{edge}")
+        element.set(qn("w:w"), str(width))
+        element.set(qn("w:type"), "dxa")
+        margins.append(element)
+    tbl_pr.append(margins)
+
+
+def _disable_conditional_header(table) -> None:
+    """Matikan format kondisional baris pertama (header hitam) untuk satu tabel."""
+    tbl_look = table._tbl.tblPr.find(qn("w:tblLook"))
+    if tbl_look is not None:
+        tbl_look.set(qn("w:firstRow"), "0")
+
+
+def _style_cover_blocks(document) -> None:
+    """Ubah tabel bermarker cover jadi blok TANPA rupa tabel.
+
+    Kenapa post-process, bukan style: Pandoc tidak menyediakan cara menunjuk
+    table style per-tabel (semua tabel memakai style "Table" yang sama), dan
+    Markdown tidak punya sintaks "tabel tanpa garis". Pola yang sama persis
+    dengan ((BAR)) dan ((GH)) — template menyatakan MAKSUD lewat marker, rupa
+    dikerjakan di sini.
+
+    Dijalankan SESUDAH `_center_table_headers` (yang meratakan tengah baris
+    pertama SETIAP tabel): blok daftar cover tidak punya baris header sama
+    sekali, jadi perataannya harus dikembalikan ke kiri di sini.
+    """
+    for table in document.tables:
+        marker = _take_table_marker(table, _COVER_BAND_MARKER, _COVER_LIST_MARKER)
+        if marker is None:
+            continue
+        band = marker == _COVER_BAND_MARKER
+
+        _disable_conditional_header(table)
+        _clear_table_borders(table)
+        _flush_cover_cell_margins(table)
+
+        if band:
+            # Pita identitas: baris 1 = label kecil huruf besar abu, baris 2 =
+            # nilainya besar & tebal. Dua baris, satu makna — jadi label sengaja
+            # jauh lebih kecil dari nilainya (kontras yang membuat pita ini
+            # terbaca sebagai hierarki, bukan sebagai tabel tanpa garis).
+            for index, row in enumerate(table.rows):
+                for cell in row.cells:
+                    for paragraph in cell.paragraphs:
+                        paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                        for run in paragraph.runs:
+                            run.bold = index > 0
+                            run.font.size = Pt(13 if index else 8.5)
+                            if index == 0:
+                                run.font.all_caps = True
+                                run.font.color.rgb = RGBColor.from_string(_COVER_LABEL_INK)
+            continue
+
+        # Daftar label→nilai: hairline antar-baris (baris terakhir TANPA garis,
+        # supaya blok berakhir dengan tenang, bukan dengan garis menggantung),
+        # kolom label abu supaya nilainya yang menonjol.
+        for row in table.rows[:-1]:
+            _set_row_bottom_rule(row, _COVER_RULE_INK)
+        for row in table.rows:
+            for index, cell in enumerate(row.cells):
+                for paragraph in cell.paragraphs:
+                    paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
+                    for run in paragraph.runs:
+                        if index == 0:
+                            run.font.color.rgb = RGBColor.from_string(_COVER_LABEL_INK)
+
+
 def _set_keep_next(paragraph_element) -> None:
     """Pasang w:keepNext pada satu elemen w:p (urutan schema pPr: pStyle dulu)."""
     p_pr = paragraph_element.find(qn("w:pPr"))
@@ -799,6 +1065,34 @@ def _set_keep_next(paragraph_element) -> None:
             p_style.addnext(keep_next)
         else:
             p_pr.insert(0, keep_next)
+
+
+_FIGURE_STYLES = ("Figure", "Captioned Figure")
+
+
+def _bind_lead_in_to_figure(document) -> None:
+    """Ikat paragraf PENGANTAR ke gambar yang mengikutinya (keepNext).
+
+    Style `Figure` sudah keepNext ke CAPTION-nya, jadi gambar+caption selalu
+    sekelompok. Yang belum: kalau gambar itu tidak muat di sisa halaman, dia
+    pindah SENDIRI dan meninggalkan judul sub-bab + kalimat pengantarnya
+    terdampar di kaki halaman sebelumnya dengan ruang kosong menganga di
+    bawahnya (terlihat di probe: "ACTIVITY DIAGRAM" + satu kalimat, lalu 2,5
+    inci kosong). Heading sendiri sudah keepNext ke pengantarnya; dengan
+    mengikat pengantar → gambar, seluruh kelompok heading→pengantar→gambar→
+    caption berpindah utuh.
+
+    Dikerjakan di sini, bukan di style: "paragraf ini kebetulan mendahului
+    gambar" adalah fakta tentang URUTAN dokumen, bukan tentang jenis
+    paragrafnya — style tidak punya cara menyatakannya.
+    """
+    paragraphs = document.paragraphs
+    for current, following in zip(paragraphs, paragraphs[1:]):
+        if following.style.name not in _FIGURE_STYLES:
+            continue
+        if current.style.name in _FIGURE_STYLES or not current.text.strip():
+            continue
+        _set_keep_next(current._p)
 
 
 def _move_table_captions_below(document) -> None:
@@ -980,6 +1274,9 @@ def _postprocess_docx(docx_path: str, logo_bytes: bytes | None = None) -> None:
     _apply_green_headers(document)  # header hijau tabel test-case UAT premco
     _expand_line_break_markers(document)
     _center_table_headers(document)
+    _split_cover_title(document)  # judul cover -> label + nama project
+    _style_cover_blocks(document)  # SESUDAH center: daftar cover kembali rata kiri
+    _bind_lead_in_to_figure(document)
     _move_table_captions_below(document)
     _heighten_signature_rows(document)
     _landscape_after_marker(document)  # Case Pengujian UAT premco → landscape

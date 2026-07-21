@@ -72,6 +72,25 @@ def _docx_text(path: str) -> str:
 # format, jadi yang tersisa di docx cuma teksnya.
 _PLACEHOLDER_IN_DOCX = "(diisi manual)"
 
+
+def _cover_block_tables(document):
+    """Tabel halaman cover yang rupa tabelnya sudah dilepas `_style_cover_blocks`.
+
+    Dikenali dari HASILNYA (seluruh tblBorders bernilai "none"), bukan dari
+    marker: marker sudah dibuang saat post-process, dan mengenali dari hasil
+    berarti test ini ikut menjaga pelepasan garisnya benar-benar terjadi.
+    """
+    from docx.oxml.ns import qn
+
+    blocks = []
+    for table in document.tables:
+        borders = table._tbl.tblPr.find(qn("w:tblBorders"))
+        if borders is None or not len(borders):
+            continue
+        if all(edge.get(qn("w:val")) == "none" for edge in borders):
+            blocks.append(table)
+    return blocks
+
 # Semua field metadata yang dipakai template SDD (17) dan UAT (8). Sengaja ditulis
 # lengkap: test "tidak ada lubang tersisa" di bawah cuma bermakna kalau daftar ini
 # memang utuh.
@@ -96,6 +115,18 @@ _FULL_SDD_METADATA = {
     "security_penetration_test": "Sudah, 2026-06-30",
     "security_secure_coding": "Mengikuti OWASP ASVS L2",
     "security_reverse_proxy": "Nginx",
+    # Halaman cover: kodifikasi/katalog + tim project.
+    "business_relationship_no": "BR-2026-001",
+    "business_it_solution_no": "BIS-2026-002",
+    "value_chain": "Mengelola Operasional Gudang",
+    "application_landscape": "Supply Chain Management",
+    "team_application_requestor": "Rina Kartika",
+    "team_business_process_owner": "Dimas Prasetyo",
+    "team_pic": "Yoga Mahendra",
+    "team_lead_coordinator": "Sarah Amelia",
+    "team_it_solution_analyst": "Bagas Nugroho",
+    "team_developer": "Fajar Ramadhan",
+    "team_design_uiux": "Nadia Puspita",
 }
 
 _FULL_UAT_METADATA = {
@@ -612,12 +643,66 @@ def test_table_headers_are_centered(mock_plantuml_ok):
     document = Document(compiler_service.generate_docx("SDD", data))
 
     assert document.tables, "tidak ada tabel di dokumen"
-    for table in document.tables:
+    # Blok cover DIKECUALIKAN: dia ditulis sebagai tabel semata demi kolom yang
+    # lurus, lalu rupa tabelnya dilepas (_style_cover_blocks) — daftar
+    # label→nilai di cover memang rata KIRI, dan itu perataan yang disengaja,
+    # bukan header yang lupa dirata-tengahkan.
+    cover_blocks = {id(t._tbl) for t in _cover_block_tables(document)}
+    body_tables = [t for t in document.tables if id(t._tbl) not in cover_blocks]
+    assert body_tables, "semua tabel dianggap blok cover — pengecualiannya terlalu lebar"
+    for table in body_tables:
         for cell in table.rows[0].cells:
             for paragraph in cell.paragraphs:
                 assert paragraph.alignment == WD_ALIGN_PARAGRAPH.CENTER, (
                     f"header {paragraph.text!r} tidak rata tengah"
                 )
+
+
+def test_cover_blocks_lose_their_table_look(mock_plantuml_ok):
+    """Blok identitas/kodifikasi/tim di cover ditulis sebagai pipe table (demi
+    kolom yang lurus) tapi TIDAK boleh terlihat sebagai tabel: marker dibuang,
+    garis dilepas, dan header hitam kondisional dimatikan.
+
+    Yang dijaga terutama MARKERNYA: marker yang lolos ke dokumen jadi "((CVLIST))"
+    telanjang di halaman pertama — cacat paling terlihat yang bisa dihasilkan
+    fitur ini."""
+    from docx import Document
+    from docx.oxml.ns import qn
+
+    data = _load_fixture("document_content_sdd.json")
+
+    output_path = compiler_service.generate_docx(
+        "SDD", data, document_metadata=_FULL_SDD_METADATA
+    )
+    document = Document(output_path)
+
+    text = _docx_text(output_path)
+    assert compiler_service._COVER_BAND_MARKER not in text
+    assert compiler_service._COVER_LIST_MARKER not in text
+
+    blocks = _cover_block_tables(document)
+    assert len(blocks) == 3, "cover harus punya 3 blok: pita identitas, kodifikasi, tim"
+    for table in blocks:
+        tbl_look = table._tbl.tblPr.find(qn("w:tblLook"))
+        assert tbl_look.get(qn("w:firstRow")) == "0", "header hitam masih menyala di cover"
+
+    # Isian form benar-benar mendarat di blok cover, bukan cuma menghapus marker.
+    assert "Fajar Ramadhan" in text  # tim project
+    assert "BR-2026-001" in text  # kodifikasi
+
+
+def test_cover_blocks_do_not_bleed_into_body_tables(mock_plantuml_ok):
+    """Pelepasan garis harus berhenti di cover. Tabel isi (Revision History,
+    Features, use case) tetap bergaris — kalau `_style_cover_blocks` terlalu
+    rakus, seluruh dokumen kehilangan bingkai tabelnya tanpa satu pun test lain
+    merah."""
+    from docx import Document
+
+    data = _load_fixture("document_content_sdd.json")
+
+    document = Document(compiler_service.generate_docx("SDD", data))
+
+    assert len(document.tables) > len(_cover_block_tables(document))
 
 
 def test_reference_docx_carries_dot_leader_toc_styles():
@@ -686,9 +771,14 @@ def test_generated_docx_has_numbered_pages(mock_plantuml_ok):
 
 
 def test_document_title_lands_in_both_places(mock_plantuml_ok):
-    """Judul dipakai DUA kali: sebagai judul besar halaman pertama (style Title)
-    dan sebagai teks kaki tiap halaman (field TITLE membacanya dari docProps).
-    Satu sumber, dua tempat — kalau docProps kosong, kaki halaman ikut kosong."""
+    """Judul dipakai DUA kali: sebagai judul halaman cover dan sebagai teks kaki
+    tiap halaman (field TITLE membacanya dari docProps). Satu sumber, dua tempat
+    — kalau docProps kosong, kaki halaman ikut kosong.
+
+    Di cover judul itu dipecah jadi DUA tingkat (`_split_cover_title`): label
+    jenis dokumen sebagai eyebrow, nama project sebagai judul besar. Yang dipecah
+    cuma tampilannya — docProps tetap memuat judul UTUH, jadi kaki halaman tidak
+    ikut kehilangan labelnya."""
     import re
     import zipfile
 
@@ -700,8 +790,28 @@ def test_document_title_lands_in_both_places(mock_plantuml_ok):
 
     core = zipfile.ZipFile(output_path).read("docProps/core.xml").decode("utf-8", "ignore")
     assert re.search(r"<dc:title>Solution Design Document — Esteler App</dc:title>", core)
-    titles = [p.text for p in Document(output_path).paragraphs if p.style.name == "Title"]
-    assert titles == ["Solution Design Document — Esteler App"]
+    paragraphs = Document(output_path).paragraphs
+    assert [p.text for p in paragraphs if p.style.name == "Title"] == ["Esteler App"]
+    assert [p.text for p in paragraphs if p.style.name == "Cover Eyebrow"] == [
+        "Solution Design Document"
+    ]
+
+
+def test_cover_title_survives_missing_project_name(mock_plantuml_ok):
+    """Tanpa nama project, judul tak punya em dash untuk dipecah — cover harus
+    jatuh ke satu paragraf Title berisi label saja, bukan error atau eyebrow
+    kosong."""
+    from docx import Document
+
+    data = _load_fixture("document_content_sdd.json")
+
+    output_path = compiler_service.generate_docx("SDD", data, project_name="")
+
+    paragraphs = Document(output_path).paragraphs
+    assert [p.text for p in paragraphs if p.style.name == "Title"] == [
+        "Solution Design Document"
+    ]
+    assert not [p for p in paragraphs if p.style.name == "Cover Eyebrow"]
 
 
 def test_uat_gets_its_own_title(mock_plantuml_ok):
@@ -711,8 +821,11 @@ def test_uat_gets_its_own_title(mock_plantuml_ok):
 
     from docx import Document
 
-    titles = [p.text for p in Document(output_path).paragraphs if p.style.name == "Title"]
-    assert titles == ["Dokumen User Acceptance Testing (UAT) — Esteler App"]
+    paragraphs = Document(output_path).paragraphs
+    assert [p.text for p in paragraphs if p.style.name == "Title"] == ["Esteler App"]
+    assert [p.text for p in paragraphs if p.style.name == "Cover Eyebrow"] == [
+        "Dokumen User Acceptance Testing (UAT)"
+    ]
 
 
 def test_title_without_project_name_stays_clean():
@@ -1268,15 +1381,69 @@ def test_wide_diagram_is_capped_by_width(tmp_path):
     assert compiler_service._image_attr(str(wide)) == "{width=6.5in}"
 
 
-def test_small_diagram_is_never_upscaled(tmp_path):
-    """Diagram kecil yang DIRENTANGKAN selebar halaman jadi buram dengan huruf
-    raksasa — dan ukuran teks antar diagram jadi tidak konsisten. Kalau muat,
-    pakai ukuran tampil alami (piksel / _DIAGRAM_DISPLAY_DPI), jangan upscale."""
-    small = tmp_path / "small.png"
+def _attr_width_in(attr: str) -> float:
+    """Ambil angka inci dari atribut Pandoc "{width=5.20in}"."""
+    import re
+
+    return float(re.search(r"width=([\d.]+)in", attr).group(1))
+
+
+def test_small_diagram_is_enlarged_toward_target(tmp_path):
+    """Diagram yang lebih kecil dari target dibesarkan sampai menyentuhnya.
+
+    Aturan lama "jangan pernah upscale" menghasilkan diagram mungil dengan
+    lautan putih di kiri-kanannya — terukur 42% lebar area teks pada use case
+    diagram, sementara diagram dokumen acuan tak pernah sekecil itu."""
+    small = tmp_path / "small.png"  # 5,0 x 2,5 inci pada display dpi
     small.write_bytes(_white_png(1800, 900))
 
-    expected_in = 1800 / compiler_service._DIAGRAM_DISPLAY_DPI
-    assert compiler_service._image_attr(str(small)) == f"{{width={expected_in:.2f}in}}"
+    target_in = compiler_service._PAGE_WIDTH_IN * compiler_service._DIAGRAM_TARGET_WIDTH_FRAC
+    assert _attr_width_in(compiler_service._image_attr(str(small))) == pytest.approx(
+        target_in, abs=0.01
+    )
+
+
+def test_tiny_diagram_stops_at_the_legibility_cap(tmp_path):
+    """Pembesaran DIBATASI, dan batasnya mengikat untuk diagram yang sangat kecil.
+
+    Memperbesar gambar ikut memperbesar huruf di dalamnya; membiarkannya
+    mengejar target lebar akan menghasilkan diagram berhuruf ~17pt (teks badan
+    11pt) yang terbaca seperti poster. Jadi diagram mungil memang TIDAK sampai
+    ke target — itu keputusan sadar, dan test ini yang menjaganya tetap begitu."""
+    tiny = tmp_path / "tiny.png"  # 1,0 x 0,5 inci pada display dpi
+    tiny.write_bytes(_white_png(360, 180))
+
+    natural_in = 360 / compiler_service._DIAGRAM_DISPLAY_DPI
+    width_in = _attr_width_in(compiler_service._image_attr(str(tiny)))
+    scale = width_in / natural_in
+
+    assert scale == pytest.approx(compiler_service._DIAGRAM_MAX_UPSCALE, abs=0.01)
+    assert width_in < compiler_service._PAGE_WIDTH_IN * compiler_service._DIAGRAM_TARGET_WIDTH_FRAC
+    # Dua ambang yang menurunkan batas itu harus benar-benar terpenuhi. Toleransi
+    # kecil karena atribut Pandoc dibulatkan ke 2 desimal inci — pada diagram
+    # 1 inci itu menggeser skala sampai 0,005, jadi ambangnya bisa terlampaui
+    # sepersekian poin. Yang dijaga di sini besarannya, bukan digit terakhirnya.
+    assert (
+        compiler_service._DIAGRAM_NATURAL_TEXT_PT * scale
+        <= compiler_service._DIAGRAM_MAX_TEXT_PT + 0.1
+    )
+    assert (
+        compiler_service._PLANTUML_DPI / scale
+        >= compiler_service._DIAGRAM_MIN_EFFECTIVE_DPI - 1
+    )
+
+
+def test_diagram_already_past_target_keeps_natural_size(tmp_path):
+    """Yang dinaikkan cuma LANTAInya. Diagram yang ukuran alaminya sudah melewati
+    target dibiarkan apa adanya — tidak diciutkan balik ke target, dan tidak
+    disamaratakan selebar halaman."""
+    big = tmp_path / "big.png"  # 6,0 x 3,0 inci: di atas target 5,2, di bawah 6,5
+    big.write_bytes(_white_png(2160, 1080))
+
+    natural_in = 2160 / compiler_service._DIAGRAM_DISPLAY_DPI
+    assert _attr_width_in(compiler_service._image_attr(str(big))) == pytest.approx(
+        natural_in, abs=0.01
+    )
 
 
 def test_every_diagram_fits_on_the_page(mock_plantuml_ok):

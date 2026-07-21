@@ -45,6 +45,31 @@ const SDD_FIELD_GROUPS = [
     ],
   },
   {
+    // Halaman cover. Dulu sel-sel ini kosong permanen di template (tidak
+    // ditanyakan ke siapa pun), jadi cover selalu setengah kosong.
+    legend: 'Cover — Kodifikasi & Katalog Proses Bisnis',
+    fields: [
+      { key: 'business_relationship_no', label: 'Business Relationship', placeholder: 'No kodifikasi' },
+      { key: 'business_it_solution_no', label: 'Business IT Solution', placeholder: 'No kodifikasi' },
+      { key: 'value_chain', label: 'Proses Value Chain', placeholder: 'Kategori proses bisnis' },
+      { key: 'application_landscape', label: 'Application Landscape', placeholder: 'Kategori landscape aplikasi' },
+    ],
+  },
+  {
+    // Peran-perannya TETAP (diambil dari dokumen acuan); yang ditanyakan cuma
+    // namanya -- nama orang tidak ada di repo mana pun.
+    legend: 'Cover — Tim Project',
+    fields: [
+      { key: 'team_application_requestor', label: 'Application Requestor', placeholder: 'Nama' },
+      { key: 'team_business_process_owner', label: 'Business Process Owner', placeholder: 'Nama' },
+      { key: 'team_pic', label: 'PIC', placeholder: 'Nama' },
+      { key: 'team_lead_coordinator', label: 'Lead Coordinator', placeholder: 'Nama' },
+      { key: 'team_it_solution_analyst', label: 'IT Solution Analyst', placeholder: 'Nama' },
+      { key: 'team_developer', label: 'Developer', placeholder: 'Nama' },
+      { key: 'team_design_uiux', label: 'Design UI/UX', placeholder: 'Nama' },
+    ],
+  },
+  {
     legend: 'Informasi Demografi Aplikasi',
     fields: [
       { key: 'business_requestor', label: 'Business Requestor', placeholder: 'Divisi yang meminta' },

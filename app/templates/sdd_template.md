@@ -38,49 +38,63 @@
   kolom rata tengah. Mengubah jumlah dash mengubah proporsi kolom — itu fitur,
   bukan kebetulan.
 #}
-| Field | Isi |
-|----------|--------------------|
-| Nama Project | {{ project_name }} |
-| No. Solution Design | {{ meta.solution_design_no }} |
-| RFC # | {{ meta.rfc_number }} |
-| Versi | {{ meta.version }} |
-| Document Classification | {{ meta.document_classification }} |
+{# ================= HALAMAN COVER =================
+   Urutan & hierarkinya sama persis dengan sdd_premco_template.md — penjelasan
+   lengkapnya ada di sana. Ringkasnya: judul dua tingkat (label jenis dokumen +
+   nama project) datang dari `--metadata title` dan dipecah compiler
+   (`_split_cover_title`), lalu identitas → kodifikasi → tim. Blok di bawah
+   ditulis sebagai pipe table demi kolom yang lurus, tapi rupa tabelnya dilepas
+   compiler lewat marker ((CVBAND))/((CVLIST)); baris header yang KOSONG
+   (`|  |  |`) dibaca Pandoc sebagai "tabel tanpa header".
 
-{# Tiga tabel di bawah meniru halaman cover dokumen acuan (Fungsi/Kodifikasi,
-   Katalog Proses Bisnis, tabel tim). Sel-selnya sengaja KOSONG — bukan penanda
-   "(diisi manual)" — karena nilainya tidak ditanyakan di form; konvensinya sama
-   dengan Revision History yang di dokumen acuan pun berupa baris kosong.
-   Menambahkan penanda di sini akan menggagalkan
-   test_sdd_metadata_leaves_no_manual_placeholder. #}
-| Fungsi | No Kodifikasi |
-|--------|------------|
-| Business Relationship | |
-| Business IT Solution | |
+   Tim & Peran DULU ditaruh di halaman 2 karena cover + 3 tabel identitas +
+   tabel tim tidak muat satu halaman. Sesudah tumpukan tabel itu diganti blok
+   tanpa bingkai, semuanya muat (diverifikasi visual) — jadi tim kembali ke
+   cover, tempatnya di dokumen acuan. #}
+::: {custom-style="Cover Subtitle"}
+No. Solution Design {{ meta.solution_design_no }}
+:::
 
-| Katalog Proses Bisnis | Kategori |
-|--------|------------|
-| Proses Value Chain | |
-| Application Landscape | |
+::: {custom-style="Cover Rule"}
+&nbsp;
+:::
+
+| ((CVBAND))Versi | RFC # | Document Classification |
+|:-------------:|:-------------:|:-------------:|
+| {{ meta.version }} | {{ meta.rfc_number }} | {{ meta.document_classification }} |
+
+::: {custom-style="Cover Rule"}
+&nbsp;
+:::
+
+::: {custom-style="Cover Section Label"}
+Kodifikasi & Katalog Proses Bisnis
+:::
+
+|  |  |
+|-----------------|--------------------------|
+| ((CVLIST))Business Relationship | {{ meta.business_relationship_no }} |
+| Business IT Solution | {{ meta.business_it_solution_no }} |
+| Proses Value Chain | {{ meta.value_chain }} |
+| Application Landscape | {{ meta.application_landscape }} |
+
+::: {custom-style="Cover Section Label"}
+Tim Project
+:::
+
+|  |  |
+|-----------------|--------------------------|
+| ((CVLIST))Application Requestor | {{ meta.team_application_requestor }} |
+| Business Process Owner | {{ meta.team_business_process_owner }} |
+| PIC | {{ meta.team_pic }} |
+| Lead Coordinator | {{ meta.team_lead_coordinator }} |
+| IT Solution Analyst | {{ meta.team_it_solution_analyst }} |
+| Developer | {{ meta.team_developer }} |
+| Design UI/UX | {{ meta.team_design_uiux }} |
 
 ```{=openxml}
 <w:p><w:r><w:br w:type="page"/></w:r></w:p>
 ```
-
-{# Tim & Peran sengaja DI HALAMAN 2, bukan di cover: diukur dari probe visual,
-   cover + 3 tabel identitas + tabel tim = ~21 baris tidak muat satu halaman dan
-   tabel tim terbelah jelek melintasi halaman. Cover cukup memuat identitas
-   dokumen; tim & riwayat revisi satu halaman sesudahnya. #}
-**Tim & Peran**
-
-| Jabatan / Peran | Nama |
-|--------|------------|
-| Application Requestor | |
-| Business Process Owner | |
-| PIC | |
-| Lead Coordinator | |
-| IT Solution Analyst | |
-| Developer | |
-| Design UI/UX | |
 
 # Document Revision History
 
