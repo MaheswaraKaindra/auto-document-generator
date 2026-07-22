@@ -266,6 +266,208 @@ def test_bare_script_gets_wrapped(mock_plantuml_ok):
     source = mock_plantuml_ok.call_args_list[0].args[0]
     assert source.startswith("@startuml")
     assert source.rstrip().endswith("@enduml")
+
+
+# --- Swimlane activity (Opsi B: lane ditebak compiler, prompt TIDAK diubah) ----
+#
+# Dokumen acuan (dibuat draw.io) memakai swimlane User|Sistem, dan itu ciri utama
+# "activity diagram yang baik" menurut pemilik. PlantUML mendukungnya native; yang
+# kurang cuma informasi siapa mengerjakan apa — dan itu SUDAH ada di Contract B,
+# karena prompt mewajibkan langkah difrasakan "Aktor melakukan X"/"Sistem ...".
+
+_ACTIVITY_SCRIPT = (
+    "@startuml\nstart\n:Admin membuka halaman login;\n"
+    ":Sistem memverifikasi kredensial;\n:Admin melihat dashboard;\nstop\n@enduml"
+)
+
+
+def test_swimlanes_split_actor_and_system_steps():
+    """Langkah ber-subjek aktor masuk lane aktor, ber-subjek sistem masuk lane
+    Sistem, dan lane hanya ditulis saat BERUBAH (PlantUML mewariskan lane)."""
+    out = compiler_service._add_swimlanes(_ACTIVITY_SCRIPT, "Admin")
+
+    lanes = [ln.strip() for ln in out.splitlines() if ln.strip().startswith("|")]
+    assert lanes == ["|Admin|", "|Sistem|", "|Admin|"]
+    # urutan tetap: lane mendahului langkah yang dimaksud
+    assert out.index("|Sistem|") < out.index(":Sistem memverifikasi kredensial;")
+
+
+def test_swimlanes_skip_non_activity_diagrams():
+    """Diagram arsitektur/komponen/use case TIDAK boleh tersentuh — tak ada baris
+    `:Langkah;` di sana, jadi transform mengembalikannya apa adanya."""
+    component = ('@startuml\ncomponent "App" as A\ndatabase "DB" as D\n'
+                 "A --> D\n@enduml")
+
+    assert compiler_service._add_swimlanes(component, "Admin") == component
+
+
+def test_swimlanes_leave_scripts_that_already_have_lanes():
+    """Kalau LLM sudah menulis lane sendiri, jangan ditimpa."""
+    already = ("@startuml\n|User|\nstart\n:User klik simpan;\n"
+               "|Sistem|\n:Sistem menyimpan data;\nstop\n@enduml")
+
+    assert compiler_service._add_swimlanes(already, "User") == already
+
+
+def test_swimlane_ambiguous_step_inherits_current_lane():
+    """Langkah tanpa subjek jelas TIDAK ditebak — dia mewarisi lane berjalan.
+    Menaruhnya di lane yang salah = menyatakan tanggung jawab yang salah, dan itu
+    kesalahan ISI, bukan sekadar rupa."""
+    script = ("@startuml\nstart\n:Admin membuka form;\n:Validasi data;\n"
+              ":Sistem menyimpan data;\nstop\n@enduml")
+
+    out = compiler_service._add_swimlanes(script, "Admin")
+
+    lanes = [ln.strip() for ln in out.splitlines() if ln.strip().startswith("|")]
+    assert lanes == ["|Admin|", "|Sistem|"], "langkah ambigu tak boleh bikin lane baru"
+    # ":Validasi data;" tetap berada SESUDAH |Admin| dan SEBELUM |Sistem|
+    assert out.index(":Validasi data;") < out.index("|Sistem|")
+
+
+def test_activity_render_falls_back_when_swimlanes_break(monkeypatch):
+    """Swimlane itu peningkatan RUPA — dia tidak boleh sanggup menggagalkan
+    dokumen. Kalau versi ber-lane ditolak plantuml, versi tanpa lane dipakai.
+    (Presedennya nyata: satu diagram rusak pernah mematikan seluruh generate.)"""
+    seen = []
+
+    def fake_run(source):
+        seen.append(source)
+        if "|Admin|" in source:
+            raise DiagramRenderError("ditolak")
+        return _MINIMAL_PNG
+
+    monkeypatch.setattr(compiler_service, "_run_plantuml", fake_run)
+
+    path = compiler_service._render_activity_diagram(
+        _ACTIVITY_SCRIPT, compiler_service.IMAGES_DIR, "Admin"
+    )
+
+    assert Path(path).exists(), "fallback tanpa lane harus tetap menghasilkan gambar"
+    assert len(seen) == 2, "harus mencoba ber-lane dulu, baru jatuh ke tanpa lane"
+    assert "|Admin|" not in seen[1]
+
+
+def test_plain_style_for_uml_diagrams_theme_for_architecture(mock_plantuml_ok):
+    """Keputusan pemilik 2026-07-22: use case, activity, & flow proses bisnis
+    HITAM-PUTIH (tanpa tema warna) supaya mirip acuan draw.io; arsitektur &
+    integrasi komponen TETAP ber-tema warna. Dicek dari source yang sampai ke
+    plantuml, per-diagram — bukan dari urutan panggilan (yang bisa berubah)."""
+    data = _load_fixture("document_content_sdd.json")
+
+    compiler_service.generate_docx("SDD", data, template_id="default")
+
+    sources = [c.args[0] for c in mock_plantuml_ok.call_args_list]
+    themed = [s for s in sources if "componentBackgroundColor" in s]
+    plain = [s for s in sources if "componentBackgroundColor" not in s]
+    # arsitektur + integrasi komponen = ber-tema
+    assert len(themed) == 2, "arsitektur & integrasi komponen harus ber-tema warna"
+    assert all("component " in s or "package " in s for s in themed)
+    # use case + business flow + activity = polos
+    assert len(plain) == 3, "use case, business flow, & activity harus polos"
+    assert all("!theme plain" in s for s in plain)
+
+
+def test_only_activity_diagrams_get_swimlanes(mock_plantuml_ok):
+    """Swimlane HANYA untuk activity per-fitur. Flow proses bisnis sengaja TIDAK
+    dapat — di acuan ia flowchart bercabang, bukan diagram berlajur. Fixture
+    punya 1 activity, jadi dari 3 diagram bergaya polos (business flow, use case,
+    activity) tepat SATU yang boleh ber-lane."""
+    data = _load_fixture("document_content_sdd.json")
+    assert len(data["diagrams"]["activity_diagrams"]) == 1, "asumsi fixture berubah"
+
+    compiler_service.generate_docx("SDD", data, template_id="default")
+
+    sources = [c.args[0] for c in mock_plantuml_ok.call_args_list]
+    plain = [s for s in sources if "componentBackgroundColor" not in s]
+    with_lanes = [s for s in plain if re.search(r"^\s*\|[^|]+\|\s*$", s, re.M)]
+    assert len(plain) == 3
+    assert len(with_lanes) == 1, "hanya activity yang boleh ber-swimlane"
+
+
+def test_swimlane_diagram_gets_closing_border(tmp_path):
+    """PlantUML menggambar swimlane hanya sebagai garis vertikal — kotaknya
+    menganga (keluhan pemilik). Bingkai penutup digambar sesudah PNG jadi."""
+    image = tmp_path / "diagram.png"
+    image.write_bytes(_white_png(400, 300))
+    # Tiruan swimlane PlantUML: garis VERTIKAL saja (kiri, pemisah, kanan) —
+    # tanpa garis atas/bawah. Itu persis bentuk yang dikeluhkan "tidak tertutup".
+    from PIL import Image as _Image, ImageDraw as _Draw
+    with _Image.open(image) as im:
+        canvas = im.convert("RGB")
+        pen = _Draw.Draw(canvas)
+        for x in (30, 200, 370):
+            pen.line([x, 30, x, 270], fill=(0, 0, 0), width=2)
+        canvas.save(image)
+    before = _Image.open(image).size
+
+    compiler_service._close_swimlane_border(str(image))
+
+    with _Image.open(image) as after:
+        assert after.size[0] > before[0] and after.size[1] > before[1], \
+            "kanvas harus diberi napas untuk bingkai"
+        pixels = after.convert("RGB")
+        width, height = after.size
+        # bingkai = baris yang HAMPIR SELURUHNYA hitam (garis atas & bawah kotak)
+        full_rows = [
+            y for y in range(height)
+            if sum(pixels.getpixel((x, y)) == (0, 0, 0) for x in range(width))
+            > width * 0.5
+        ]
+    assert len(full_rows) >= 2, (
+        f"bingkai atas & bawah tidak tergambar (baris penuh: {full_rows})"
+    )
+
+
+def test_swimlane_gets_header_separator_line(tmp_path):
+    """Baris judul lane harus dipisah GARIS dari badan diagram, supaya swimlane
+    terbaca sebagai TABEL (header row + body) seperti acuan draw.io — permintaan
+    pemilik: "tabel sebagai background, activity-nya menyesuaikan lajur"."""
+    from PIL import Image as _Image, ImageDraw as _Draw
+
+    image = tmp_path / "swim.png"
+    image.write_bytes(_white_png(600, 400))
+    with _Image.open(image) as im:
+        canvas = im.convert("RGB")
+        pen = _Draw.Draw(canvas)
+        for x in (40, 300, 560):                       # garis lane vertikal
+            pen.line([x, 20, x, 380], fill=(0, 0, 0), width=2)
+        pen.text((150, 24), "Admin", fill=(0, 0, 0))   # pita JUDUL lane
+        pen.text((400, 24), "Sistem", fill=(0, 0, 0))
+        pen.rectangle([120, 120, 260, 160], outline=(0, 0, 0))  # badan diagram
+        canvas.save(image)
+
+    compiler_service._close_swimlane_border(str(image))
+
+    with _Image.open(image) as after:
+        pixels = after.convert("RGB")
+        width, height = after.size
+        full_rows = [
+            y for y in range(height)
+            if sum(pixels.getpixel((x, y)) == (0, 0, 0) for x in range(width))
+            > width * 0.5
+        ]
+    # bingkai atas + GARIS HEADER + bingkai bawah
+    assert len(full_rows) >= 3, f"garis header tidak tergambar (baris penuh: {full_rows})"
+    # garis header harus di pita atas, bukan di tengah diagram
+    assert any(0 < y < height * 0.4 for y in full_rows[1:]), \
+        "garis header terlalu jauh ke bawah"
+
+
+def test_enterprise_theme_skinparams_are_injected(mock_plantuml_ok):
+    """Tema enterprise (Fase 1, 2026-07-22): rounded + shadow + palet warna
+    disuntik terpusat, menggantikan tampilan hitam-putih polos. Penjaga ini
+    mengunci tema supaya tak diam-diam balik ke default PlantUML (`!theme plain`
+    saja) — sebab kalau balik, tidak ada error, cuma diagram jadi polos lagi."""
+    compiler_service._render_diagram_to_image(
+        "@startuml\nA --> B\n@enduml", compiler_service.IMAGES_DIR
+    )
+
+    source = mock_plantuml_ok.call_args_list[0].args[0]
+    assert "!theme plain" in source            # basis tetap dipertahankan
+    assert "skinparam shadowing true" in source
+    assert "skinparam roundcorner 12" in source
+    assert "skinparam componentBackgroundColor #EEF4FB" in source
+    assert "skinparam activityDiamondBackgroundColor #FBEFE0" in source
     assert "A --> B" in source
 
 

@@ -31,7 +31,7 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Inches, Pt, RGBColor
 from jinja2 import Environment, FileSystemLoader
-from PIL import Image, UnidentifiedImageError
+from PIL import Image, ImageChops, ImageDraw, UnidentifiedImageError
 
 from app.core import config
 from app.domain.exceptions import DiagramRenderError
@@ -229,9 +229,85 @@ _PLANTUML_LIMIT_SIZE = 16384
 
 # Gaya visual diagram disuntik DI SINI, bukan ditulis LLM — filosofi yang sama
 # dengan reference.docx: rupa dokumen diatur dari satu tempat yang deterministik,
-# bukan dari output model yang bisa berubah-ubah antar panggilan. `!theme plain`
-# = UML klasik hitam-putih, gaya yang dipakai dokumen acuan enterprise.
-_PLANTUML_STYLE_PREAMBLE = ("!theme plain", f"skinparam dpi {_PLANTUML_DPI}")
+# bukan dari output model yang bisa berubah-ubah antar panggilan.
+#
+# "TEMA ENTERPRISE" (Fase 1, 2026-07-22): menggantikan tampilan hitam-putih polos
+# `!theme plain` yang membuat diagram terlihat seperti default PlantUML. Dipilih
+# lewat Fase 0 — perbandingan berdampingan render esteler (PlantUML kini vs
+# ber-tema vs D2, di scratchpad): tema ini uplift SERAGAM di ketiga tipe diagram
+# (arsitektur/use case/activity) tanpa dependency baru & tanpa menyentuh pipeline
+# AI, dan untuk use case + activity JUSTRU lebih baik daripada D2 (layout UML
+# klasiknya lebih terbaca; D2 unggul hanya di graf-node arsitektur). Ikon vendor
+# TIDAK ditambahkan: glyph generik redundan dengan bentuk (cylinder = database),
+# dan logo vendor mustahil dicocokkan andal untuk service sembarang (cherry-pick).
+#
+# `!theme plain` TETAP jadi BASIS (menetralkan latar kuning default PlantUML untuk
+# elemen yang tak kita warnai eksplisit); skinparam di bawahnya menimpanya. Palet:
+# biru-abu korporat + aksen hangat (database) & ungu (cloud). Font SENGAJA tidak
+# dipatok (mis. "Segoe UI" cuma ada di Windows; diagram dirender SERVER-SIDE) —
+# biar konsisten lintas OS; uplift-nya datang dari warna/rounded/shadow, bukan font.
+_PLANTUML_STYLE_PREAMBLE = (
+    "!theme plain",
+    f"skinparam dpi {_PLANTUML_DPI}",
+    "skinparam backgroundColor #FFFFFF",
+    "skinparam shadowing true",
+    "skinparam roundcorner 12",
+    "skinparam defaultFontSize 13",
+    "skinparam ArrowColor #6B7A8D",
+    "skinparam ArrowThickness 1.2",
+    "skinparam ArrowFontColor #55636F",
+    "skinparam componentStyle rectangle",
+    "skinparam componentBackgroundColor #EEF4FB",
+    "skinparam componentBorderColor #2E6BB0",
+    "skinparam componentFontColor #17324D",
+    "skinparam databaseBackgroundColor #FBEFE0",
+    "skinparam databaseBorderColor #C87E22",
+    "skinparam databaseFontColor #6B3F0B",
+    "skinparam cloudBackgroundColor #F3EEF9",
+    "skinparam cloudBorderColor #7A4FB0",
+    "skinparam cloudFontColor #3A2560",
+    "skinparam actorBackgroundColor #EAF2FA",
+    "skinparam actorBorderColor #2E6BB0",
+    "skinparam usecaseBackgroundColor #EEF4FB",
+    "skinparam usecaseBorderColor #2E6BB0",
+    "skinparam usecaseFontColor #17324D",
+    "skinparam rectangleBackgroundColor #F8FAFC",
+    "skinparam rectangleBorderColor #C2CDDA",
+    "skinparam activityBackgroundColor #EEF4FB",
+    "skinparam activityBorderColor #2E6BB0",
+    "skinparam activityFontColor #17324D",
+    "skinparam activityDiamondBackgroundColor #FBEFE0",
+    "skinparam activityDiamondBorderColor #C87E22",
+    "skinparam activityStartColor #2E6BB0",
+    "skinparam activityEndColor #C0392B",
+)
+
+# Gaya POLOS — UML klasik hitam-putih, TANPA warna tema. Dipakai untuk tiga tipe
+# diagram yang dokumen acuannya (PREMCO, digambar draw.io) memang hitam-putih:
+# use case, activity, dan flow proses bisnis. Keputusan pemilik 2026-07-22:
+# "use case, activity, dan flow proses bisnis tidak perlu tema supaya lebih mirip".
+# Tema berwarna TETAP dipakai diagram arsitektur & integrasi komponen, yang di
+# acuan memang bukan UML hitam-putih dan terbukti lebih terbaca dengan warna.
+# `conditionStyle InsideDiamond` = keputusan digambar sebagai DIAMOND sungguhan
+# dengan teks kondisi DI DALAMNYA dan label cabang di kiri-kanan — bentuk yang
+# dipakai activity diagram draw.io acuan. Bawaan PlantUML menggambar heksagon
+# dengan teks menempel di sisinya, yang tak pernah terbaca seperti flowchart.
+# (Diprobe berdampingan: default vs `diamond` vs `InsideDiamond`; yang terakhir
+# paling dekat ke acuan.) Hanya berpengaruh pada diagram activity.
+_PLANTUML_PLAIN_PREAMBLE = ("!theme plain", f"skinparam dpi {_PLANTUML_DPI}",
+                            "skinparam conditionStyle InsideDiamond")
+
+# Bingkai penutup swimlane (lihat _close_swimlane_border): napas antara isi dan
+# garis bingkai, dan tebal garisnya. Disamakan dengan tebal garis lane PlantUML
+# supaya bingkai terbaca sebagai bagian diagram, bukan tempelan.
+_SWIMLANE_BORDER_PAD = 10
+_SWIMLANE_BORDER_WIDTH = 2
+# Garis header lane dicari hanya di pita ATAS diagram. Kalau "celah sepi" baru
+# ketemu lebih jauh dari ini, yang terdeteksi hampir pasti bukan baris judul —
+# lebih baik tanpa garis header daripada memotong badan diagram.
+_SWIMLANE_HEADER_MAX_FRAC = 0.25
+# Paling banyak dua pita header: judul diagram, lalu baris nama lane.
+_SWIMLANE_HEADER_MAX_LINES = 2
 
 # Ruang yang benar-benar tersedia di halaman, dipakai _image_attr untuk membatasi
 # ukuran tampil diagram. Lebar: 8,5 inci dikurangi margin 1 inci di dua sisi.
@@ -483,7 +559,214 @@ def _sanitize_route_param_brackets(script: str) -> str:
     return script
 
 
-def _normalize_plantuml(diagram_script: str) -> str:
+# Subjek kalimat yang menandai satu langkah dikerjakan SISTEM (bukan aktor).
+# Dipakai `_add_swimlanes` untuk menebak lane tiap langkah.
+_SYSTEM_SUBJECTS = ("sistem", "aplikasi", "server", "backend", "api", "service",
+                    "layanan", "database", "chatbot")
+# Kata pembuka yang menandai langkah dikerjakan MANUSIA, kalau nama aktornya
+# sendiri tidak muncul di awal kalimat.
+_ACTOR_SUBJECTS = ("user", "pengguna", "admin", "customer", "pelanggan", "kasir",
+                   "staf", "petugas", "operator")
+_ACTIVITY_ACTION = re.compile(r"^(\s*):(.+);\s*$")   # baris aksi `:Langkah;`
+_EXISTING_LANE = re.compile(r"^\s*\|[^|]*\|\s*$")    # baris `|Lane|` yang sudah ada
+
+
+def _lane_for_step(text: str, actor_lane: str, system_lane: str) -> str | None:
+    """Lane untuk satu langkah activity, atau None kalau SUBJEKNYA TIDAK JELAS.
+
+    None berarti "warisi lane berjalan" — sengaja, bukan malas: menebak lane untuk
+    kalimat tanpa subjek jelas ("Validasi data") lebih berbahaya daripada
+    membiarkannya di lane sebelumnya, karena lane yang SALAH menyatakan tanggung
+    jawab yang salah — dan itu kesalahan isi, bukan sekadar rupa.
+    """
+    lowered = text.strip().lower()
+    if any(lowered.startswith(word) for word in _SYSTEM_SUBJECTS):
+        return system_lane
+    first_word = actor_lane.strip().lower().split()[0] if actor_lane.strip() else ""
+    if first_word and lowered.startswith(first_word):
+        return actor_lane
+    if any(lowered.startswith(word) for word in _ACTOR_SUBJECTS):
+        return actor_lane
+    return None
+
+
+def _has_swimlanes(diagram_script: str) -> bool:
+    """Apakah script sudah memuat baris lane `|Nama|`? Dipakai untuk memutuskan
+    apakah diagram perlu dibingkai — lane bisa datang dari LLM ATAU dari
+    `_add_swimlanes`, dan keduanya sama-sama butuh bingkai penutup."""
+    return any(_EXISTING_LANE.match(line) for line in diagram_script.splitlines())
+
+
+def _add_swimlanes(diagram_script: str, actor: str | None) -> str:
+    """Sisipkan swimlane `|Aktor|`/`|Sistem|` ke PlantUML ACTIVITY dari LLM.
+
+    Kenapa di sini dan bukan di prompt: dokumen acuan (PREMCO, dibuat draw.io)
+    memakai swimlane User|Sistem, dan itulah ciri utama "activity diagram yang
+    baik" menurut pemilik. PlantUML mendukungnya native — yang kurang cuma
+    INFORMASI siapa mengerjakan apa. Ternyata informasi itu SUDAH ada: prompt
+    llm_service mewajibkan tiap langkah difrasakan "Aktor melakukan X" /
+    "Sistem merespons Y", jadi subjeknya selalu di awal kalimat dan bisa dibaca
+    tanpa menyentuh pipeline AI sama sekali. Diukur pada 8 diagram esteler nyata:
+    8/8 render sukses, NOL langkah ambigu.
+
+    Konservatif — dikembalikan APA ADANYA kalau:
+      * script sudah punya lane (LLM/temp lain sudah mengaturnya), atau
+      * bukan activity beta (tak ada baris `:Langkah;`) — jadi diagram
+        arsitektur/komponen/use case tak mungkin tersentuh.
+    Lane hanya ditulis saat BERUBAH (PlantUML mewariskan lane berjalan).
+    """
+    actor_lane = (actor or "User").strip() or "User"
+    system_lane = "Sistem"
+    if actor_lane.lower() == system_lane.lower():
+        actor_lane = "User"
+
+    lines = diagram_script.splitlines()
+    if _has_swimlanes(diagram_script):
+        return diagram_script
+    if not any(_ACTIVITY_ACTION.match(line) for line in lines):
+        return diagram_script
+
+    out: list[str] = []
+    current: str | None = None
+    for line in lines:
+        match = _ACTIVITY_ACTION.match(line)
+        if match:
+            indent, text = match.group(1), match.group(2)
+            lane = _lane_for_step(text, actor_lane, system_lane)
+            if lane is not None and lane != current:
+                out.append(f"{indent}|{lane}|")
+                current = lane
+        elif line.strip() == "start" and current is None:
+            # Alur activity selalu dimulai dari sisi manusia di dokumen acuan.
+            out.append(f"|{actor_lane}|")
+            current = actor_lane
+        out.append(line)
+    return "\n".join(out)
+
+
+def _swimlane_header_bottoms(image, content_top: int) -> list[int]:
+    """Cari batas bawah pita-pita HEADER di atas diagram swimlane.
+
+    Membaca "tinta per baris": pita berteks (judul diagram, lalu nama lane) berisi
+    banyak piksel gelap, dan di antaranya ada CELAH yang isinya cuma garis lane
+    vertikal (tinta sangat sedikit). Tiap peralihan berteks -> sepi = satu batas.
+
+    Kembalikan sampai `_SWIMLANE_HEADER_MAX_LINES` batas, urut dari atas:
+      * dengan `title` -> 2 batas (bawah judul, bawah baris nama lane)
+      * tanpa `title`  -> 1 batas (bawah baris nama lane)
+    Dibatasi `_SWIMLANE_HEADER_MAX_FRAC` tinggi diagram: di luar itu yang
+    terdeteksi hampir pasti badan diagram, dan menggambar garis di situ akan
+    memotongnya.
+    """
+    grey = image.convert("L")
+    width, height = grey.size
+    pixels = grey.load()
+    quiet = max(6, int(0.01 * width))     # ambang "cuma garis lane vertikal"
+    limit = min(height, content_top + int(height * _SWIMLANE_HEADER_MAX_FRAC))
+    bottoms: list[int] = []
+    seen_text = False
+    for y in range(content_top, limit):
+        ink = sum(1 for x in range(width) if pixels[x, y] < 200)
+        if ink > quiet:
+            seen_text = True
+        elif seen_text:
+            bottoms.append(y)
+            seen_text = False
+            if len(bottoms) >= _SWIMLANE_HEADER_MAX_LINES:
+                break
+    return bottoms
+
+
+def _close_swimlane_border(image_path: str) -> None:
+    """Bingkai diagram swimlane jadi TABEL: kotak penutup + garis di bawah baris
+    judul lane.
+
+    Dua cacat yang ditutup, keduanya dikeluhkan pemilik. (1) PlantUML menggambar
+    swimlane hanya sebagai garis VERTIKAL — tak ada garis atas & bawah, jadi
+    kotaknya menganga; tidak ada skinparam untuk menutupnya (dua varian diprobe,
+    hasilnya identik). (2) Baris judul lane cuma teks mengambang, sehingga tidak
+    terbaca sebagai header tabel; acuan draw.io memisahkannya dengan garis.
+
+    Hasilnya: kolom kiri = lajur aktor, kolom kanan = lajur Sistem, dengan header
+    ber-garis — "tabel sebagai latar, alur menyesuaikan lajurnya".
+
+    Digambar sesudah PNG jadi — pola yang sama dengan post-process docx: yang tak
+    bisa diminta ke generator, direbut setelah hasilnya ada. Bingkai ditarik pada
+    kotak-batas ISI + sedikit napas, jadi menempel pada ujung garis lane.
+    """
+    with Image.open(image_path) as image:
+        rgb = image.convert("RGB")
+        content = ImageChops.difference(
+            rgb, Image.new("RGB", rgb.size, (255, 255, 255))
+        ).getbbox()
+        if content is None:          # diagram kosong — tak ada yang dibingkai
+            return
+        header_bottoms = _swimlane_header_bottoms(rgb, content[1])
+        pad = _SWIMLANE_BORDER_PAD
+        canvas = Image.new("RGB", (rgb.width + 2 * pad, rgb.height + 2 * pad), "white")
+        canvas.paste(rgb, (pad, pad))
+        left, top, right, bottom = content
+        pen = ImageDraw.Draw(canvas)
+        pen.rectangle([left, top, right + 2 * pad, bottom + 2 * pad],
+                      outline=(0, 0, 0), width=_SWIMLANE_BORDER_WIDTH)
+        for y in header_bottoms:
+            pen.line([left, y + pad, right + 2 * pad, y + pad],
+                     fill=(0, 0, 0), width=_SWIMLANE_BORDER_WIDTH)
+        canvas.save(image_path)
+
+
+def _add_diagram_title(diagram_script: str, title: str | None) -> str:
+    """Sisipkan `title` PlantUML sesudah `@startuml`, kalau belum ada.
+
+    Judul dirender di ATAS diagram — dan karena bingkai swimlane ditarik pada
+    kotak-batas ISI, judul itu ikut TERKURUNG di dalam kotak, tepat di atas baris
+    nama lane. Hasilnya pita judul seperti activity diagram draw.io acuan
+    ("Login Premco Website" membentang di atas kolom User|Sistem)."""
+    if not title or not title.strip():
+        return diagram_script
+    if any(line.strip().lower().startswith("title ")
+           for line in diagram_script.splitlines()):
+        return diagram_script            # LLM sudah menulis judul sendiri
+    out, injected = [], False
+    for line in diagram_script.splitlines():
+        out.append(line)
+        if not injected and line.strip().startswith("@startuml"):
+            out.append(f"title {title.strip()}")
+            injected = True
+    return "\n".join(out)
+
+
+def _render_activity_diagram(diagram_script: str, images_dir: Path,
+                             actor: str | None = None,
+                             title: str | None = None) -> str:
+    """Render diagram ACTIVITY: gaya POLOS (hitam-putih) + swimlane + bingkai
+    penutup. Jatuh kembali ke versi TANPA lane kalau versi ber-lane gagal.
+
+    Fallback sempit ini disengaja (bukan `except` lebar yang meratakan sebab —
+    prinsip #3): swimlane itu peningkatan RUPA, dan rupa tidak boleh sanggup
+    menggagalkan seluruh dokumen. Presedennya nyata — kurung route-param Nuxt
+    pernah mematikan SELURUH generate premco lewat satu diagram. Kalau script
+    aslinya sendiri yang rusak, error tetap muncul dari percobaan kedua.
+    """
+    script = _add_diagram_title(_add_swimlanes(diagram_script, actor), title)
+    try:
+        path = _render_diagram_to_image(script, images_dir, _PLANTUML_PLAIN_PREAMBLE)
+    except DiagramRenderError:
+        if script == diagram_script:
+            raise            # bukan sisipan kita yang merusak — script aslinya rusak
+        path = _render_diagram_to_image(diagram_script, images_dir,
+                                        _PLANTUML_PLAIN_PREAMBLE)
+        script = diagram_script
+    # Dibingkai kalau hasil AKHIR punya lane — entah lane itu ditulis LLM sendiri
+    # atau disisipkan `_add_swimlanes`. (Dulu keliru: cuma dibingkai kalau KITA
+    # yang menambah, sehingga lane tulisan LLM lolos tanpa bingkai.)
+    if _has_swimlanes(script):
+        _close_swimlane_border(path)
+    return path
+
+
+def _normalize_plantuml(diagram_script: str,
+                        style: tuple[str, ...] = _PLANTUML_STYLE_PREAMBLE) -> str:
     """Siapkan script LLM untuk plantuml.jar: buang fence, lepas kurung siku
     route-param yang merusak sintaks, pastikan terbungkus @startuml/@enduml, lalu
     suntik preamble gaya (theme + dpi) TEPAT sesudah @startuml.
@@ -502,7 +785,7 @@ def _normalize_plantuml(diagram_script: str) -> str:
     for line in script.splitlines():
         lines.append(line)
         if not injected and line.strip().startswith("@startuml"):
-            lines.extend(_PLANTUML_STYLE_PREAMBLE)
+            lines.extend(style)
             injected = True
     return "\n".join(lines)
 
@@ -565,10 +848,15 @@ def _run_plantuml(plantuml_source: str) -> bytes:
     return result.stdout
 
 
-def _render_diagram_to_image(diagram_script: str, images_dir: Path) -> str:
-    """Render satu script PlantUML jadi file PNG lokal; kembalikan path-nya."""
+def _render_diagram_to_image(diagram_script: str, images_dir: Path,
+                             style: tuple[str, ...] = _PLANTUML_STYLE_PREAMBLE) -> str:
+    """Render satu script PlantUML jadi file PNG lokal; kembalikan path-nya.
+
+    `style` memilih preamble gaya: tema berwarna (default, untuk arsitektur &
+    integrasi komponen) atau `_PLANTUML_PLAIN_PREAMBLE` (UML hitam-putih, untuk
+    use case / activity / flow proses bisnis)."""
     images_dir.mkdir(parents=True, exist_ok=True)
-    png = _run_plantuml(_normalize_plantuml(diagram_script))
+    png = _run_plantuml(_normalize_plantuml(diagram_script, style))
     image_path = images_dir / f"{uuid.uuid4().hex}.png"
     image_path.write_bytes(png)
     return str(image_path)
@@ -670,12 +958,18 @@ def _build_sdd_context(data: dict[str, Any], render_integration: bool = True) ->
         if render_integration
         else None
     )
-    business_flow = _render_diagram_to_image(diagrams["business_process_flow"], IMAGES_DIR)
+    # Flow proses bisnis SENGAJA tanpa swimlane (keputusan pemilik 2026-07-22):
+    # di dokumen acuan ia berbentuk FLOWCHART bercabang, bukan diagram berlajur
+    # seperti activity per-fitur — "jangan pakai template yang sama dengan
+    # activity diagram". Gaya polos hitam-putih, sama dengan use case & activity.
+    business_flow = _render_diagram_to_image(diagrams["business_process_flow"],
+                                             IMAGES_DIR, _PLANTUML_PLAIN_PREAMBLE)
     # Use case: SATU diagram gabungan (semua aktor dalam satu gambar), sesuai gaya
     # dokumen UML acuan. Untuk dokumen dengan sangat banyak aktor+use case yang
     # dipakai bersama, panah bisa menyilang — itu batas struktural diagram
     # gabungan (layout smetana/dot/elk sama saja; diukur 2026-07-20), bukan bug.
-    use_case = _render_diagram_to_image(diagrams["use_case_diagram"], IMAGES_DIR)
+    use_case = _render_diagram_to_image(diagrams["use_case_diagram"], IMAGES_DIR,
+                                        _PLANTUML_PLAIN_PREAMBLE)
 
     return {
         **data,
@@ -704,7 +998,10 @@ def _build_sdd_context(data: dict[str, Any], render_integration: bool = True) ->
                     "image_attr": _image_attr(path),
                 }
                 for activity, path in (
-                    (a, _render_diagram_to_image(a["diagram_script"], IMAGES_DIR))
+                    # `actor` jadi NAMA lane manusianya; `activity_name` jadi pita
+                    # judul di dalam kotak (meniru activity diagram draw.io acuan).
+                    (a, _render_activity_diagram(a["diagram_script"], IMAGES_DIR,
+                                                 a.get("actor"), a.get("activity_name")))
                     for a in diagrams.get("activity_diagrams", [])
                 )
             ],

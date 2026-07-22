@@ -73,7 +73,7 @@ class ActivityDiagram(BaseModel):
     actor: str = Field(description="Role/aktor yang menjalankan aktivitas ini, misal: 'Admin' atau 'Customer'")
     pre_condition: str = Field(description="Syarat yang harus terpenuhi sebelum aktivitas ini bisa dimulai")
     steps: List[str] = Field(description="Langkah-langkah aktivitas berurutan, satu kalimat per langkah ('Aktor melakukan X' / 'Sistem merespons Y'), konsisten dengan isi diagram_script")
-    diagram_script: str = Field(description="Source PlantUML activity diagram murni untuk aktivitas ini (@startuml ... @enduml).")
+    diagram_script: str = Field(description="Source PlantUML activity diagram murni untuk aktivitas ini (@startuml ... @enduml), BERLAJUR: pakai |NamaAktor| dan |Sistem| sebelum langkah sesuai pelakunya, dan sertakan percabangan (if/switch) sejauh berjejak di kode.")
 
 
 class SDDDiagrams(BaseModel):
@@ -84,10 +84,10 @@ class SDDDiagrams(BaseModel):
         description="PlantUML component diagram: panah dari komponen UI/halaman ke endpoint backend yang dipanggilnya."
     )
     business_process_flow: str = Field(
-        description="PlantUML activity diagram: alur proses bisnis end-to-end dari sudut pandang pengguna, menggambar business_flow_steps."
+        description="PlantUML activity diagram: FLOWCHART proses bisnis end-to-end, TANPA swimlane, wajib memuat minimal 2 titik keputusan (if/switch) yang berjejak di kode. Menggambar business_flow_steps."
     )
     use_case_diagram: str = Field(
-        description="PlantUML use case diagram: actor + usecase di dalam rectangle sistem, dihubungkan panah."
+        description="PlantUML use case diagram: actor + usecase di dalam rectangle sistem, dihubungkan panah, plus relasi <<include>>/<<extend>> antar-use-case bila berjejak."
     )
     activity_diagrams: List[ActivityDiagram] = Field(
         description="Daftar diagram aktivitas modular yang dipecah per fitur utama."
@@ -220,29 +220,109 @@ ATURAN DIAGRAM 3: USE CASE DIAGRAM (diagrams.use_case_diagram)
 2. Aktor: `actor Admin` (atau `actor "Nama Panjang" as Alias`). Use case oval di dalam kotak sistem:
    `rectangle "NamaSistem" { usecase "Melakukan Login" as UC1 }`.
 3. Hubungkan: `Admin --> UC1`. Setiap use case harus terhubung ke minimal satu aktor.
+4. TAMBAHKAN relasi antar-use-case kalau (dan HANYA kalau) berjejak di metadata:
+   - `<<include>>` = perilaku WAJIB yang selalu dijalankan use case lain. Contoh paling lazim:
+     endpoint yang dilindungi middleware auth => use case-nya meng-include "Login".
+     Tulis: `UC3 ..> UC1 : <<include>>`  (UC3 selalu membutuhkan UC1)
+   - `<<extend>>` = perilaku OPSIONAL/kondisional yang memperluas use case lain. Contoh: fitur
+     yang cuma jalan pada kondisi tertentu (mis. "Beri Rating" hanya setelah pesanan selesai).
+     Tulis: `UC9 ..> UC8 : <<extend>>`  (UC9 memperluas UC8)
+   - Secukupnya saja (1-4 relasi). JANGAN mengarang relasi supaya diagram terlihat ramai —
+     use case tanpa relasi antar-use-case itu normal dan lebih baik daripada relasi karangan.
 
-ATURAN DIAGRAM 4: BUSINESS PROCESS FLOW & ACTIVITY DIAGRAMS
-1. Keduanya activity diagram PlantUML: mulai `start`, aksi `:Kalimat langkah;` (WAJIB diawali `:`
-   dan diakhiri `;`), keputusan `if (Kondisi?) then (Ya) ... else (Tidak) ... endif`, akhiri `stop`.
-2. Untuk pengulangan gunakan `repeat ... repeat while (Kondisi?) is (Ya) not (Tidak)`.
-3. Jangan buat satu diagram raksasa untuk activity_diagrams — pecah per fitur utama (satu untuk
-   Login, satu untuk Transaksi, dst.) berdasarkan endpoint/UI yang ditemukan di JSON.
-4. Untuk setiap aktivitas isi SEMUA field: `activity_name`, `description`, `actor`, `pre_condition`,
+DASAR SINTAKS ACTIVITY (dipakai ATURAN DIAGRAM 4 & 5)
+- Mulai `start`, aksi `:Kalimat langkah;` (WAJIB diawali `:` dan diakhiri `;`), akhiri `stop`.
+- Keputusan 2 cabang: `if (Kondisi?) then (Ya) ... else (Tidak) ... endif`.
+- Keputusan >2 cabang: `switch (Pertanyaan?)` lalu `case (Pilihan A)` ... `case (Pilihan B)` ...
+  ditutup `endswitch`.
+- Pengulangan/kembali ke langkah sebelumnya: `repeat ... repeat while (Kondisi?) is (Ya) not (Tidak)`.
+
+ATURAN DIAGRAM 4: BUSINESS PROCESS FLOW (diagrams.business_process_flow)
+1. Ini FLOWCHART proses bisnis end-to-end — bukan diagram per-fitur, dan BUKAN diagram berlajur.
+   DILARANG memakai swimlane (`|Lane|`) di diagram ini.
+2. WAJIB memuat MINIMAL 2 titik keputusan (`if`/`switch`) yang benar-benar berjejak di metadata —
+   contoh jejak: validasi input, cabang status pesanan/pembayaran, role berbeda, sukses vs gagal.
+   Alur lurus tanpa satu pun percabangan TIDAK memadai untuk proses bisnis.
+3. Gambarkan perjalanan bisnis utuh dari pemicu awal sampai hasil akhir, konsisten dengan
+   `business_flow_steps`.
+
+ATURAN DIAGRAM 5: ACTIVITY DIAGRAMS PER FITUR (diagrams.activity_diagrams)
+1. Pecah per fitur utama (satu untuk Login, satu untuk Manajemen Menu, dst.) berdasarkan
+   endpoint/UI di JSON — jangan satu diagram raksasa.
+2. WAJIB memakai SWIMLANE: tulis `|Nama Aktor|` sebelum langkah yang dikerjakan MANUSIA dan
+   `|Sistem|` sebelum langkah yang dikerjakan sistem. Tulis baris lane hanya saat lane BERGANTI.
+   Nama lane aktor harus SAMA dengan field `actor` aktivitas itu.
+3. Ceritakan WORKFLOW FITUR SECARA UTUH, bukan satu jalur lurus: masuk ke halaman -> aksi-aksi
+   yang tersedia (mis. tambah/edit/hapus pakai `switch`) -> validasi -> hasil -> kembali ke daftar
+   atau selesai. Sertakan percabangan dan pengulangan SEJAUH berjejak di metadata.
+4. Sasaran kepadatan: sekitar 8-16 langkah dan 1-3 titik keputusan per diagram — TAPI angka ini
+   BUKAN kuota. Kalau kode hanya mendukung 6 langkah, tulis 6. Lihat ATURAN KEJUJURAN di bawah.
+5. BATAS LEBAR: maksimal 4 `case` dalam satu `switch`. Tiap `case` menjadi satu kolom SEJAJAR,
+   jadi cabang yang terlalu banyak membuat diagram sangat lebar dan hurufnya mengecil saat
+   dimuat ke halaman dokumen. Kalau aksinya lebih dari 4, KELOMPOKKAN yang sejenis menjadi satu
+   case (mis. "Mengubah data pesanan" mencakup tandai-siap/selesai/batal), atau pecah aksi yang
+   berdiri sendiri ke diagram aktivitas terpisah.
+6. Untuk setiap aktivitas isi SEMUA field: `activity_name`, `description`, `actor`, `pre_condition`,
    `steps` (langkah bernomor — harus menceritakan alur yang SAMA dengan diagramnya), dan
    `diagram_script`.
+7. Frasa tiap langkah WAJIB berawalan subjek yang jelas: "<Aktor> melakukan X" atau
+   "Sistem melakukan Y". Ini menentukan penempatan lajur — kalimat tanpa subjek di depan
+   (mis. "Validasi data") membuat langkahnya salah lajur.
+
+ATURAN KEJUJURAN UNTUK KEPADATAN DIAGRAM (SANGAT PENTING):
+- DILARANG menambah langkah, cabang, atau relasi hanya untuk memenuhi angka sasaran. Setiap
+  langkah & cabang harus punya jejak di metadata (endpoint, nama fungsi/class, docstring,
+  dependency, komponen UI).
+- Diagram 8 langkah yang SEMUA langkahnya berjejak JAUH LEBIH BAIK daripada 16 langkah yang
+  separuhnya karangan. Dokumen ini dinilai dari kebenarannya, bukan dari kepadatannya.
 
 PENCEGAHAN SYNTAX ERROR PLANTUML:
-- `if` WAJIB ditutup `endif`; `repeat` WAJIB ditutup `repeat while (...)`.
+- `if` WAJIB ditutup `endif`; `switch` WAJIB ditutup `endswitch`; `repeat` WAJIB ditutup
+  `repeat while (...)`. Blok yang bersarang ditutup dari yang terdalam.
 - Jangan memakai karakter `;` di DALAM teks langkah — dia penutup pernyataan.
-- Contoh activity yang benar:
+- Baris lane ditulis sendirian: `|Admin|` (tanpa `:` dan tanpa `;`).
+- Contoh ACTIVITY PER FITUR yang benar (berlajur, bercabang):
+  @startuml
+  |Admin|
+  start
+  :Admin membuka halaman manajemen menu;
+  switch (Aksi yang dipilih?)
+  case (Tambah)
+    :Admin mengisi formulir menu baru;
+  case (Edit)
+    :Admin mengubah data menu;
+  case (Hapus)
+    :Admin menekan tombol hapus;
+  endswitch
+  |Sistem|
+  :Sistem memvalidasi data menu;
+  if (Data valid?) then (Ya)
+    :Sistem menyimpan menu ke database;
+    |Admin|
+    :Admin melihat daftar menu terbaru;
+  else (Tidak)
+    :Sistem menampilkan pesan kesalahan;
+    |Admin|
+    :Admin memperbaiki isian formulir;
+  endif
+  stop
+  @enduml
+- Contoh BUSINESS PROCESS FLOW yang benar (TANPA lajur, tetap bercabang):
   @startuml
   start
-  :Pengguna membuka halaman login;
-  :Pengguna mengisi email dan password;
-  if (Kredensial valid?) then (Ya)
-    :Sistem mengarahkan ke dashboard;
+  :Customer memilih menu dan menambahkannya ke keranjang;
+  :Customer mengisi data pemesanan;
+  if (Data pemesanan lengkap?) then (Ya)
+    :Sistem membuat pesanan dengan kode unik;
   else (Tidak)
-    :Sistem menampilkan pesan error;
+    :Sistem meminta Customer melengkapi data;
+    stop
+  endif
+  :Admin memproses pesanan;
+  if (Pesanan selesai diproses?) then (Ya)
+    :Customer memberikan rating pesanan;
+  else (Tidak)
+    :Sistem menampilkan status pesanan berjalan;
   endif
   stop
   @enduml
