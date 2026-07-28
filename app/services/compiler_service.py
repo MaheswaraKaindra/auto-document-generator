@@ -38,6 +38,8 @@ from PIL import Image, ImageChops, ImageDraw, UnidentifiedImageError
 from app.core import config
 from app.diagram import activity_render
 from app.domain.exceptions import DiagramRenderError
+from app.services import auth_service
+from app.services.auth_service import Principal
 
 logger = logging.getLogger(__name__)
 
@@ -87,22 +89,30 @@ _TEMPLATE_REGISTRY: dict[str, dict[str, str]] = {
 _TEMPLATES_USING_COMPONENT_INTEGRATION = {"default"}
 
 
-def validate_template(template_id: str, document_type: str) -> None:
+def validate_template(template_id: str, document_type: str,
+                      caller: Principal | None = None) -> None:
     """Tolak kombinasi template x jenis dokumen yang tidak tersedia — dipanggil
     SINKRON oleh endpoint (422 sebelum job dibuat) DAN oleh generate_docx
     (pertahanan kalau dipanggil dari jalur lain).
 
     Menerima built-in (`_TEMPLATE_REGISTRY`) DAN template hasil-kompilasi upload
-    (V2, `data/templates/<id>/template.json`)."""
+    (V2, `data/templates/<id>/template.json`).
+
+    `caller` = pemanggil, untuk isolasi per-pengguna: template hasil-upload milik
+    ORANG LAIN ditolak dengan pesan & kode yang PERSIS SAMA dengan template yang
+    tidak ada — kalau dibedakan, beda pesannya sendiri yang membocorkan template
+    siapa saja yang ada di server (prinsip yang sama dengan job: lihat 404-bukan-403
+    di `routes_document`). None = pemanggil internal (generate_docx, tes, CLI):
+    lewati pemeriksaan, karena kepemilikan sudah diperiksa di boundary HTTP."""
     normalized = document_type.upper()
     if template_id in _TEMPLATE_REGISTRY:
         doc_types = set(_TEMPLATE_REGISTRY[template_id])
     else:
         manifest = _load_compiled_manifest(template_id)
-        if manifest is None:
+        if manifest is None or not visible_to(manifest, caller):
             raise ValueError(
                 f"template_id tidak dikenal: {template_id!r} "
-                f"(tersedia: {', '.join(list_template_ids())})"
+                f"(tersedia: {', '.join(list_template_ids(caller))})"
             )
         doc_types = set(manifest["doc_types"])
     if normalized not in doc_types:
@@ -156,27 +166,60 @@ def _load_compiled_manifest(template_id: str) -> dict | None:
     return json.loads(manifest.read_text(encoding="utf-8"))
 
 
-def _compiled_template_ids() -> set[str]:
+def visible_to(manifest: dict | None, caller: Principal | None) -> bool:
+    """Template hasil-upload ini boleh dilihat/dipakai `caller`?
+
+    Satu tempat yang memutuskan isolasi template, sejajar dengan `auth_service.owns`
+    untuk job — dan memang memakainya, supaya aturan kompatibilitas mundurnya
+    identik: manifest TANPA `owner` (template yang dikompilasi sebelum kolom ini
+    ada, atau dari mode dev) tetap boleh dipakai siapa pun; tak ada pemilik untuk
+    dilanggar. `caller` None = pemanggil internal (tes/CLI/pipeline yang sudah
+    lolos boundary HTTP) → lewati pemeriksaan.
+
+    Built-in TIDAK melewati fungsi ini: `default`/`premco` memang milik bersama.
+    """
+    if caller is None:
+        return True
+    return auth_service.owns((manifest or {}).get("owner"), caller)
+
+
+def _compiled_template_ids(caller: Principal | None = None) -> set[str]:
+    """Id template hasil-kompilasi yang BOLEH dilihat `caller`. Tanpa `caller`
+    (default) = semua — bentuk yang dibutuhkan `_unique_template_id`, sebab
+    direktori store dipakai bersama: id harus unik lintas-pemilik walau template
+    milik orang lain tak pernah terlihat."""
     if not TEMPLATES_STORE.exists():
         return set()
-    return {p.name for p in TEMPLATES_STORE.iterdir()
-            if (p / "template.json").exists()}
+    ids = set()
+    for p in TEMPLATES_STORE.iterdir():
+        manifest_path = p / "template.json"
+        if not manifest_path.exists():
+            continue
+        if caller is not None and not visible_to(
+                json.loads(manifest_path.read_text(encoding="utf-8")), caller):
+            continue
+        ids.add(p.name)
+    return ids
 
 
-def list_template_ids() -> list[str]:
+def list_template_ids(caller: Principal | None = None) -> list[str]:
     """Semua template_id yang bisa dipakai: built-in + hasil-kompilasi upload.
     Publik: dipakai orkestrator kompilasi (cek keunikan id) & bisa dipakai
-    frontend untuk mengisi dropdown gaya dokumen."""
-    return sorted(set(_TEMPLATE_REGISTRY) | _compiled_template_ids())
+    frontend untuk mengisi dropdown gaya dokumen. `caller` menyaring hasil-upload
+    ke milik pemanggil (built-in selalu ikut)."""
+    return sorted(set(_TEMPLATE_REGISTRY) | _compiled_template_ids(caller))
 
 
-def list_templates_detail() -> list[dict]:
+def list_templates_detail(caller: Principal | None = None) -> list[dict]:
     """Tiap template + `doc_types` yang tersedia + `source` + `name` — untuk
     dropdown gaya dokumen di frontend yang MENGHORMATI ketersediaan per jenis
     dokumen. Server jadi sumber kebenaran (dulu frontend hardcode daftarnya, dan
-    `premco` UAT ketinggalan diam-diam ketika backend mulai mendukungnya)."""
+    `premco` UAT ketinggalan diam-diam ketika backend mulai mendukungnya).
+
+    `caller`: built-in selalu tampil (milik bersama); template hasil-upload hanya
+    milik pemanggil. None = tanpa penyaringan (pemanggil internal/tes)."""
     detail = []
-    for tid in list_template_ids():
+    for tid in list_template_ids(caller):
         if tid in _TEMPLATE_REGISTRY:
             detail.append({"id": tid, "name": tid, "source": "builtin",
                            "doc_types": sorted(_TEMPLATE_REGISTRY[tid])})

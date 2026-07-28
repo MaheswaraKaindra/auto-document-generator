@@ -2,13 +2,15 @@
 store di-redirect ke tmp — tanpa LLM, tanpa docx vendor. build_reference memakai
 pandoc asli (seperti test compiler lain)."""
 import io
+import json
 
 import pytest
 from docx import Document
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.services import compiler_service
+from app.services import auth_service, compiler_service
+from app.services.auth_service import Principal
 
 DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
@@ -116,11 +118,12 @@ def test_get_unknown_template_is_404(client):
     assert client.get("/templates/tidak-ada").status_code == 404
 
 
-def _upload(client, headings, name="Vendor"):
+def _upload(client, headings, name="Vendor", headers=None):
     resp = client.post(
         "/templates",
         files={"file": (f"{name}.docx", _docx_bytes(headings), DOCX_MIME)},
         data={"name": name, "doc_types": "SDD"},
+        headers=headers,
     )
     assert resp.status_code == 201, resp.text
     return resp.json()
@@ -180,6 +183,102 @@ def test_tinjauan_menolak_peta_yang_merusak(client):
                       json={"bindings": ["manual"]}).status_code == 404
     assert client.put(f"/templates/{template_id}/mappings/UAT",
                       json={"bindings": bindings}).status_code == 404
+
+
+# --- Isolasi template per-pengguna (seam auth) --------------------------------
+
+def _hs256_token(monkeypatch, sub):
+    """Aktifkan auth Supabase (HS256) + kembalikan header Bearer untuk `sub`.
+    Sengaja disalin dari test_routes_document: tiap berkas tes berdiri sendiri."""
+    import time
+
+    import jwt
+
+    from app.core import config
+    secret = "rahasia-test-yang-cukup-panjang-tiga-puluh-dua"
+    monkeypatch.setattr(config, "SUPABASE_URL", "https://proj.supabase.co")
+    monkeypatch.setattr(config, "SUPABASE_JWT_SECRET", secret)
+    monkeypatch.setattr(config, "SUPABASE_JWT_AUD", "authenticated")
+    token = jwt.encode({"sub": sub, "aud": "authenticated",
+                        "exp": int(time.time()) + 3600}, secret, algorithm="HS256")
+    return {"Authorization": f"Bearer {token}"}
+
+
+def test_template_upload_terisolasi_antar_pengguna(client, monkeypatch):
+    """Template hasil upload A tak boleh terlihat/terpakai oleh B.
+
+    Yang di-upload adalah dokumen internal perusahaan pemakainya — lubang
+    multi-tenant terakhir sesudah job/dokumen diisolasi. Semua penolakan berupa
+    404 "tidak ditemukan", BUKAN 403: kode/pesan yang berbeda akan membocorkan
+    template siapa saja yang ada di server."""
+    alice = _hs256_token(monkeypatch, "alice")
+    tid = _upload(client, ["Deskripsi Aplikasi", "Use Case"],
+                  name="Punya Alice", headers=alice)["manifest"]["template_id"]
+
+    # Alice: terlihat di dropdown, bisa dibaca, bisa disunting.
+    listed = client.get("/templates", headers=alice).json()["templates"]
+    assert tid in {t["id"] for t in listed}
+    assert client.get(f"/templates/{tid}", headers=alice).status_code == 200
+
+    # Bob: template yang sama tampak TIDAK ADA.
+    bob = _hs256_token(monkeypatch, "bob")
+    listed_bob = client.get("/templates", headers=bob).json()["templates"]
+    assert tid not in {t["id"] for t in listed_bob}
+    assert client.get(f"/templates/{tid}", headers=bob).status_code == 404
+    assert client.put(f"/templates/{tid}/mappings/SDD", headers=bob,
+                      json={"bindings": ["manual", "manual"]}).status_code == 404
+
+    # ...dan tak bisa dipakai generate. Kode & pesannya PERSIS sama dengan
+    # template karangan, jadi Bob tak bisa menyimpulkan template ini ada.
+    asing = client.post("/documents/generate",
+                        json={"document_type": "SDD", "template_id": tid}, headers=bob)
+    karangan = client.post("/documents/generate",
+                           json={"document_type": "SDD", "template_id": "tak-pernah-ada"},
+                           headers=bob)
+    assert asing.status_code == 422
+    assert asing.json()["detail"].replace(tid, "X") == \
+        karangan.json()["detail"].replace("tak-pernah-ada", "X")
+    # Nama template Alice pun tak ikut bocor lewat daftar "tersedia: ..." di pesan.
+    assert tid not in karangan.json()["detail"]
+
+
+def test_builtin_tetap_milik_bersama(client, monkeypatch):
+    """`default`/`premco` bukan data siapa pun — itu gaya dokumen bawaan produk,
+    jadi tetap terlihat & terpakai semua pengguna."""
+    alice = _hs256_token(monkeypatch, "alice")
+    _upload(client, ["Deskripsi Aplikasi"], name="Punya Alice", headers=alice)
+
+    bob = _hs256_token(monkeypatch, "bob")
+    ids = {t["id"] for t in client.get("/templates", headers=bob).json()["templates"]}
+    assert {"default", "premco"} <= ids
+    compiler_service.validate_template("premco", "SDD", caller=None)
+
+
+def test_template_lama_tanpa_owner_tetap_dipakai_siapa_pun(client, monkeypatch):
+    """Kompatibilitas mundur, pola sama dengan `auth_service.owns(None, ...)`:
+    template yang dikompilasi SEBELUM kolom `owner` ada (atau di mode dev) tak
+    punya pemilik untuk dilanggar — jadi tetap jalan, bukan hilang diam-diam."""
+    # Mode dev (auth mati, fixture conftest): upload tanpa header apa pun.
+    tid = _upload(client, ["Deskripsi Aplikasi"], name="Warisan")["manifest"]["template_id"]
+    manifest_path = compiler_service.TEMPLATES_STORE / tid / "template.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    del manifest["owner"]                      # persis bentuk manifest lama
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    alice = _hs256_token(monkeypatch, "alice")
+    assert tid in {t["id"] for t in client.get("/templates", headers=alice).json()["templates"]}
+    assert client.get(f"/templates/{tid}", headers=alice).status_code == 200
+    compiler_service.validate_template(tid, "SDD", caller=Principal(
+        id="alice", email=None, is_anonymous=False))
+
+
+def test_mode_dev_tanpa_supabase_tak_menyaring_apa_pun(client):
+    """SUPABASE_URL kosong = perilaku lama persis: semua pemanggil satu Principal
+    anonim, jadi template hasil upload tetap terlihat & terpakai tanpa login."""
+    tid = _upload(client, ["Deskripsi Aplikasi"], name="Dev")["manifest"]["template_id"]
+    assert tid in {t["id"] for t in client.get("/templates").json()["templates"]}
+    assert client.get(f"/templates/{tid}").status_code == 200
+    compiler_service.validate_template(tid, "SDD", caller=auth_service.ANONYMOUS)
 
 
 def test_daftar_binding_tersedia_untuk_dropdown(client):

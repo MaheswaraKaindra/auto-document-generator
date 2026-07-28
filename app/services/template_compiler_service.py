@@ -29,6 +29,7 @@ from pathlib import Path
 # SATU sumber kebenaran di compiler_service — penting agar redirect (test/config)
 # cukup di satu tempat, bukan dua binding yang bisa menyimpang.
 from app.services import compiler_service
+from app.services.auth_service import Principal
 from app.services.llm_mapping_service import llm_propose_mapping
 from app.services.reference_synthesis_service import build_reference
 from app.services.template_generator_service import (
@@ -65,7 +66,8 @@ def _pick_doc_types(spec: dict, requested) -> list[str]:
 
 def compile_template(spec: dict, name: str, doc_types=None,
                      template_id: str | None = None,
-                     use_llm_mapping: bool = False) -> dict:
+                     use_llm_mapping: bool = False,
+                     owner: str | None = None) -> dict:
     """`TemplateSpec` → template terdaftar. Menulis ke data/templates/<id>/:
     template Jinja per doc_type (`.md`), rencana peta (`mapping_<dt>.json`),
     reference.docx tersintesis, spec (`spec.json`), dan manifest (`template.json`).
@@ -78,6 +80,11 @@ def compile_template(spec: dict, name: str, doc_types=None,
     use_llm_mapping: False (default) = peta bab heuristik ($0, deterministik).
     True = peta bab BER-LLM (`llm_mapping_service`, BERBAYAR — satu panggilan
     Claude per doc_type) yang memetakan bab asing yang kata kuncinya tak cocok.
+
+    owner: id pemilik (`Principal.id`) yang disimpan di manifest — dasar isolasi
+    template per-pengguna, sejajar dengan kolom `owner` di tabel `jobs`. None =
+    template tanpa pemilik: boleh dipakai siapa pun (kompatibilitas mundur, lihat
+    `compiler_service.visible_to`).
     """
     doc_types = _pick_doc_types(spec, doc_types)
     template_id = _unique_template_id(template_id or _slugify(name))
@@ -104,6 +111,10 @@ def compile_template(spec: dict, name: str, doc_types=None,
     manifest = {
         "template_id": template_id,
         "name": name,
+        # Pemilik template. Ditulis walau None supaya manifest baru selalu punya
+        # kuncinya (mudah dibedakan dari manifest lama saat memeriksa data), dan
+        # `visible_to` memperlakukan None persis seperti manifest lama: milik bersama.
+        "owner": owner,
         "doc_types": doc_type_files,
         "reference": "reference.docx",
         # Flag perilaku yang tak terlihat dari nama template (dibaca _resolve_template).
@@ -127,16 +138,18 @@ def compile_template(spec: dict, name: str, doc_types=None,
 
 def compile_template_from_docx(docx_path, name: str | None = None, doc_types=None,
                                template_id: str | None = None,
-                               use_llm_mapping: bool = False) -> dict:
+                               use_llm_mapping: bool = False,
+                               owner: str | None = None) -> dict:
     """Jalur lengkap dari file `.docx` yang di-upload: ukur (`build_template_spec`)
     → `compile_template`. `.doc` biner harus dikonversi ke `.docx` dulu.
-    `use_llm_mapping` diteruskan ke `compile_template` (lihat di sana)."""
+    `use_llm_mapping` & `owner` diteruskan ke `compile_template` (lihat di sana)."""
     spec = build_template_spec(docx_path)
     return compile_template(spec, name or Path(docx_path).stem, doc_types, template_id,
-                            use_llm_mapping=use_llm_mapping)
+                            use_llm_mapping=use_llm_mapping, owner=owner)
 
 
-def update_mapping(template_id: str, doc_type: str, bindings: list[str]) -> dict:
+def update_mapping(template_id: str, doc_type: str, bindings: list[str],
+                   caller: Principal | None = None) -> dict:
     """Ganti binding peta bab hasil TINJAUAN MANUSIA, lalu generate ulang template Jinja.
 
     Langkah terakhir yang tak bisa diotomatiskan. Ekstraksi bisa menemukan semua
@@ -149,6 +162,9 @@ def update_mapping(template_id: str, doc_type: str, bindings: list[str]) -> dict
     adalah hasil PENGUKURAN dokumen sumber, bukan pendapat; membiarkannya
     dikirim ulang cuma membuka jalan merusaknya tanpa menambah kemampuan apa pun.
 
+    `caller`: menyunting template milik orang lain ditolak seperti template yang
+    tidak ada (404), bukan 403 — lihat `load_compiled_detail`.
+
     ValueError untuk seluruh penolakan (dipetakan ke 4xx oleh route).
     """
     base = compiler_service.TEMPLATES_STORE / template_id
@@ -156,6 +172,8 @@ def update_mapping(template_id: str, doc_type: str, bindings: list[str]) -> dict
     if not manifest_path.exists():
         raise ValueError(f"Template terkompilasi tidak ditemukan: {template_id!r}")
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if not compiler_service.visible_to(manifest, caller):
+        raise ValueError(f"Template terkompilasi tidak ditemukan: {template_id!r}")
 
     doc_type = doc_type.upper()
     if doc_type not in manifest.get("doc_types", {}):
@@ -197,19 +215,25 @@ def update_mapping(template_id: str, doc_type: str, bindings: list[str]) -> dict
     manifest["mapping_reviewed_at"] = datetime.now(timezone.utc).isoformat()
     manifest_path.write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
-    return load_compiled_detail(template_id)
+    return load_compiled_detail(template_id, caller)
 
 
-def load_compiled_detail(template_id: str) -> dict:
+def load_compiled_detail(template_id: str, caller: Principal | None = None) -> dict:
     """Manifest + rencana peta bab per doc_type untuk template terkompilasi —
     dipakai respons upload & UI tinjauan pemetaan. `mappings` = `{DOC:
     [{level,text,binding}]}`, isian yang kelak diedit manusia sebelum generate.
-    ValueError kalau `template_id` bukan template hasil-kompilasi (mis. built-in)."""
+    ValueError kalau `template_id` bukan template hasil-kompilasi (mis. built-in).
+
+    `caller`: template milik ORANG LAIN melempar ValueError yang PERSIS SAMA
+    dengan "tidak ditemukan" — pesan yang berbeda akan membocorkan bahwa template
+    itu ada. None = pemanggil internal, tanpa pemeriksaan."""
     base = compiler_service.TEMPLATES_STORE / template_id
     manifest_path = base / "template.json"
     if not manifest_path.exists():
         raise ValueError(f"Template terkompilasi tidak ditemukan: {template_id!r}")
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if not compiler_service.visible_to(manifest, caller):
+        raise ValueError(f"Template terkompilasi tidak ditemukan: {template_id!r}")
     mappings = {}
     for dt in manifest.get("doc_types", {}):
         mapping_path = base / f"mapping_{dt}.json"

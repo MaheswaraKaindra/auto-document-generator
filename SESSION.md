@@ -100,9 +100,11 @@ Dua penghalang utama SaaS sudah tertutup sesi ini: **auth/identitas** &
 **deployability**. Sisanya (urut prioritas rekomendasi):
 
 **Tingkat 1 — melengkapi multi-tenant (kecil, $0, achievable):**
-1. **Isolasi template upload per-pengguna** — satu-satunya lubang isolasi tersisa
-   (dokumen sudah per-akun; template upload masih dibagi semua). Pola sama dengan
-   `owner` di job: tambah owner ke storage template + filter di `routes_template`.
+1. ~~**Isolasi template upload per-pengguna**~~ — **SELESAI** (issue #9, 2026-07-28
+   lanjutan 2; lihat CHANGELOG). `owner` di manifest template + `compiler_service.
+   visible_to` + `Principal` di `routes_template` & `/documents/generate`. Isolasi
+   data kini LENGKAP: job/dokumen DAN template. Built-in `default`/`premco`
+   sengaja tetap bersama.
 2. **Halaman "Dokumen Saya"** — job sudah tersimpan per-owner, tapi FE tak
    menampilkannya. Butuh endpoint baru `GET /documents/jobs` (list milik saya) +
    halaman. Paling terasa sebagai "produk SaaS".

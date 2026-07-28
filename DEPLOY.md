@@ -79,6 +79,9 @@ Ditulis jujur supaya klaimnya tahan diuji.
   tanpa sentuh kode.
 - **Pipeline tahan** — async + reaper job basi + pembersihan dokumen kedaluwarsa
   + guard context window.
+- **Isolasi per-pengguna LENGKAP** — job/dokumen DAN template hasil upload
+  ber-`owner`; built-in `default`/`premco` sengaja tetap milik bersama (gaya
+  bawaan produk, bukan data siapa pun).
 
 ## Tinggal colok (config/integrasi standar, bukan kerja arsitektur)
 
@@ -97,9 +100,6 @@ Ditulis jujur supaya klaimnya tahan diuji.
   di dalam proses web; job mati kalau proses mati (reaper menandainya gagal, tapi
   kerja hilang). Untuk banyak instance / serverless: pindah eksekusi ke Redis+RQ
   atau sejenisnya. Ini perubahan arsitektur, bukan config.
-- **Template upload belum per-pengguna** — dokumen sudah terisolasi, template
-  upload masih dibagi semua pengguna (built-in default/premco memang bersama).
-  Ekstensi kecil (owner pada storage template), tapi tetap kerja kode.
 - **Rate limiting belum ada** — tiap generate memakan biaya LLM; SaaS publik butuh
   batas per-akun (middleware standar, tapi belum dipasang).
 
