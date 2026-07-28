@@ -241,6 +241,25 @@ function summarizeMapping(mappings) {
   return content
 }
 
+// Label manusiawi untuk tiap binding di dropdown tinjauan. Daftar ID-nya sendiri
+// datang dari server (GET /templates/{id}/bindings) supaya tak basi diam-diam;
+// yang di sini cuma terjemahannya, dan ID tak dikenal jatuh ke ID mentahnya.
+const BINDING_LABELS = {
+  skip: '— tidak dimuat —',
+  heading_only: 'Judul bab saja (anaknya yang mengisi)',
+  manual: 'Placeholder (diisi manual)',
+  app_description: 'Deskripsi aplikasi',
+  user_roles: 'Peran pengguna',
+  system_requirements: 'Kebutuhan sistem',
+  feature_requirements: 'Daftar fitur',
+  use_cases: 'Use case',
+  activity_diagrams: 'Activity diagram',
+  architecture: 'Diagram arsitektur',
+  business_flow: 'Alur proses bisnis',
+  test_groups: 'Tabel test case',
+}
+const bindingLabel = (b) => BINDING_LABELS[b] || b
+
 function App() {
   const [projectName, setProjectName] = useState('')
   const [documentType, setDocumentType] = useState('SDD')
@@ -280,6 +299,35 @@ function App() {
   const [uploadMsg, setUploadMsg] = useState(null)   // { ok, text } | null
   const [uploadKey, setUploadKey] = useState(0)      // remount input file sesudah sukses
 
+  // Tinjauan peta bab (V2) — langkah terakhir yang tak bisa diotomatiskan.
+  // Ekstraksi menemukan babnya dan pemeta menebak isinya, tapi cuma pemberi
+  // template yang tahu bab bernama asing itu sebetulnya diisi apa.
+  //   review        : { manifest, mappings } dari server | null (built-in = null)
+  //   reviewDocType : peta jenis dokumen mana yang sedang disunting
+  //   reviewDraft   : { [docType]: string[] } — binding yang SEDANG disunting,
+  //                   dipisah dari `review` supaya "belum disimpan" kelihatan.
+  const [review, setReview] = useState(null)
+  const [reviewDocType, setReviewDocType] = useState(null)
+  const [reviewDraft, setReviewDraft] = useState({})
+  const [bindingOptions, setBindingOptions] = useState([])
+  const [reviewBusy, setReviewBusy] = useState(false)
+  const [reviewMsg, setReviewMsg] = useState(null)   // { ok, text } | null
+
+  const openReview = (detail) => {
+    const docTypes = Object.keys(detail?.mappings || {})
+    setReview(detail)
+    setReviewDocType(docTypes[0] || null)
+    setReviewDraft(
+      Object.fromEntries(
+        Object.entries(detail?.mappings || {}).map(([dt, rows]) => [
+          dt,
+          rows.map((r) => r.binding),
+        ]),
+      ),
+    )
+    setReviewMsg(null)
+  }
+
   const fetchTemplates = async () => {
     try {
       const resp = await fetch(`${API_BASE_URL}/templates`)
@@ -290,7 +338,59 @@ function App() {
   }
   useEffect(() => {
     fetchTemplates()
+    // Pilihan isi datang dari server, bukan disalin ke sini — kalau backend
+    // menambah binding baru, dropdown ini ikut tanpa perubahan frontend.
+    fetch(`${API_BASE_URL}/templates/bindings`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((b) => b && setBindingOptions(b.bindings || []))
+      .catch(() => {})
   }, [])
+
+  // Peta bab cuma ada untuk template HASIL UPLOAD. Built-in ('default'/'premco')
+  // sengaja tak bisa disunting: keduanya dikompilasi tangan dan sudah terverifikasi
+  // ke dokumen acuan — membuka suntingannya cuma jalan merusak yang sudah benar.
+  useEffect(() => {
+    const chosen = templates.find((t) => t.id === templateId)
+    if (!chosen || chosen.source === 'builtin') {
+      setReview(null)
+      return
+    }
+    let stale = false
+    fetch(`${API_BASE_URL}/templates/${encodeURIComponent(templateId)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((detail) => {
+        if (!stale && detail) openReview(detail)
+      })
+      .catch(() => {})
+    return () => {
+      stale = true
+    }
+  }, [templateId, templates])
+
+  const saveReview = async () => {
+    if (!review || !reviewDocType) return
+    setReviewBusy(true)
+    setReviewMsg(null)
+    try {
+      const templateId_ = review.manifest.template_id
+      const resp = await fetch(
+        `${API_BASE_URL}/templates/${encodeURIComponent(templateId_)}/mappings/${reviewDocType}`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ bindings: reviewDraft[reviewDocType] || [] }),
+        },
+      )
+      const body = await resp.json().catch(() => ({}))
+      if (!resp.ok) throw new Error(body.detail || `Gagal menyimpan peta (${resp.status})`)
+      openReview(body)
+      setReviewMsg({ ok: true, text: 'Peta bab tersimpan — template diperbarui.' })
+    } catch (e) {
+      setReviewMsg({ ok: false, text: e.message })
+    } finally {
+      setReviewBusy(false)
+    }
+  }
 
   const pushStage = (message) =>
     setStages((prev) => (prev[prev.length - 1] === message ? prev : [...prev, message]))
@@ -665,6 +765,71 @@ function App() {
                 <em>(diisi manual)</em>. Tanpa AI, hanya bab bernama umum yang dikenali.
               </p>
             </div>
+
+            {review && reviewDocType && (
+              <div className="review-box">
+                <div className="review-head">
+                  <strong>Tinjau Peta Bab — {review.manifest.name || review.manifest.template_id}</strong>
+                  {Object.keys(review.mappings).length > 1 && (
+                    <select
+                      value={reviewDocType}
+                      onChange={(e) => setReviewDocType(e.target.value)}
+                    >
+                      {Object.keys(review.mappings).map((dt) => (
+                        <option key={dt} value={dt}>
+                          {dt}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+
+                {review.manifest.mapping_health?.[reviewDocType]?.warning && (
+                  <p className="review-warning">
+                    {review.manifest.mapping_health[reviewDocType].warning}
+                  </p>
+                )}
+
+                <ul className="review-list">
+                  {review.mappings[reviewDocType].map((row, i) => (
+                    <li key={`${row.text}-${i}`} style={{ paddingLeft: `${(row.level - 1) * 16}px` }}>
+                      <span className="review-chapter" title={row.text}>
+                        {row.text || <em>(bab tanpa judul)</em>}
+                      </span>
+                      <select
+                        value={reviewDraft[reviewDocType]?.[i] ?? row.binding}
+                        onChange={(e) =>
+                          setReviewDraft((draft) => {
+                            const next = [...(draft[reviewDocType] || [])]
+                            next[i] = e.target.value
+                            return { ...draft, [reviewDocType]: next }
+                          })
+                        }
+                      >
+                        {bindingOptions.map((b) => (
+                          <option key={b} value={b}>
+                            {bindingLabel(b)}
+                          </option>
+                        ))}
+                      </select>
+                    </li>
+                  ))}
+                </ul>
+
+                <button type="button" onClick={saveReview} disabled={reviewBusy}>
+                  {reviewBusy ? 'Menyimpan…' : 'Simpan Peta Bab'}
+                </button>
+                {reviewMsg && (
+                  <p className={`upload-msg${reviewMsg.ok ? '' : ' error'}`}>{reviewMsg.text}</p>
+                )}
+                <p className="hint">
+                  Sistem sudah menebak isi tiap bab dari namanya, tapi hanya Anda yang tahu
+                  maksud bab di template perusahaan Anda — mis. bab yang sebetulnya tempat
+                  <strong> screenshot</strong> atau <strong>tanda tangan</strong> sebaiknya
+                  dibiarkan <em>Placeholder</em>. Tiap isi hanya boleh dipakai satu bab.
+                </p>
+              </div>
+            )}
           </div>
 
           <div className="field">

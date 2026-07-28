@@ -484,6 +484,86 @@ button:disabled {
   color: var(--err);
 }
 
+/* ==== Tinjauan peta bab (V2) ============================================= */
+/* Langkah terakhir yang tak bisa diotomatiskan: sistem menebak isi tiap bab dari
+   namanya, tapi cuma pemberi template yang tahu bab mana sebetulnya tempat
+   screenshot atau tanda tangan. Sengaja padat & bisa di-scroll — template nyata
+   bisa punya 35+ bab, dan daftar sepanjang itu tak boleh menenggelamkan form. */
+.review-box {
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+  margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.review-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--text-h);
+}
+
+.review-head select {
+  width: auto;
+  padding: 4px 8px;
+  font-size: 13px;
+}
+
+.review-warning {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 7px;
+  font-size: 13.5px;
+  line-height: 1.5;
+  background: var(--err-bg);
+  border: 1px solid var(--err-border);
+  color: var(--err);
+}
+
+.review-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 340px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.review-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.review-list li:last-child {
+  border-bottom: none;
+}
+
+/* Judul bab boleh panjang; yang harus selalu terlihat utuh adalah dropdown-nya,
+   jadi teks yang dipotong (judul lengkapnya tetap ada di tooltip). */
+.review-chapter {
+  flex: 1;
+  min-width: 0;
+  font-size: 13.5px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.review-list select {
+  width: 250px;
+  flex: none;
+  padding: 4px 8px;
+  font-size: 13px;
+}
+
 /* ==== Preview logo ======================================================== */
 /* Menampilkan thumbnail logo yang dipilih — supaya salah pilih file (mis.
    screenshot) langsung ketahuan sebelum generate. */
