@@ -13,10 +13,12 @@ import zipfile
 from pathlib import Path
 
 from docx.opc.exceptions import PackageNotFoundError
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
+from app.api.deps import get_current_user
 from app.services import compiler_service
+from app.services.auth_service import Principal
 from app.services.template_compiler_service import (
     compile_template_from_docx,
     load_compiled_detail,
@@ -34,12 +36,16 @@ _MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 
 
 @router.get("")
-def list_templates():
+def list_templates(principal: Principal = Depends(get_current_user)):
     """Semua template yang bisa dipakai di `POST /documents/generate` — built-in
-    ('default'/'premco') + hasil-upload — dengan `doc_types`/`source`/`name`.
-    Buat mengisi dropdown gaya dokumen di frontend (menghormati ketersediaan per
-    jenis dokumen)."""
-    return {"templates": compiler_service.list_templates_detail()}
+    ('default'/'premco') + hasil-upload MILIK PEMANGGIL — dengan
+    `doc_types`/`source`/`name`. Buat mengisi dropdown gaya dokumen di frontend
+    (menghormati ketersediaan per jenis dokumen).
+
+    Built-in sengaja tetap dibagi semua pengguna: itu gaya dokumen bawaan produk,
+    bukan data siapa pun. Yang di-upload adalah dokumen perusahaan pemakainya —
+    itulah yang tak boleh terlihat pengguna lain."""
+    return {"templates": compiler_service.list_templates_detail(principal)}
 
 
 @router.post("", status_code=201)
@@ -48,6 +54,7 @@ def upload_template(
     name: str | None = Form(None),
     doc_types: str | None = Form(None),
     use_llm_mapping: bool = Form(False),
+    principal: Principal = Depends(get_current_user),
 ):
     """Upload `.docx` template → ukur + kompilasi jadi template terdaftar. Balik
     `template_id` + rencana peta bab (untuk ditinjau sebelum dipakai). SINKRON.
@@ -98,6 +105,7 @@ def upload_template(
                 name=name or Path(filename).stem,
                 doc_types=requested_doc_types,
                 use_llm_mapping=use_llm_mapping,
+                owner=principal.id,
             )
         except (PackageNotFoundError, zipfile.BadZipFile, KeyError) as e:
             # File bukan .docx valid / rusak — kesalahan INPUT user (422), bukan
@@ -115,7 +123,7 @@ def upload_template(
                 detail=f"Gagal mengompilasi template: {e}",
             ) from e
 
-    return load_compiled_detail(manifest["template_id"])
+    return load_compiled_detail(manifest["template_id"], principal)
 
 
 # Dideklarasikan SEBELUM `/{template_id}` — kalau tidak, path parameter menelan
@@ -129,11 +137,13 @@ def list_bindings():
 
 
 @router.get("/{template_id}")
-def get_template(template_id: str):
+def get_template(template_id: str, principal: Principal = Depends(get_current_user)):
     """Detail template terkompilasi: manifest + rencana peta bab (untuk UI
-    tinjauan pemetaan). 404 kalau bukan template hasil-upload (mis. built-in)."""
+    tinjauan pemetaan). 404 kalau bukan template hasil-upload (mis. built-in)
+    ATAU milik pengguna lain — dua-duanya 404 yang sama, supaya keberadaan
+    template orang lain tak bocor lewat beda kode/pesan."""
     try:
-        return load_compiled_detail(template_id)
+        return load_compiled_detail(template_id, principal)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
 
@@ -148,18 +158,20 @@ class MappingUpdate(BaseModel):
 
 
 @router.put("/{template_id}/mappings/{doc_type}")
-def put_mapping(template_id: str, doc_type: str, body: MappingUpdate):
+def put_mapping(template_id: str, doc_type: str, body: MappingUpdate,
+                principal: Principal = Depends(get_current_user)):
     """Simpan peta bab hasil tinjauan manusia → generate ulang template Jinja.
 
     Langkah terakhir yang tak bisa diotomatiskan: ekstraksi menemukan babnya dan
     pemeta menebak isinya, tapi cuma pemberi template yang tahu bab mana yang
     sebetulnya tempat screenshot atau tanda tangan.
 
-    404 kalau template/doc_type tak ada; 422 kalau peta tak valid (jumlah tak
-    cocok, binding tak dikenal, satu isi dipakai dua bab).
+    404 kalau template/doc_type tak ada — termasuk template milik pengguna lain;
+    422 kalau peta tak valid (jumlah tak cocok, binding tak dikenal, satu isi
+    dipakai dua bab).
     """
     try:
-        return update_mapping(template_id, doc_type, body.bindings)
+        return update_mapping(template_id, doc_type, body.bindings, principal)
     except ValueError as e:
         message = str(e)
         not_found = "tidak ditemukan" in message or "tidak punya doc_type" in message
