@@ -329,3 +329,22 @@ def get_job(job_id: str) -> Optional[dict]:
     with _connect() as conn:
         row = conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
     return dict(row) if row else None
+
+
+def list_jobs(owner: Optional[str], limit: int = 100) -> list[dict]:
+    """Job milik satu `owner`, terbaru dulu — sumber "Dokumen Saya".
+
+    Owner-scoped di lapisan QUERY (bukan disaring sesudah ambil semua): riwayat
+    satu pengguna tak pernah menyentuh baris pengguna lain, jadi tak ada jalan
+    data bocor lewat endpoint ini. `owner` None (mode dev/anonymous) mengambil
+    job anonim — konsisten dengan `create_job(owner=None)`.
+
+    `limit` menjaga payload tetap wajar; 100 dokumen terakhir jauh meldebihi
+    kebutuhan tampilan, dan yang lama tetap bisa diambil per-id lewat get_job.
+    """
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT * FROM jobs WHERE owner IS ? ORDER BY created_at DESC LIMIT ?",
+            (owner, limit),
+        ).fetchall()
+    return [dict(row) for row in rows]

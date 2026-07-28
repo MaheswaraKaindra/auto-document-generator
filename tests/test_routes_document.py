@@ -680,3 +680,46 @@ def test_auth_aktif_tanpa_token_ditolak_401(client, monkeypatch):
     _hs256_token(monkeypatch, "siapa-saja")  # aktifkan auth
     assert client.post("/documents/generate",
                        json={"document_type": "SDD"}).status_code == 401
+
+
+# --- "Dokumen Saya": GET /documents/jobs (riwayat per-owner) -------------------
+
+def test_list_jobs_owner_scoped_dan_terbaru_dulu(client, monkeypatch):
+    """Riwayat hanya menampilkan job milik pemanggil, terbaru dulu — inti
+    "Dokumen Saya"."""
+    alice = _hs256_token(monkeypatch, "alice")
+    bob = _hs256_token(monkeypatch, "bob")
+
+    _generate(client, headers=alice, document_type="SDD", project_name="Proyek A1")
+    _generate(client, headers=alice, document_type="UAT", project_name="Proyek A2")
+    _generate(client, headers=bob, document_type="SDD", project_name="Punya Bob")
+
+    resp = client.get("/documents/jobs", headers=alice)
+    assert resp.status_code == 200
+    jobs = resp.json()["jobs"]
+
+    names = [j["project_name"] for j in jobs]
+    assert names == ["Proyek A2", "Proyek A1"]   # terbaru dulu, tanpa punya Bob
+    assert all("Bob" not in (n or "") for n in names)
+    # Job selesai membawa tautan unduh.
+    assert all(j["download_url"] == f"/documents/jobs/{j['job_id']}/download" for j in jobs)
+
+
+def test_list_jobs_kosong_untuk_pengguna_baru(client, monkeypatch):
+    baru = _hs256_token(monkeypatch, "pengguna-baru")
+    resp = client.get("/documents/jobs", headers=baru)
+    assert resp.status_code == 200
+    assert resp.json()["jobs"] == []
+
+
+def test_list_jobs_butuh_auth_saat_aktif(client, monkeypatch):
+    _hs256_token(monkeypatch, "siapa-saja")  # aktifkan auth
+    assert client.get("/documents/jobs").status_code == 401
+
+
+def test_list_jobs_path_tak_tertelan_job_id(client):
+    """`/documents/jobs` (mode dev) harus ke daftar, BUKAN dianggap job_id
+    'jobs' oleh route /jobs/{job_id}."""
+    resp = client.get("/documents/jobs")
+    assert resp.status_code == 200
+    assert "jobs" in resp.json()

@@ -237,6 +237,47 @@ def generate_document_full_pipeline(
     }
 
 
+def _job_payload(job: dict) -> dict:
+    """Bentuk job untuk klien — dipakai status detail DAN daftar "Dokumen Saya",
+    satu sumber supaya keduanya tak menyimpang. `download_url`/`diagrams_url` cuma
+    disertakan kalau file-nya benar-benar ada (menawarkan tautan yang berujung
+    404 lebih buruk daripada tak menawarkan)."""
+    payload = {
+        "job_id": job["id"],
+        "status": job["status"],
+        "document_type": job["document_type"],
+        # Gaya dokumen — riwayat dulu tak bisa menjawab "dokumen ini gaya apa".
+        # None untuk job dari DB lama (sebelum kolomnya ada).
+        "template_id": job["template_id"],
+        "project_name": job["project_name"],
+        # Tahap yang sedang dikerjakan, kalimat siap tampil.
+        "progress": job["progress"],
+        "created_at": job["created_at"],
+        "updated_at": job["updated_at"],
+    }
+    if job["status"] == job_store.STATUS_DONE:
+        payload["download_url"] = f"/documents/jobs/{job['id']}/download"
+        if compiler_service.drawio_bundle_for(job["docx_path"]).exists():
+            payload["diagrams_url"] = f"/documents/jobs/{job['id']}/diagrams"
+    elif job["status"] == job_store.STATUS_FAILED:
+        payload["error"] = job["error"]
+        payload["error_status"] = job["error_status"]
+    return payload
+
+
+@router.get("/jobs")
+def list_my_jobs(principal: Principal = Depends(get_current_user)):
+    """Riwayat dokumen milik pemanggil — "Dokumen Saya", terbaru dulu.
+
+    Owner-scoped di query (`job_store.list_jobs`), jadi tak pernah menyentuh
+    dokumen pengguna lain. Dideklarasikan SEBELUM `/jobs/{job_id}` supaya path
+    literal "/jobs" tak tertelan sebagai job_id."""
+    job_store.reap_stale_jobs()
+    job_store.purge_expired_documents()
+    jobs = job_store.list_jobs(principal.id)
+    return {"jobs": [_job_payload(job) for job in jobs]}
+
+
 @router.get("/jobs/{job_id}")
 def get_job_status(job_id: str, principal: Principal = Depends(get_current_user)):
     """Status job. 200 walau job-nya gagal — pertanyaannya ("job ini bagaimana?")
@@ -254,34 +295,7 @@ def get_job_status(job_id: str, principal: Principal = Depends(get_current_user)
     # keberadaan job orang lain tak bocor lewat beda kode status.
     if job is None or not auth_service.owns(job.get("owner"), principal):
         raise HTTPException(status_code=404, detail=f"Job {job_id} tidak ditemukan.")
-
-    payload = {
-        "job_id": job["id"],
-        "status": job["status"],
-        "document_type": job["document_type"],
-        # Gaya dokumen yang dipakai job ini. Riwayat job dulu tidak bisa menjawab
-        # "dokumen ini gaya apa" — pertanyaan yang muncul begitu ada lebih dari
-        # satu gaya. None untuk job dari DB lama (sebelum kolomnya ada).
-        "template_id": job["template_id"],
-        # Tahap yang sedang dikerjakan, kalimat siap tampil. `status` cuma punya
-        # empat nilai dan tidak bisa membedakan "sedang mengunduh repo" dari
-        # "sedang menunggu AI dua menit" — padahal itu yang ingin diketahui orang
-        # yang sedang menatap layar.
-        "progress": job["progress"],
-        "created_at": job["created_at"],
-        "updated_at": job["updated_at"],
-    }
-    if job["status"] == job_store.STATUS_DONE:
-        payload["download_url"] = f"/documents/jobs/{job_id}/download"
-        # Cuma diumumkan kalau bundelnya benar-benar ADA: UAT tak punya activity
-        # diagram, dan SDD yang seluruh diagramnya jatuh ke PlantUML juga tidak.
-        # Menawarkan tautan yang berujung 404 lebih buruk daripada tak menawarkan.
-        if compiler_service.drawio_bundle_for(job["docx_path"]).exists():
-            payload["diagrams_url"] = f"/documents/jobs/{job_id}/diagrams"
-    elif job["status"] == job_store.STATUS_FAILED:
-        payload["error"] = job["error"]
-        payload["error_status"] = job["error_status"]
-    return payload
+    return _job_payload(job)
 
 
 @router.get("/jobs/{job_id}/download")
