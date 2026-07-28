@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import './App.css'
+import { authHeader } from './supabaseClient'
 
 // Bisa dioverride tanpa menyentuh kode: taruh VITE_API_BASE_URL di
 // frontend/.env.local (atau environment saat build). Fallback-nya localhost
@@ -171,7 +172,8 @@ const POLL_TIMEOUT_MS = 30 * 60 * 1000
 async function pollJob(jobId, onTick) {
   const startedAt = Date.now()
   while (Date.now() - startedAt < POLL_TIMEOUT_MS) {
-    const response = await fetch(`${API_BASE_URL}/documents/jobs/${jobId}`)
+    const response = await fetch(`${API_BASE_URL}/documents/jobs/${jobId}`,
+      { headers: authHeader() })
     if (!response.ok) {
       throw new Error(`Gagal menanyakan status job (${response.status})`)
     }
@@ -330,7 +332,7 @@ function App() {
 
   const fetchTemplates = async () => {
     try {
-      const resp = await fetch(`${API_BASE_URL}/templates`)
+      const resp = await fetch(`${API_BASE_URL}/templates`, { headers: authHeader() })
       if (resp.ok) setTemplates((await resp.json()).templates || [])
     } catch {
       // gagal ambil daftar: dropdown fallback ke 'premco' (tetap valid di backend)
@@ -340,7 +342,7 @@ function App() {
     fetchTemplates()
     // Pilihan isi datang dari server, bukan disalin ke sini — kalau backend
     // menambah binding baru, dropdown ini ikut tanpa perubahan frontend.
-    fetch(`${API_BASE_URL}/templates/bindings`)
+    fetch(`${API_BASE_URL}/templates/bindings`, { headers: authHeader() })
       .then((r) => (r.ok ? r.json() : null))
       .then((b) => b && setBindingOptions(b.bindings || []))
       .catch(() => {})
@@ -356,7 +358,8 @@ function App() {
       return
     }
     let stale = false
-    fetch(`${API_BASE_URL}/templates/${encodeURIComponent(templateId)}`)
+    fetch(`${API_BASE_URL}/templates/${encodeURIComponent(templateId)}`,
+      { headers: authHeader() })
       .then((r) => (r.ok ? r.json() : null))
       .then((detail) => {
         if (!stale && detail) openReview(detail)
@@ -377,7 +380,7 @@ function App() {
         `${API_BASE_URL}/templates/${encodeURIComponent(templateId_)}/mappings/${reviewDocType}`,
         {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...authHeader() },
           body: JSON.stringify({ bindings: reviewDraft[reviewDocType] || [] }),
         },
       )
@@ -473,7 +476,8 @@ function App() {
       const form = new FormData()
       form.append('file', uploadFile)
       if (uploadUseLlm) form.append('use_llm_mapping', 'true')
-      const resp = await fetch(`${API_BASE_URL}/templates`, { method: 'POST', body: form })
+      const resp = await fetch(`${API_BASE_URL}/templates`,
+        { method: 'POST', body: form, headers: authHeader() })
       const body = await resp.json().catch(() => ({}))
       if (!resp.ok) throw new Error(body.detail || `Gagal upload template (${resp.status})`)
 
@@ -549,7 +553,7 @@ function App() {
     try {
       const response = await fetch(`${API_BASE_URL}/documents/generate`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeader() },
         body: JSON.stringify(payload),
       })
 
@@ -575,7 +579,7 @@ function App() {
 
       pushStage('Dokumen siap — mengunduh…')
       const downloadUrl = `${API_BASE_URL}${job.download_url}`
-      const fileResponse = await fetch(downloadUrl)
+      const fileResponse = await fetch(downloadUrl, { headers: authHeader() })
       if (!fileResponse.ok) {
         throw new Error(`Gagal mengunduh dokumen (${fileResponse.status})`)
       }

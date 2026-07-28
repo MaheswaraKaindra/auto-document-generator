@@ -1,0 +1,133 @@
+/* Gerbang login — bahasa visual dokumen: kertas/tinta, aksen biru-dokumen. */
+.auth-shell {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f4f5f7;
+  padding: 24px;
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 380px;
+  background: #fff;
+  border: 1px solid #e2e4e8;
+  border-radius: 10px;
+  padding: 32px 28px;
+  box-shadow: 0 1px 3px rgba(16, 24, 40, 0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.auth-title {
+  font-size: 20px;
+  font-weight: 700;
+  margin: 0;
+  color: #1f2937;
+}
+
+.auth-sub {
+  margin: 0 0 6px;
+  color: #6b7280;
+  font-size: 14px;
+}
+
+.auth-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 13px;
+  color: #374151;
+}
+
+.auth-field input {
+  padding: 9px 11px;
+  border: 1px solid #d1d5db;
+  border-radius: 7px;
+  font-size: 14px;
+}
+
+.auth-field input:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+.auth-submit {
+  margin-top: 6px;
+  padding: 10px;
+  background: #2563eb;
+  color: #fff;
+  border: none;
+  border-radius: 7px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.auth-submit:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.auth-toggle {
+  background: none;
+  border: none;
+  color: #2563eb;
+  font-size: 13px;
+  cursor: pointer;
+  padding: 2px;
+}
+
+.auth-error {
+  margin: 0;
+  color: #b42318;
+  font-size: 13px;
+}
+
+.auth-message {
+  margin: 0;
+  color: #027a48;
+  font-size: 13px;
+}
+
+.auth-bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 8px 16px;
+  background: #fff;
+  border-bottom: 1px solid #e2e4e8;
+  font-size: 13px;
+}
+
+.auth-who {
+  color: #6b7280;
+}
+
+.auth-signout {
+  padding: 5px 12px;
+  background: #fff;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  color: #374151;
+}
+
+.auth-signout:hover {
+  background: #f9fafb;
+}
+
+@media (prefers-color-scheme: dark) {
+  .auth-shell { background: #1a1c20; }
+  .auth-card { background: #24272e; border-color: #363a42; }
+  .auth-title { color: #f3f4f6; }
+  .auth-field { color: #d1d5db; }
+  .auth-field input { background: #1a1c20; border-color: #3f4451; color: #f3f4f6; }
+  .auth-bar { background: #24272e; border-color: #363a42; }
+  .auth-signout { background: #24272e; border-color: #3f4451; color: #d1d5db; }
+}
