@@ -1,37 +1,54 @@
-/* Token desain.
-
-   Produk ini membuat dokumen resmi — UI-nya meminjam bahasa itu: latar kertas
-   hangat, teks tinta, aksen biru dokumen. BUKAN ungu template bawaan: warna itu
-   tidak punya hubungan apa pun dengan produk ini.
-
-   Dua peran aksen sengaja dipisah karena kebutuhannya bertentangan di dark mode:
-   --accent-ink   = teks/ikon aksen (harus TERANG di latar gelap agar terbaca)
-   --accent-solid = latar tombol    (harus cukup GELAP agar teks putihnya kontras) */
+/* Token desain — bahasa visual Apple diterapkan ke alat kerja.
+   Palet netral tajam (tinta near-black, latar abu sangat terang, kartu putih),
+   satu aksen biru, tipografi SF Pro (fallback Segoe UI di Windows), sudut lembut
+   besar, tombol pill, bayang halus. Restraint di atas segalanya. */
 :root {
-  --bg: #f4f2ec;
-  --surface: #ffffff;
-  --text: #4d5560;
-  --text-h: #171f28;
-  --border: #e0dcd2;
-  --border-strong: #c6c1b4;
-  --accent-ink: #1c4e7e;
-  --accent-solid: #1c4e7e;
-  --accent-solid-hover: #153e66;
-  --accent-soft: rgba(28, 78, 126, 0.07);
-  --ring: rgba(28, 78, 126, 0.3);
-  --ok: #1a7a44;
-  --ok-bg: #edf7f0;
-  --ok-border: #bfe3cc;
-  --err: #b3261e;
-  --err-bg: #fdf1f0;
-  --err-border: #f2c9c5;
-  --shadow: 0 1px 2px rgba(23, 31, 40, 0.04), 0 10px 28px -14px rgba(23, 31, 40, 0.14);
+  /* Latar & permukaan */
+  --bg: #f5f5f7;          /* halaman: abu Apple sangat terang */
+  --surface: #ffffff;     /* kartu */
+  --surface-2: #fbfbfd;   /* blok tersarang (upload/review) */
 
-  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --serif: Georgia, Cambria, 'Times New Roman', serif;
-  --mono: ui-monospace, Consolas, monospace;
+  /* Teks */
+  --text: #6e6e73;        /* abu sekunder Apple */
+  --text-h: #1d1d1f;      /* near-black — judul & isian */
+  --text-mut: #86868b;    /* keterangan paling redup */
 
-  font: 16px/1.55 var(--sans);
+  /* Garis */
+  --border: #d2d2d7;      /* hairline Apple */
+  --border-strong: #b0b0b8;
+
+  /* Aksen (biru Apple) */
+  --accent: #0071e3;
+  --accent-hover: #0077ed;
+  --accent-press: #006edb;
+  --accent-ink: #0066cc;  /* tautan teks */
+  --accent-soft: rgba(0, 113, 227, 0.08);
+  --ring: rgba(0, 125, 250, 0.6);
+
+  /* Status */
+  --ok: #1d8a4e;
+  --ok-bg: #ecf8f1;
+  --ok-border: #bfe6cf;
+  --err: #d70015;
+  --err-bg: #fdeeee;
+  --err-border: #f5cbcb;
+
+  /* Bentuk */
+  --radius: 18px;         /* kartu */
+  --radius-sm: 12px;      /* input, blok kecil */
+  --radius-pill: 980px;   /* tombol */
+
+  /* Bayang — sangat halus, khas Apple */
+  --shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+  --shadow-lg: 0 8px 40px rgba(0, 0, 0, 0.09);
+
+  --sans: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text',
+    'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  --mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+
+  --nav-h: 52px;
+
+  font: 17px/1.5 var(--sans);
   color-scheme: light dark;
   color: var(--text);
   background: var(--bg);
@@ -43,25 +60,33 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #14161a;
-    --surface: #1d2026;
-    --text: #a6adb8;
-    --text-h: #edf0f4;
-    --border: #2d313a;
-    --border-strong: #3f4450;
-    --accent-ink: #85b4e0;
-    --accent-solid: #2f6494;
-    --accent-solid-hover: #3a74a9;
-    --accent-soft: rgba(133, 180, 224, 0.1);
-    --ring: rgba(133, 180, 224, 0.35);
-    --ok: #5cbd84;
-    --ok-bg: #182720;
-    --ok-border: #2d4b3a;
-    --err: #e57e77;
-    --err-bg: #2b1b1a;
-    --err-border: #55302b;
-    --shadow: none;
+    --bg: #000000;
+    --surface: #1d1d1f;
+    --surface-2: #161617;
+    --text: #a1a1a6;
+    --text-h: #f5f5f7;
+    --text-mut: #86868b;
+    --border: #38383c;
+    --border-strong: #4a4a4f;
+    --accent: #2997ff;
+    --accent-hover: #47a6ff;
+    --accent-press: #1f8cf5;
+    --accent-ink: #2997ff;
+    --accent-soft: rgba(41, 151, 255, 0.12);
+    --ring: rgba(41, 151, 255, 0.6);
+    --ok: #4cc47f;
+    --ok-bg: #12281c;
+    --ok-border: #285138;
+    --err: #ff453a;
+    --err-bg: #2a1615;
+    --err-border: #5a2a28;
+    --shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+    --shadow-lg: 0 8px 40px rgba(0, 0, 0, 0.55);
   }
+}
+
+* {
+  box-sizing: border-box;
 }
 
 body {
@@ -69,18 +94,16 @@ body {
 }
 
 #root {
-  width: 760px;
-  max-width: 100%;
-  margin: 0 auto;
+  width: 100%;
   min-height: 100svh;
-  box-sizing: border-box;
-  padding: 40px 20px 64px;
 }
 
 h1,
-h2 {
+h2,
+h3 {
   color: var(--text-h);
   margin: 0;
+  letter-spacing: -0.02em;
 }
 
 p {
@@ -89,6 +112,11 @@ p {
 
 a {
   color: var(--accent-ink);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
 }
 
 ::selection {

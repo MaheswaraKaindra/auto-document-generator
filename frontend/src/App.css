@@ -1,380 +1,538 @@
-/* ==== Masthead ============================================================ */
+/* ==========================================================================
+   Auto Document Generator — antarmuka bergaya Apple.
+   Markup lama dipertahankan (kelas semantik: panel, field, hint, ...); seluruh
+   rupa datang dari sini. Prinsip: ruang napas besar, tipografi tajam, satu
+   aksen biru, gerak halus.
+   ========================================================================== */
 
+main {
+  display: block;
+  max-width: 820px;
+  margin: 0 auto;
+  padding: 72px 22px 96px;
+}
+
+/* ==== Masthead (hero) ===================================================== */
 .masthead {
-  margin-bottom: 32px;
+  text-align: center;
+  padding: 24px 0 56px;
 }
 
 .kicker {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.02em;
   text-transform: uppercase;
   color: var(--accent-ink);
-  margin-bottom: 10px;
+  margin-bottom: 18px;
 }
 
 .masthead h1 {
-  /* Serif, meniru kepala dokumen resmi — produknya dokumen, judulnya ikut. */
-  font-family: var(--serif);
-  font-size: 40px;
-  line-height: 1.15;
-  letter-spacing: -0.01em;
-  margin-bottom: 12px;
+  font-size: clamp(38px, 6vw, 60px);
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: -0.03em;
 }
 
 .subtitle {
-  max-width: 60ch;
+  max-width: 640px;
+  margin: 22px auto 0;
+  font-size: 19px;
+  line-height: 1.5;
+  color: var(--text);
 }
 
-/* ==== Panel bernomor ====================================================== */
-/* Form dipecah jadi section bernomor seperti bab SDD — bukan gaya-gayaan:
-   pengguna produk ini akan MENERIMA dokumen berbab-nomor, jadi form-nya
-   berbicara dengan bahasa yang sama. */
+.subtitle strong {
+  color: var(--text-h);
+  font-weight: 600;
+}
 
+/* ==== Kartu / panel ====================================================== */
 form {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 24px;
 }
 
 .panel {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 22px 24px;
+  border-radius: var(--radius);
   box-shadow: var(--shadow);
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
+  padding: 36px 40px;
 }
 
 .panel-title {
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
-  color: var(--text-h);
-  margin: 0;
+  gap: 14px;
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  margin-bottom: 26px;
 }
 
 .panel-num {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
-  border-radius: 6px;
-  background: var(--accent-solid);
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--accent);
   color: #fff;
-  font-size: 12px;
-  letter-spacing: 0;
+  font-size: 15px;
+  font-weight: 600;
+  flex-shrink: 0;
 }
 
-/* ==== Field =============================================================== */
-
+/* ==== Field, label, input ================================================ */
 .field {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+  margin-bottom: 26px;
+}
+
+.field:last-child {
+  margin-bottom: 0;
 }
 
 label {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  font-weight: 600;
+  display: block;
   font-size: 15px;
+  font-weight: 600;
   color: var(--text-h);
-  text-align: left;
 }
 
-input,
+input[type='text'],
+input[type='password'],
+input[type='url'],
 select,
 textarea {
+  width: 100%;
+  margin-top: 9px;
+  padding: 13px 15px;
   font: inherit;
-  font-size: 15px;
-  padding: 9px 12px;
-  border: 1px solid var(--border-strong);
-  border-radius: 7px;
-  background: var(--surface);
+  font-size: 16px;
   color: var(--text-h);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+textarea {
+  min-height: 88px;
+  resize: vertical;
+  line-height: 1.5;
+}
+
+select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%2386868b' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 16px center;
+  padding-right: 40px;
+  cursor: pointer;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px var(--accent-soft);
 }
 
 input::placeholder,
 textarea::placeholder {
+  color: var(--text-mut);
+}
+
+input[type='file'] {
+  width: 100%;
+  margin-top: 9px;
+  font-size: 15px;
   color: var(--text);
-  opacity: 0.55;
 }
 
-input:focus-visible,
-select:focus-visible,
-textarea:focus-visible,
-button:focus-visible,
-summary:focus-visible {
-  outline: none;
-  border-color: var(--accent-ink);
-  box-shadow: 0 0 0 3px var(--ring);
+input[type='file']::file-selector-button {
+  margin-right: 14px;
+  padding: 9px 16px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--accent-ink);
+  background: var(--accent-soft);
+  border: none;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  transition: background 0.2s ease;
 }
 
-textarea {
-  resize: vertical;
+input[type='file']::file-selector-button:hover {
+  background: rgba(0, 113, 227, 0.16);
 }
 
 .hint {
-  opacity: 0.78;
-  font-size: 13.5px;
-  line-height: 1.5;
-  margin: 0;
-  font-weight: 400;
+  margin-top: 10px;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--text-mut);
 }
 
-/* ==== Repositori ========================================================== */
+.hint strong {
+  color: var(--text);
+  font-weight: 600;
+}
 
+.optional-tag {
+  margin-left: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-mut);
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+/* ==== Segmented control (pilihan sumber, checkbox baris) ================= */
+.checkbox-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 14px;
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.checkbox-row input[type='checkbox'] {
+  width: 18px;
+  height: 18px;
+  margin: 1px 0 0;
+  accent-color: var(--accent);
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+/* ==== Tombol ============================================================= */
+button {
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  border-radius: var(--radius-pill);
+  border: 1px solid transparent;
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.08s ease,
+    opacity 0.2s ease;
+}
+
+button:active {
+  transform: scale(0.98);
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: default;
+  transform: none;
+}
+
+/* Tombol sekunder (upload, dsb.): garis tepi lembut */
+.upload-box button,
+.review-head button {
+  padding: 11px 22px;
+  font-size: 15px;
+  color: var(--accent-ink);
+  background: var(--surface);
+  border-color: var(--border-strong);
+}
+
+.upload-box button:not(:disabled):hover,
+.review-head button:not(:disabled):hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+/* Tombol utama besar (Generate) */
+.submit-btn {
+  width: 100%;
+  margin-top: 4px;
+  padding: 17px 28px;
+  font-size: 18px;
+  font-weight: 500;
+  color: #fff;
+  background: var(--accent);
+}
+
+.submit-btn:not(:disabled):hover {
+  background: var(--accent-hover);
+}
+
+.submit-btn:not(:disabled):active {
+  background: var(--accent-press);
+}
+
+/* ==== Sumber kode: repo GitHub & ZIP ==================================== */
 .repo-group {
-  border: 0;
-  padding: 0;
-  margin: 0;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 14px;
+  border: none;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
 }
 
 .repo-group legend {
-  font-weight: 600;
-  font-size: 15px;
-  color: var(--text-h);
   padding: 0;
-  margin-bottom: 6px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-h);
 }
 
 .repo-row {
   display: grid;
-  grid-template-columns: 150px 1fr 130px auto;
-  gap: 8px;
+  grid-template-columns: 0.9fr 1.6fr 0.9fr auto;
+  gap: 12px;
+  align-items: start;
 }
 
-@media (max-width: 620px) {
-  .repo-row {
-    grid-template-columns: 1fr auto;
-  }
-  .repo-row input:nth-child(2) {
-    grid-column: 1 / -1;
-  }
-}
-
-/* Baris ZIP: tag + input file + tombol hapus (3 kolom, tanpa kolom branch). */
 .zip-row {
   display: grid;
-  grid-template-columns: 150px 1fr auto;
-  gap: 8px;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 12px;
   align-items: center;
 }
 
-@media (max-width: 620px) {
-  .zip-row {
-    grid-template-columns: 1fr auto;
-  }
-  .zip-row input[type='file'] {
-    grid-column: 1 / -1;
-  }
+.repo-row input,
+.zip-row input {
+  margin-top: 0;
+}
+
+.remove-repo-btn {
+  padding: 0;
+  width: 38px;
+  height: 46px;
+  font-size: 20px;
+  color: var(--text-mut);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+}
+
+.remove-repo-btn:not(:disabled):hover {
+  color: var(--err);
+  background: var(--err-bg);
 }
 
 .zip-status {
+  margin-top: 8px;
   font-size: 13px;
-  line-height: 1.5;
-  margin: 4px 0 2px;
-  opacity: 0.8;
+  color: var(--text-mut);
 }
 
 .zip-status.error {
   color: var(--err);
-  opacity: 1;
 }
 
-/* ==== Tombol ============================================================== */
-
-button {
-  font: inherit;
-  font-size: 14px;
-  font-weight: 600;
-  padding: 9px 14px;
-  cursor: pointer;
-  border: 1px solid var(--border-strong);
-  border-radius: 7px;
-  background: var(--surface);
-  color: var(--text-h);
-}
-
-button:hover:not(:disabled) {
-  border-color: var(--accent-ink);
+/* Tombol "tambah repo/zip" — teks biru ala Apple */
+.repo-group > button,
+form button.add-row {
+  align-self: flex-start;
+  padding: 9px 0;
+  font-size: 15px;
   color: var(--accent-ink);
+  background: transparent;
+  border: none;
 }
 
-button:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
+.repo-group > button:hover {
+  text-decoration: underline;
 }
 
-.remove-repo-btn {
-  padding: 9px 12px;
+/* ==== Blok tersarang: upload template, review =========================== */
+.upload-box {
+  margin-top: 20px;
+  padding: 22px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
-.submit-btn {
-  font-size: 16px;
-  padding: 13px 18px;
-  background: var(--accent-solid);
-  border-color: transparent;
-  color: #fff;
+.upload-box > label:first-child {
+  font-size: 14px;
 }
 
-.submit-btn:hover:not(:disabled) {
-  background: var(--accent-solid-hover);
-  color: #fff;
-  border-color: transparent;
+.upload-box button {
+  align-self: flex-start;
+  margin-top: 10px;
 }
 
-/* ==== Informasi Dokumen (opsional) ======================================== */
-
-.metadata-details {
-  padding: 0;
-  gap: 0;
+.upload-msg {
+  margin-top: 10px;
+  font-size: 14px;
+  color: var(--ok);          /* default = sukses; `.error` menimpanya */
 }
 
-.metadata-details summary {
-  list-style: none;
-  cursor: pointer;
+.upload-msg.error {
+  color: var(--err);
+}
+
+/* ==== Logo ============================================================== */
+.logo-preview {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 20px 24px;
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.logo-preview img {
+  height: 44px;
+  max-width: 180px;
+  object-fit: contain;
+  padding: 8px 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
   border-radius: 10px;
 }
 
-.metadata-details summary::-webkit-details-marker {
+/* ==== Metadata (details/summary opsional) =============================== */
+.metadata-details {
+  padding: 0;
+  overflow: hidden;
+}
+
+.metadata-details > summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 24px 40px;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--text-h);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.metadata-details > summary::-webkit-details-marker {
   display: none;
 }
 
-/* Chevron sebagai penanda buka/tutup — marker bawaan browser tidak bisa
-   di-style konsisten. */
-.metadata-details summary::after {
-  content: '';
-  margin-left: auto;
-  width: 8px;
-  height: 8px;
-  border-right: 2px solid var(--text);
-  border-bottom: 2px solid var(--text);
-  transform: rotate(45deg);
-  transition: transform 0.15s ease;
+.metadata-details > summary::after {
+  content: '+';
+  font-size: 22px;
+  font-weight: 400;
+  color: var(--text-mut);
 }
 
-.metadata-details[open] summary::after {
-  transform: rotate(-135deg);
+.metadata-details[open] > summary::after {
+  content: '−';
 }
 
-.metadata-details .metadata-body {
-  padding: 0 24px 22px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.optional-tag {
-  font-weight: 500;
-  font-size: 11px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--text);
-  border: 1px solid var(--border-strong);
-  border-radius: 999px;
-  padding: 2px 9px;
-}
-
-.metadata-details fieldset {
-  border: 0;
+.metadata-body {
+  padding: 8px 40px 36px;
   border-top: 1px solid var(--border);
-  padding: 16px 0 0;
-  margin: 16px 0 0;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
 }
 
-.metadata-details legend {
-  font-weight: 700;
-  font-size: 13px;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  color: var(--text-h);
-  padding-right: 10px;
-}
-
-/* ==== Log tahapan ========================================================= */
-/* Pesan progress dari server dirender sebagai daftar: yang lewat dapat
-   centang, yang berjalan dapat spinner. Murni dari data yang diterima —
-   tidak ada pencocokan string, jadi mengubah tahapan di backend tidak
-   pernah merusak tampilan ini. */
-
-.run-panel {
+.metadata-body .field:first-child {
   margin-top: 24px;
+}
+
+/* ==== Alert ============================================================= */
+.alert {
+  padding: 15px 18px;
+  border-radius: var(--radius-sm);
+  font-size: 15px;
+  line-height: 1.5;
+  border: 1px solid transparent;
+}
+
+.alert-success {
+  color: var(--ok);
+  background: var(--ok-bg);
+  border-color: var(--ok-border);
+}
+
+.alert-error {
+  color: var(--err);
+  background: var(--err-bg);
+  border-color: var(--err-border);
+}
+
+/* ==== Panel status run ================================================== */
+.run-panel {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 18px 22px;
+  border-radius: var(--radius);
   box-shadow: var(--shadow);
+  padding: 32px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.elapsed {
+  font-size: 14px;
+  color: var(--text-mut);
+  font-variant-numeric: tabular-nums;
 }
 
 .stage-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
 .stage {
-  display: grid;
-  grid-template-columns: 20px 1fr;
-  gap: 10px;
-  align-items: start;
-  padding: 5px 0;
-  font-size: 14.5px;
-}
-
-.stage-icon {
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 11px;
-  line-height: 1;
-  margin-top: 2px;
-}
-
-.stage-done {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  font-size: 15px;
   color: var(--text);
 }
 
+.stage-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  font-size: 13px;
+  border: 1.5px solid var(--border-strong);
+}
+
+.stage-done {
+  color: var(--text-h);
+}
+
 .stage-done .stage-icon {
-  background: var(--accent-soft);
-  color: var(--accent-ink);
+  background: var(--ok);
+  border-color: var(--ok);
+  color: #fff;
 }
 
 .stage-active {
   color: var(--text-h);
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .stage-active .stage-icon {
-  border: 2px solid var(--border-strong);
-  border-top-color: var(--accent-ink);
-  animation: spin 0.8s linear infinite;
-  box-sizing: border-box;
+  border-color: var(--accent);
+  border-right-color: transparent;
+  animation: spin 0.7s linear infinite;
+}
+
+.stage-failed .stage-icon {
+  background: var(--err);
+  border-color: var(--err);
+  color: #fff;
 }
 
 @keyframes spin {
@@ -383,208 +541,91 @@ button:disabled {
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .stage-active .stage-icon {
-    animation: none;
-    border-top-color: var(--border-strong);
-    background: var(--accent-soft);
-  }
-}
-
-.stage-failed {
-  color: var(--err);
-  font-weight: 600;
-}
-
-.stage-failed .stage-icon {
-  background: var(--err-bg);
-  color: var(--err);
-  border: 1px solid var(--err-border);
-}
-
-.elapsed {
-  margin-top: 10px;
-  padding-top: 12px;
-  border-top: 1px solid var(--border);
-  font-size: 13px;
-  opacity: 0.8;
-  font-variant-numeric: tabular-nums;
-}
-
-/* ==== Hasil / error ======================================================= */
-
-.alert {
-  margin-top: 16px;
-  border-radius: 10px;
-  padding: 14px 18px;
-  font-size: 14.5px;
-  line-height: 1.55;
-  border: 1px solid;
-  /* Pesan error server bisa panjang dan berparagraf — jangan diratakan. */
-  white-space: pre-wrap;
-}
-
-.alert-error {
-  background: var(--err-bg);
-  border-color: var(--err-border);
-  color: var(--err);
-}
-
-.alert-success {
-  background: var(--ok-bg);
-  border-color: var(--ok-border);
-  color: var(--ok);
-}
-
-.alert-success a {
-  color: inherit;
-  font-weight: 600;
-}
-
-/* ==== Upload template (V2) ================================================ */
-/* Widget kecil di dalam panel Dokumen: user meng-upload .docx template
-   perusahaannya, sistem mendaftarkannya sebagai Gaya Dokumen baru. */
-
-.upload-box {
-  border-top: 1px solid var(--border);
-  padding-top: 16px;
-  margin-top: 2px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.checkbox-row {
-  flex-direction: row;
-  align-items: center;
-  gap: 8px;
-  font-weight: 400;
-  font-size: 14px;
-}
-
-.checkbox-row input {
-  width: auto;
-  margin: 0;
-}
-
-.upload-msg {
-  font-size: 13.5px;
-  line-height: 1.5;
-  margin: 0;
-  padding: 8px 12px;
-  border-radius: 7px;
-  background: var(--ok-bg);
-  border: 1px solid var(--ok-border);
-  color: var(--ok);
-}
-
-.upload-msg.error {
-  background: var(--err-bg);
-  border-color: var(--err-border);
-  color: var(--err);
-}
-
-/* ==== Tinjauan peta bab (V2) ============================================= */
-/* Langkah terakhir yang tak bisa diotomatiskan: sistem menebak isi tiap bab dari
-   namanya, tapi cuma pemberi template yang tahu bab mana sebetulnya tempat
-   screenshot atau tanda tangan. Sengaja padat & bisa di-scroll — template nyata
-   bisa punya 35+ bab, dan daftar sepanjang itu tak boleh menenggelamkan form. */
+/* ==== Review peta bab =================================================== */
 .review-box {
-  border-top: 1px solid var(--border);
-  padding-top: 16px;
-  margin-top: 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+  margin-top: 22px;
+  padding: 22px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
 }
 
 .review-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  color: var(--text-h);
-}
-
-.review-head select {
-  width: auto;
-  padding: 4px 8px;
-  font-size: 13px;
+  gap: 12px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
 }
 
 .review-warning {
-  margin: 0;
-  padding: 8px 12px;
-  border-radius: 7px;
-  font-size: 13.5px;
-  line-height: 1.5;
+  padding: 12px 15px;
+  margin-bottom: 16px;
+  font-size: 14px;
+  color: var(--err);
   background: var(--err-bg);
   border: 1px solid var(--err-border);
-  color: var(--err);
+  border-radius: 10px;
 }
 
 .review-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  max-height: 340px;
-  overflow-y: auto;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-}
-
-.review-list li {
   display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: 10px;
-  padding: 5px 10px;
-  border-bottom: 1px solid var(--border);
 }
 
-.review-list li:last-child {
+.review-chapter {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 15px;
+}
+
+.review-chapter:last-child {
   border-bottom: none;
 }
 
-/* Judul bab boleh panjang; yang harus selalu terlihat utuh adalah dropdown-nya,
-   jadi teks yang dipotong (judul lengkapnya tetap ada di tooltip). */
-.review-chapter {
-  flex: 1;
-  min-width: 0;
-  font-size: 13.5px;
-  color: var(--text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.review-chapter select {
+  margin-top: 0;
+  width: auto;
+  min-width: 190px;
+  padding: 8px 34px 8px 12px;
+  font-size: 14px;
 }
 
-.review-list select {
-  width: 250px;
-  flex: none;
-  padding: 4px 8px;
-  font-size: 13px;
-}
+/* ==== Responsif ========================================================= */
+@media (max-width: 640px) {
+  main {
+    padding: 48px 16px 72px;
+  }
 
-/* ==== Preview logo ======================================================== */
-/* Menampilkan thumbnail logo yang dipilih — supaya salah pilih file (mis.
-   screenshot) langsung ketahuan sebelum generate. */
+  .panel,
+  .run-panel {
+    padding: 26px 22px;
+  }
 
-.logo-preview {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
+  .metadata-details > summary {
+    padding: 22px;
+  }
 
-.logo-preview img {
-  height: 40px;
-  max-width: 160px;
-  object-fit: contain;
-  border: 1px solid var(--border-strong);
-  border-radius: 6px;
-  padding: 3px;
-  background: #fff;   /* logo transparan tetap terlihat di atas putih */
-  flex-shrink: 0;
-}
+  .metadata-body {
+    padding: 8px 22px 28px;
+  }
 
-.logo-preview .hint {
-  flex: 1;
+  .repo-row,
+  .zip-row {
+    grid-template-columns: 1fr;
+  }
+
+  .remove-repo-btn {
+    justify-self: end;
+  }
+
+  .review-chapter {
+    grid-template-columns: 1fr;
+  }
 }

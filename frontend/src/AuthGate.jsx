@@ -99,10 +99,14 @@ export default function AuthGate({ children }) {
   return (
     <>
       <div className="auth-bar">
-        <span className="auth-who">{session.user?.email}</span>
-        <button className="auth-signout" onClick={() => supabase.auth.signOut()}>
-          Keluar
-        </button>
+        <div className="auth-bar-inner">
+          <span className="auth-brand">Auto Document Generator</span>
+          <span className="auth-spacer" />
+          <span className="auth-who">{session.user?.email}</span>
+          <button className="auth-signout" onClick={() => supabase.auth.signOut()}>
+            Keluar
+          </button>
+        </div>
       </div>
       {children}
     </>
