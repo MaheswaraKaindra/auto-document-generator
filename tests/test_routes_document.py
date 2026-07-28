@@ -578,3 +578,51 @@ def test_get_status_reaps_stale_running_job(client, monkeypatch):
     body = response.json()
     assert body["status"] == "failed"
     assert body["error_status"] == 503
+
+
+def test_bundel_drawio_hanya_diumumkan_kalau_benar_benar_ada(client, tmp_path):
+    """Status job cuma menawarkan `diagrams_url` kalau bundelnya nyata.
+
+    UAT tak punya activity diagram sama sekali, jadi menawarkan tautan yang
+    berujung 404 lebih buruk daripada tak menawarkan apa pun."""
+    from app.services import compiler_service
+
+    docx = tmp_path / "hasil.docx"
+    docx.write_bytes(b"docx")
+    job_id = job_store.create_job(document_type="UAT", project_name=None)
+    job_store.mark_done(job_id, str(docx))
+
+    status = client.get(f"/documents/jobs/{job_id}").json()
+    assert "download_url" in status
+    assert "diagrams_url" not in status
+    assert client.get(f"/documents/jobs/{job_id}/diagrams").status_code == 404
+
+    # Sekarang bundelnya ADA: tautan muncul dan file terlayani.
+    tersimpan = job_store.get_job(job_id)["docx_path"]
+    compiler_service.drawio_bundle_for(tersimpan).write_bytes(b"PK\x05\x06" + b"\0" * 18)
+
+    status = client.get(f"/documents/jobs/{job_id}").json()
+    assert status["diagrams_url"] == f"/documents/jobs/{job_id}/diagrams"
+    unduh = client.get(status["diagrams_url"])
+    assert unduh.status_code == 200
+    assert unduh.headers["content-type"] == "application/zip"
+
+
+def test_pembersihan_dokumen_ikut_menghapus_bundel_drawio(client, tmp_path, monkeypatch):
+    """Bundel lahir & mati bersama dokumennya. Membiarkannya tertinggal
+    mengulang persis masalah yang purge ada untuk menyelesaikan: folder yang
+    tumbuh selamanya."""
+    from app.services import compiler_service
+
+    docx = tmp_path / "hasil.docx"
+    docx.write_bytes(b"docx")
+    job_id = job_store.create_job(document_type="SDD", project_name=None)
+    job_store.mark_done(job_id, str(docx))
+    tersimpan = Path(job_store.get_job(job_id)["docx_path"])
+    bundel = compiler_service.drawio_bundle_for(tersimpan)
+    bundel.write_bytes(b"zip")
+
+    job_store.purge_expired_documents(max_age_seconds=-1)
+
+    assert not tersimpan.exists()
+    assert not bundel.exists()

@@ -154,12 +154,20 @@ Dokumen ini dibuat sebagai dasar pengembangan {{ project_name }}. Jika ada perub
 
 Tanda tangan dibubuhkan pada dokumen cetak setelah dokumen ini disetujui — bagian ini tidak dapat dihasilkan oleh sistem.
 
+{# Judul ketiga daftar memakai `Heading1`, BUKAN `TOCHeading` seperti template
+   `default`. Bukan selera: dokumen PREMCO asli menaruhnya sebagai Heading 1
+   sehingga ketiganya IKUT TERDAFTAR di Daftar Isi — diverifikasi ke PDF acuan
+   halaman 5, yang memuat baris "DAFTAR ISI…", "DAFTAR GAMBAR…", "DAFTAR TABEL…"
+   di antara PERSETUJUAN DOKUMEN dan DESKRIPSI APLIKASI. Dengan `TOCHeading`
+   (gaya Word standar, sengaja tak masuk daftar) ketiganya hilang dari Daftar Isi
+   dan urutan bab kita menyimpang dari acuan. `default` sengaja TETAP memakai
+   `TOCHeading` — dia bukan tiruan PREMCO. #}
 ```{=openxml}
-<w:p><w:pPr><w:pStyle w:val="TOCHeading"/></w:pPr><w:r><w:t>Daftar Isi</w:t></w:r></w:p>
+<w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>Daftar Isi</w:t></w:r></w:p>
 <w:p><w:fldSimple w:instr=" TOC \o &quot;1-3&quot; \h \z \u "><w:r><w:t>Daftar ini terisi otomatis saat field diperbarui — di Word tekan Ctrl+A lalu F9, atau klik kanan di sini &gt; Update Field.</w:t></w:r></w:fldSimple></w:p>
-<w:p><w:pPr><w:pStyle w:val="TOCHeading"/></w:pPr><w:r><w:t>Daftar Gambar</w:t></w:r></w:p>
+<w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>Daftar Gambar</w:t></w:r></w:p>
 <w:p><w:fldSimple w:instr=" TOC \h \z \t &quot;Image Caption&quot; \c "><w:r><w:t>Daftar ini terisi otomatis saat field diperbarui — di Word tekan Ctrl+A lalu F9, atau klik kanan di sini &gt; Update Field.</w:t></w:r></w:fldSimple></w:p>
-<w:p><w:pPr><w:pStyle w:val="TOCHeading"/></w:pPr><w:r><w:t>Daftar Tabel</w:t></w:r></w:p>
+<w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>Daftar Tabel</w:t></w:r></w:p>
 <w:p><w:fldSimple w:instr=" TOC \h \z \t &quot;Table Caption&quot; \c "><w:r><w:t>Daftar ini terisi otomatis saat field diperbarui — di Word tekan Ctrl+A lalu F9, atau klik kanan di sini &gt; Update Field.</w:t></w:r></w:fldSimple></w:p>
 ```
 
@@ -326,6 +334,13 @@ Tahapan alur proses bisnis:
 ## 2. Activity Diagram
 
 {% for activity in diagrams.activity_diagrams %}
+{# Tiap activity diagram jadi SUB-BAB tersendiri (Heading 3, bernomor manual
+   "2.N" seperti bab lain di premco yang menomori sendiri — bukan auto-number
+   Word). Meniru dokumen PREMCO asli yang memecah "Activity Diagram Login –
+   Website", "… Mobile", dst. jadi bagian terpisah. Heading 3 masuk Daftar Isi
+   (field TOC \o "1-3") — keputusan pemilik: sub-bab ini MUNCUL di Daftar Isi. #}
+### 2.{{ loop.index }} Activity Diagram {{ activity.activity_name }}
+
 {{ activity.description }}
 
 ![Gambar {{ loop.index + 3 }} Activity Diagram {{ activity.activity_name }}]({{ activity.image_path }}){{ activity.image_attr }}

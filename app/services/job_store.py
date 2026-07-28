@@ -17,6 +17,7 @@ ProgrammingError begitu job kedua jalan di thread berbeda — jenis bug yang cum
 muncul saat ada beban, bukan saat dites satu-satu.
 """
 
+import logging
 import shutil
 import sqlite3
 import uuid
@@ -26,6 +27,8 @@ from pathlib import Path
 from typing import Any, Optional
 
 from app.core import config
+
+logger = logging.getLogger(__name__)
 
 # Dibiarkan module-level (bukan konstanta beku) supaya test bisa mengarahkannya
 # ke tmp_path — pola yang sama dengan OUTPUT_DIR di compiler_service.
@@ -184,10 +187,20 @@ def mark_done(job_id: str, docx_path: str) -> None:
     Urutannya penting: kalau path dicatat duluan lalu penyalinan gagal, job
     terlihat 'done' padahal filenya tidak ada.
     """
+    from app.services.compiler_service import drawio_bundle_for
+
     documents_dir = _documents_dir()
     documents_dir.mkdir(parents=True, exist_ok=True)
     stored = documents_dir / f"{job_id}{Path(docx_path).suffix}"
     shutil.copyfile(docx_path, stored)
+    # Bundel .drawio ikut kalau ada — berkas BONUS, jadi ketiadaannya normal dan
+    # kegagalannya tak boleh menggagalkan job yang dokumennya sudah jadi.
+    bundle = drawio_bundle_for(docx_path)
+    if bundle.exists():
+        try:
+            shutil.copyfile(bundle, drawio_bundle_for(stored))
+        except OSError:
+            logger.warning("Gagal menyalin bundel .drawio job %s", job_id, exc_info=True)
     _update(job_id, status=STATUS_DONE, docx_path=str(stored))
 
 
@@ -279,7 +292,13 @@ def purge_expired_documents(max_age_seconds: float = DOCUMENT_TTL_SECONDS) -> in
                 continue
             if updated >= cutoff:
                 continue
+            from app.services.compiler_service import drawio_bundle_for
+
             Path(row["docx_path"]).unlink(missing_ok=True)
+            # Bundel .drawio lahir & mati bersama dokumennya. Membiarkannya
+            # tertinggal mengulang persis masalah yang fungsi ini ada untuk
+            # menyelesaikan: folder yang tumbuh selamanya.
+            drawio_bundle_for(row["docx_path"]).unlink(missing_ok=True)
             conn.execute(
                 "UPDATE jobs SET status = ?, docx_path = NULL, error = ?,"
                 " error_status = ?, updated_at = ? WHERE id = ?",

@@ -14,10 +14,12 @@ import base64
 import copy
 import io
 import json
+import logging
 import re
 import subprocess
 import tempfile
 import uuid
+import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -34,7 +36,10 @@ from jinja2 import Environment, FileSystemLoader
 from PIL import Image, ImageChops, ImageDraw, UnidentifiedImageError
 
 from app.core import config
+from app.diagram import activity_render
 from app.domain.exceptions import DiagramRenderError
+
+logger = logging.getLogger(__name__)
 
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
 OUTPUT_DIR = Path(tempfile.gettempdir()) / "auto_document_generator"
@@ -748,7 +753,33 @@ def _render_activity_diagram(diagram_script: str, images_dir: Path,
     pernah mematikan SELURUH generate premco lewat satu diagram. Kalau script
     aslinya sendiri yang rusak, error tetap muncul dari percobaan kedua.
     """
-    script = _add_diagram_title(_add_swimlanes(diagram_script, actor), title)
+    # Jalur draw.io: tata letak dihitung sendiri lalu digambar langsung jadi PNG
+    # (lihat app/diagram/activity_render.py). Dipakai kalau script masih di dalam
+    # subset yang parsernya pahami; kalau tidak (mis. ada `repeat`/`fork`), jatuh
+    # ke PlantUML — lebih baik gaya lama daripada diagram yang isinya hilang.
+    laned = _add_swimlanes(diagram_script, actor)
+    if activity_render.supports(laned):
+        try:
+            ir = activity_render.build_ir(laned, title or "")
+            if ir.nodes:
+                images_dir.mkdir(parents=True, exist_ok=True)
+                path = str(images_dir / f"{uuid.uuid4().hex}.png")
+                activity_render.render_png(ir, path)
+                # Sekalian tulis versi yang BISA DISUNTING, bersebelahan dengan
+                # PNG-nya (stem sama). Gratis: geometrinya sudah dihitung, jadi
+                # gambar di dokumen dan file suntingan mustahil beda bentuk.
+                # Ditulis best-effort — file bonus tak boleh menggagalkan dokumen.
+                try:
+                    Path(path).with_suffix(".drawio").write_text(
+                        activity_render.to_drawio(ir), encoding="utf-8")
+                except OSError:
+                    logger.warning("Gagal menulis .drawio untuk %s", path, exc_info=True)
+                return path
+        except Exception:
+            logger.warning("Render activity gaya draw.io gagal; "
+                           "jatuh ke PlantUML.", exc_info=True)
+
+    script = _add_diagram_title(laned, title)
     try:
         path = _render_diagram_to_image(script, images_dir, _PLANTUML_PLAIN_PREAMBLE)
     except DiagramRenderError:
@@ -971,6 +1002,14 @@ def _build_sdd_context(data: dict[str, Any], render_integration: bool = True) ->
     use_case = _render_diagram_to_image(diagrams["use_case_diagram"], IMAGES_DIR,
                                         _PLANTUML_PLAIN_PREAMBLE)
 
+    activity_images = [
+        # `actor` jadi NAMA lane manusianya; `activity_name` jadi pita judul di
+        # dalam kotak (meniru activity diagram draw.io acuan).
+        (a, _render_activity_diagram(a["diagram_script"], IMAGES_DIR,
+                                     a.get("actor"), a.get("activity_name")))
+        for a in diagrams.get("activity_diagrams", [])
+    ]
+
     return {
         **data,
         "feature_requirements": cleaned_features,
@@ -997,15 +1036,16 @@ def _build_sdd_context(data: dict[str, Any], render_integration: bool = True) ->
                     "image_path": path,
                     "image_attr": _image_attr(path),
                 }
-                for activity, path in (
-                    # `actor` jadi NAMA lane manusianya; `activity_name` jadi pita
-                    # judul di dalam kotak (meniru activity diagram draw.io acuan).
-                    (a, _render_activity_diagram(a["diagram_script"], IMAGES_DIR,
-                                                 a.get("actor"), a.get("activity_name")))
-                    for a in diagrams.get("activity_diagrams", [])
-                )
+                for activity, path in activity_images
             ],
         },
+        # Bukan untuk template — dipanen `generate_docx` jadi bundel .drawio.
+        # IMAGES_DIR dipakai BERSAMA semua run, jadi daftar ini harus dikumpulkan
+        # saat render; memindai foldernya belakangan akan menyapu diagram milik
+        # dokumen orang lain.
+        "_drawio_files": [str(d) for d in (Path(p).with_suffix(".drawio")
+                                           for _, p in activity_images)
+                          if d.exists()],
     }
 
 
@@ -1717,8 +1757,47 @@ def _apply_orientation_markers(document) -> None:
         _set_section_orientation(section, orient)
 
 
+def _bake_footer_title(document, title: str) -> None:
+    """Isi run HASIL field TITLE di footer dengan judul dokumen sebenarnya.
+
+    Footer memakai field `TITLE` (bukan teks harfiah) karena reference.docx
+    dibangun SEKALI tanpa tahu judul per-dokumen — field membacanya dari properti
+    dokumen saat Word memperbarui field. Tapi run hasilnya KOSONG sampai update
+    itu terjadi, jadi pengguna yang membuka docx lalu menjawab "No" pada prompt
+    update (atau memakai viewer non-Word) melihat footer tanpa judul — cuma nomor
+    halaman (PAGE dihitung Word otomatis, TITLE tidak). Judulnya sudah diketahui
+    di sini, jadi kita bake ke run hasilnya: tampil LANGSUNG, dan field tetap ada
+    sehingga update field pun tetap mengisinya dengan nilai yang sama.
+
+    Cukup footer section pertama — section lain (hasil pecahan orientasi) terpaut
+    ke sana (`is_linked_to_previous`) dan mewarisi footer yang sama.
+    """
+    if not document.sections:
+        return
+    footer = document.sections[0].footer
+    for paragraph in footer.paragraphs:
+        runs = paragraph._p.findall(qn("w:r"))
+        in_title = False
+        for i, run in enumerate(runs):
+            instr = run.find(qn("w:instrText"))
+            if instr is not None and instr.text and "TITLE" in instr.text:
+                in_title = True
+            fld = run.find(qn("w:fldChar"))
+            if (fld is not None and fld.get(qn("w:fldCharType")) == "separate"
+                    and in_title and i + 1 < len(runs)):
+                result = runs[i + 1]
+                text = result.find(qn("w:t"))
+                if text is None:
+                    text = OxmlElement("w:t")
+                    result.append(text)
+                text.set(qn("xml:space"), "preserve")
+                text.text = title
+                return
+
+
 def _postprocess_docx(docx_path: str, logo_bytes: bytes | None = None,
-                      cover_align_right: bool = False) -> None:
+                      cover_align_right: bool = False,
+                      footer_title: str | None = None) -> None:
     """Sentuhan yang tidak bisa dititipkan ke reference.docx maupun Pandoc —
     satu kali buka-simpan untuk semuanya."""
     document = docx.Document(docx_path)
@@ -1737,6 +1816,8 @@ def _postprocess_docx(docx_path: str, logo_bytes: bytes | None = None,
     _move_table_captions_below(document)
     _heighten_signature_rows(document)
     _apply_orientation_markers(document)  # ((LANDSCAPE))/((PORTRAIT)) → section
+    if footer_title:
+        _bake_footer_title(document, footer_title)
     if logo_bytes:
         _add_header_logo(document, logo_bytes)
     document.save(docx_path)
@@ -1789,6 +1870,38 @@ def _build_uat_context(data: dict[str, Any], group: bool = False) -> dict[str, A
     return {**data, "uat_test_cases": cleaned_cases}
 
 
+def drawio_bundle_for(docx_path: str | Path) -> Path:
+    """Path bundel `.drawio` milik sebuah dokumen — DITURUNKAN dari path docx-nya.
+
+    Sengaja turunan, bukan kolom DB sendiri: bundel itu selalu lahir & mati
+    bersama dokumennya, jadi menyimpannya terpisah cuma menciptakan dua sumber
+    kebenaran yang bisa menyimpang (DB menunjuk file yang sudah dibersihkan —
+    persis kelas bug yang `purge_expired_documents` ada untuk mencegahnya).
+    """
+    path = Path(docx_path)
+    return path.with_name(f"{path.stem}_diagrams.zip")
+
+
+def _bundle_drawio(files: list[str], target: Path) -> Path | None:
+    """Kemas file `.drawio` sebuah dokumen jadi satu ZIP. None kalau tak ada.
+
+    Activity diagram di dokumen digambar dari geometri yang kita hitung sendiri,
+    jadi versi yang bisa disunting itu praktis gratis — dan bentuknya dijamin
+    sama persis dengan gambar di dokumen. Best-effort: ini berkas BONUS, dan
+    kegagalannya tak boleh menggagalkan dokumen yang sudah dibayar.
+    """
+    if not files:
+        return None
+    try:
+        with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as bundle:
+            for index, path in enumerate(files, start=1):
+                bundle.write(path, f"activity_{index}.drawio")
+        return target
+    except OSError:
+        logger.warning("Gagal mengemas bundel .drawio", exc_info=True)
+        return None
+
+
 def generate_docx(
     document_type: str,
     document_content: dict[str, Any],
@@ -1838,6 +1951,7 @@ def generate_docx(
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     output_path = OUTPUT_DIR / f"{normalized_type}_{uuid.uuid4().hex}.docx"
+    _bundle_drawio(context.pop("_drawio_files", []), drawio_bundle_for(output_path))
 
     try:
         pypandoc.convert_text(
@@ -1863,5 +1977,6 @@ def generate_docx(
         str(output_path),
         logo_bytes,
         cover_align_right=resolved.cover_align_right and normalized_type == "SDD",
+        footer_title=_document_title(normalized_type, project_name),
     )
     return str(output_path)

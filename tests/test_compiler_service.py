@@ -324,27 +324,35 @@ def test_swimlane_ambiguous_step_inherits_current_lane():
     assert out.index(":Validasi data;") < out.index("|Sistem|")
 
 
-def test_activity_render_falls_back_when_swimlanes_break(monkeypatch):
-    """Swimlane itu peningkatan RUPA — dia tidak boleh sanggup menggagalkan
-    dokumen. Kalau versi ber-lane ditolak plantuml, versi tanpa lane dipakai.
-    (Presedennya nyata: satu diagram rusak pernah mematikan seluruh generate.)"""
-    seen = []
-
-    def fake_run(source):
-        seen.append(source)
-        if "|Admin|" in source:
-            raise DiagramRenderError("ditolak")
-        return _MINIMAL_PNG
-
-    monkeypatch.setattr(compiler_service, "_run_plantuml", fake_run)
-
+def test_activity_uses_drawio_renderer_not_plantuml(mock_plantuml_ok):
+    """Activity diagram dirender jalur draw.io (tata letak dihitung sendiri lalu
+    digambar jadi PNG), BUKAN plantuml — itu yang membuatnya berbentuk tabel
+    berlajur seperti dokumen acuan."""
     path = compiler_service._render_activity_diagram(
-        _ACTIVITY_SCRIPT, compiler_service.IMAGES_DIR, "Admin"
+        _ACTIVITY_SCRIPT, compiler_service.IMAGES_DIR, "Admin", "Login Admin"
     )
 
-    assert Path(path).exists(), "fallback tanpa lane harus tetap menghasilkan gambar"
-    assert len(seen) == 2, "harus mencoba ber-lane dulu, baru jatuh ke tanpa lane"
-    assert "|Admin|" not in seen[1]
+    assert Path(path).exists()
+    mock_plantuml_ok.assert_not_called()
+    from PIL import Image
+    with Image.open(path) as im:
+        assert im.width > 200 and im.height > 200, "PNG diagram tidak wajar kecil"
+
+
+def test_activity_falls_back_to_plantuml_for_unsupported_syntax(mock_plantuml_ok):
+    """Parser jalur draw.io sengaja cuma memahami subset yang prompt kita
+    wajibkan. Script di luar itu (mis. `repeat`) HARUS jatuh ke plantuml — lebih
+    baik gaya lama daripada diagram yang isinya hilang diam-diam."""
+    looping = ("@startuml\nstart\nrepeat\n:Admin memeriksa antrian;\n"
+               "repeat while (Masih ada?) is (Ya)\nstop\n@enduml")
+    assert not compiler_service.activity_render.supports(looping)
+
+    path = compiler_service._render_activity_diagram(
+        looping, compiler_service.IMAGES_DIR, "Admin", "Antrian"
+    )
+
+    assert Path(path).exists()
+    mock_plantuml_ok.assert_called_once()
 
 
 def test_plain_style_for_uml_diagrams_theme_for_architecture(mock_plantuml_ok):
@@ -362,26 +370,23 @@ def test_plain_style_for_uml_diagrams_theme_for_architecture(mock_plantuml_ok):
     # arsitektur + integrasi komponen = ber-tema
     assert len(themed) == 2, "arsitektur & integrasi komponen harus ber-tema warna"
     assert all("component " in s or "package " in s for s in themed)
-    # use case + business flow + activity = polos
-    assert len(plain) == 3, "use case, business flow, & activity harus polos"
+    # use case + business flow = polos. Activity TIDAK ada di sini: sejak jalur
+    # draw.io, dia dirender sendiri (app/diagram/activity_render.py), tak lewat
+    # plantuml sama sekali.
+    assert len(plain) == 2, "use case & business flow harus polos"
     assert all("!theme plain" in s for s in plain)
 
 
-def test_only_activity_diagrams_get_swimlanes(mock_plantuml_ok):
-    """Swimlane HANYA untuk activity per-fitur. Flow proses bisnis sengaja TIDAK
-    dapat — di acuan ia flowchart bercabang, bukan diagram berlajur. Fixture
-    punya 1 activity, jadi dari 3 diagram bergaya polos (business flow, use case,
-    activity) tepat SATU yang boleh ber-lane."""
+def test_plantuml_diagrams_never_get_swimlanes(mock_plantuml_ok):
+    """Swimlane milik activity, dan activity kini dirender jalur draw.io — jadi
+    TIDAK boleh ada satu pun source yang sampai ke plantuml membawa `|Lane|`.
+    Khususnya flow proses bisnis: di acuan ia flowchart bercabang, bukan berlajur."""
     data = _load_fixture("document_content_sdd.json")
-    assert len(data["diagrams"]["activity_diagrams"]) == 1, "asumsi fixture berubah"
 
     compiler_service.generate_docx("SDD", data, template_id="default")
 
     sources = [c.args[0] for c in mock_plantuml_ok.call_args_list]
-    plain = [s for s in sources if "componentBackgroundColor" not in s]
-    with_lanes = [s for s in plain if re.search(r"^\s*\|[^|]+\|\s*$", s, re.M)]
-    assert len(plain) == 3
-    assert len(with_lanes) == 1, "hanya activity yang boleh ber-swimlane"
+    assert not any(re.search(r"^\s*\|[^|]+\|\s*$", s, re.M) for s in sources),         "tak ada diagram plantuml yang boleh ber-swimlane"
 
 
 def test_swimlane_diagram_gets_closing_border(tmp_path):
@@ -2040,3 +2045,113 @@ def test_orientation_returns_to_portrait_after_closing_marker(tmp_path, mock_pla
     assert orientations == ["portrait", "landscape", "portrait"]
     text = "\n".join(p.text for p in doc.paragraphs)
     assert "((LANDSCAPE))" not in text and "((PORTRAIT))" not in text
+
+
+def test_premco_index_titles_are_heading1_so_they_self_list(mock_plantuml_ok):
+    """Daftar Isi/Gambar/Tabel premco memakai `Heading 1`, bukan `TOC Heading`.
+
+    Diukur dari acuan, bukan selera: Daftar Isi PDF PREMCO halaman 5 memuat
+    baris "DAFTAR ISI…", "DAFTAR GAMBAR…", "DAFTAR TABEL…" di antara PERSETUJUAN
+    DOKUMEN dan DESKRIPSI APLIKASI — artinya di dokumen aslinya ketiganya
+    Heading 1 dan IKUT TERDAFTAR. Dengan `TOC Heading` (gaya Word standar, yang
+    memang sengaja tak masuk daftar) ketiganya hilang dan urutan bab kita
+    menyimpang dari acuan. `default` bukan tiruan PREMCO, jadi tetap TOC Heading.
+    """
+    data = _load_fixture("document_content_sdd.json")
+    judul = {"Daftar Isi", "Daftar Gambar", "Daftar Tabel"}
+
+    premco = Document(compiler_service.generate_docx("SDD", data, template_id="premco"))
+    gaya_premco = {p.text.strip(): p.style.name
+                   for p in premco.paragraphs if p.text.strip() in judul}
+    assert gaya_premco == {j: "Heading 1" for j in judul}
+
+    bawaan = Document(compiler_service.generate_docx("SDD", data, template_id="default"))
+    gaya_bawaan = {p.text.strip(): p.style.name
+                   for p in bawaan.paragraphs if p.text.strip() in judul}
+    assert gaya_bawaan == {j: "TOC Heading" for j in judul}
+
+
+def test_sdd_menghasilkan_bundel_drawio_yang_bisa_disunting(mock_plantuml_ok):
+    """Activity diagram digambar dari geometri yang kita hitung SENDIRI, jadi
+    versi yang bisa disunting praktis gratis — dan bentuknya mustahil berbeda
+    dari yang tercetak karena lahir dari koordinat yang sama."""
+    import zipfile
+
+    data = _load_fixture("document_content_sdd.json")
+
+    output_path = compiler_service.generate_docx("SDD", data, template_id="premco")
+
+    bundle = compiler_service.drawio_bundle_for(output_path)
+    assert bundle.exists()
+    with zipfile.ZipFile(bundle) as isi:
+        nama = isi.namelist()
+        assert nama and all(n.endswith(".drawio") for n in nama)
+        assert "<mxGraphModel" in isi.read(nama[0]).decode("utf-8")
+
+
+def test_uat_tidak_menghasilkan_bundel_drawio(mock_plantuml_ok):
+    """UAT tak punya activity diagram sama sekali. Bundel kosong yang tetap
+    dibuat akan membuat status job menawarkan tautan yang berujung 404."""
+    output_path = compiler_service.generate_docx(
+        "UAT", _load_fixture("document_content_uat.json"), template_id="premco")
+
+    assert not compiler_service.drawio_bundle_for(output_path).exists()
+
+
+def test_premco_activity_diagrams_are_numbered_subchapters(mock_plantuml_ok):
+    """Tiap activity diagram jadi sub-bab Heading 3 bernomor "2.N" — meniru
+    dokumen PREMCO asli yang memecah "Activity Diagram Login – Website", "…
+    Mobile", dst. jadi bagian terpisah. Keputusan pemilik: sub-bab ini MASUK
+    Daftar Isi (Heading 3, di dalam jangkauan field TOC level 1-3)."""
+    data = _load_fixture("contract_b_rich_sdd.json")
+    n = len(data["diagrams"]["activity_diagrams"])
+    assert n >= 2  # butuh >=2 untuk melihat penomoran berjalan (2.1, 2.2, ...)
+
+    document = Document(compiler_service.generate_docx("SDD", data, template_id="premco"))
+    subchapters = [p.text.strip() for p in document.paragraphs
+                   if p.style and p.style.name == "Heading 3"
+                   and "Activity Diagram" in p.text]
+
+    assert len(subchapters) == n
+    assert subchapters[0].startswith("2.1 Activity Diagram")
+    assert subchapters[1].startswith("2.2 Activity Diagram")
+    # Induknya tetap Heading 2 bernomor "2." — sub-bab tidak menggantikannya.
+    assert any(p.text.strip() == "2. Activity Diagram"
+               for p in document.paragraphs
+               if p.style and p.style.name == "Heading 2")
+
+
+def test_footer_title_baked_so_it_shows_without_field_update(mock_plantuml_ok):
+    """Judul di footer harus tampil TANPA pengguna meng-update field.
+
+    Footer memakai field TITLE (reference.docx dibangun sekali tanpa tahu judul
+    per-dokumen), tapi run hasilnya kosong sampai field di-update — pengguna yang
+    menjawab "No" pada prompt update Word, atau memakai viewer non-Word, melihat
+    footer tanpa judul (cuma nomor halaman, karena PAGE dihitung Word otomatis
+    dan TITLE tidak). Judulnya sudah diketahui saat generate, jadi di-bake ke run
+    hasilnya."""
+    data = _load_fixture("document_content_sdd.json")
+
+    document = Document(compiler_service.generate_docx(
+        "SDD", data, project_name="Esteler", template_id="premco"))
+
+    footer_p = document.sections[0].footer.paragraphs[0]
+    runs = footer_p._p.findall(qn("w:r"))
+    # Run hasil (sesudah fldChar separate milik field TITLE) harus berisi judul.
+    baked = None
+    in_title = False
+    for i, r in enumerate(runs):
+        instr = r.find(qn("w:instrText"))
+        if instr is not None and instr.text and "TITLE" in instr.text:
+            in_title = True
+        fld = r.find(qn("w:fldChar"))
+        if (fld is not None and fld.get(qn("w:fldCharType")) == "separate"
+                and in_title and i + 1 < len(runs)):
+            t = runs[i + 1].find(qn("w:t"))
+            baked = t.text if t is not None else None
+            break
+    assert baked == "Solution Design Document — Esteler"
+    # Field-nya TETAP ada (PAGE masih live) — bukan diganti teks harfiah.
+    assert any((r.find(qn("w:instrText")) is not None
+                and r.find(qn("w:instrText")).text
+                and "PAGE" in r.find(qn("w:instrText")).text) for r in runs)

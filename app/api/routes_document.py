@@ -21,6 +21,7 @@ from app.domain.exceptions import (
 )
 from app.domain.models import GithubIngestRequest, SourceType, ZipIngestRequest
 from app.services import job_store
+from app.services import compiler_service
 from app.services.compiler_service import decode_logo, generate_docx, validate_template
 from app.services.ingestion_service import IngestionService
 from app.services.llm_service import DocumentContent, LLMService
@@ -261,6 +262,11 @@ def get_job_status(job_id: str):
     }
     if job["status"] == job_store.STATUS_DONE:
         payload["download_url"] = f"/documents/jobs/{job_id}/download"
+        # Cuma diumumkan kalau bundelnya benar-benar ADA: UAT tak punya activity
+        # diagram, dan SDD yang seluruh diagramnya jatuh ke PlantUML juga tidak.
+        # Menawarkan tautan yang berujung 404 lebih buruk daripada tak menawarkan.
+        if compiler_service.drawio_bundle_for(job["docx_path"]).exists():
+            payload["diagrams_url"] = f"/documents/jobs/{job_id}/diagrams"
     elif job["status"] == job_store.STATUS_FAILED:
         payload["error"] = job["error"]
         payload["error_status"] = job["error_status"]
@@ -284,6 +290,37 @@ def download_job_document(job_id: str):
         media_type=_DOCX_MEDIA_TYPE,
         filename=_FILENAME_BY_TYPE[job["document_type"]],
     )
+
+
+@router.get("/jobs/{job_id}/diagrams")
+def download_job_diagrams(job_id: str):
+    """Bundel `.drawio` activity diagram dokumen ini — versi yang bisa DISUNTING.
+
+    Gambar di dokumen digambar dari geometri yang dihitung sendiri
+    (`app/diagram/activity_render.py`), jadi file suntingan ini lahir dari
+    koordinat yang SAMA — bentuknya mustahil berbeda dari yang tercetak. Gunanya:
+    diagram yang 90% benar bisa dirapikan tangan di draw.io tanpa menggambar
+    ulang dari nol.
+
+    404 kalau job tak ada ATAU dokumennya memang tak punya activity diagram
+    (UAT, atau SDD yang diagramnya jatuh ke jalur PlantUML).
+    """
+    job = job_store.get_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail=f"Job {job_id} tidak ditemukan.")
+    if job["status"] != job_store.STATUS_DONE:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Job {job_id} belum selesai (status: {job['status']}).",
+        )
+    bundle = compiler_service.drawio_bundle_for(job["docx_path"])
+    if not bundle.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"Job {job_id} tidak punya activity diagram yang bisa disunting.",
+        )
+    return FileResponse(bundle, media_type="application/zip",
+                        filename=f"activity-diagrams-{job_id[:8]}.zip")
 
 
 def _describe_parsed(parsed_repo_context: dict) -> str:
