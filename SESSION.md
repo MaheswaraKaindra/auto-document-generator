@@ -99,16 +99,22 @@ Satu seam: `app/services/auth_service.py`. Sisa app cuma bergantung pada
 Dua penghalang utama SaaS sudah tertutup sesi ini: **auth/identitas** &
 **deployability**. Sisanya (urut prioritas rekomendasi):
 
-**Tingkat 1 — melengkapi multi-tenant (kecil, $0, achievable):**
+**Tingkat 1 — melengkapi multi-tenant: SELESAI SELURUHNYA (2026-07-28).** Ketiga
+butirnya tertutup; lanjut ke Tingkat 2 hanya sesudah framing di bawah diputus.
 1. ~~**Isolasi template upload per-pengguna**~~ — **SELESAI** (issue #9, 2026-07-28
    lanjutan 2; lihat CHANGELOG). `owner` di manifest template + `compiler_service.
    visible_to` + `Principal` di `routes_template` & `/documents/generate`. Isolasi
    data kini LENGKAP: job/dokumen DAN template. Built-in `default`/`premco`
    sengaja tetap bersama.
-2. **Halaman "Dokumen Saya"** — job sudah tersimpan per-owner, tapi FE tak
-   menampilkannya. Butuh endpoint baru `GET /documents/jobs` (list milik saya) +
-   halaman. Paling terasa sebagai "produk SaaS".
-3. **Rate limiting per-akun** — tiap generate memakan biaya LLM; belum ada batas.
+2. ~~**Halaman "Dokumen Saya"**~~ — **SELESAI** (issue #10, PR #19, dikerjakan
+   rekan paralel dengan #9). `GET /documents/jobs` + panel `DocumentsPanel`.
+   Butir ini sempat tertinggal tak-tercoret di sini saat merge; dicoret 2026-07-28
+   lanjutan 3.
+3. ~~**Rate limiting per-akun**~~ — **SELESAI** (issue #11, 2026-07-28 lanjutan 3;
+   lihat CHANGELOG). `rate_limit_service` + dependency `rate_limited_generate` /
+   `rate_limited_template_upload`; 429 + `Retry-After`. Kuota dihitung dari tabel
+   `jobs` & manifest template yang sudah tersimpan — benar lintas-worker & tahan
+   restart tanpa Redis. Mode dev (auth mati) sengaja tak dibatasi.
 
 **Tingkat 2 — mesin SaaS berbayar (besar, keputusan bisnis):**
 4. Billing/metering + kuota (Stripe; seam `owner` sudah ada).

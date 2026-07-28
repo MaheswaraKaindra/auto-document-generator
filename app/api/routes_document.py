@@ -11,7 +11,7 @@ from typing import Callable
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from fastapi.responses import FileResponse
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, rate_limited_generate
 from app.services import auth_service
 from app.services.auth_service import Principal
 
@@ -176,9 +176,13 @@ def _run_generation(
 @router.post("/generate", status_code=202)
 def generate_document_full_pipeline(
     body: GenerateDocumentRequest, background_tasks: BackgroundTasks,
-    principal: Principal = Depends(get_current_user),
+    principal: Principal = Depends(rate_limited_generate),
 ):
     """Titik masuk sistem untuk end user. ASYNC sejak 2026-07-16.
+
+    Dilindungi rate limit per-akun (`rate_limited_generate`): tiap panggilan ke
+    sini memicu satu panggilan Claude BERBAYAR, jadi kuota habis dijawab **429 +
+    Retry-After** — bukan job berbayar baru.
 
     Balik <1 detik dengan job_id; kerjanya jalan di latar belakang. Versi
     sebelumnya menahan SELURUH pipeline di satu request HTTP — terukur 191 detik

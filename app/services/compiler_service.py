@@ -21,6 +21,7 @@ import tempfile
 import uuid
 import zipfile
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -200,6 +201,35 @@ def _compiled_template_ids(caller: Principal | None = None) -> set[str]:
             continue
         ids.add(p.name)
     return ids
+
+
+def recent_template_upload_times(owner: str | None, limit: int) -> list[datetime]:
+    """Waktu kompilasi `limit` template TERBARU milik `owner`, terbaru dulu.
+
+    Bahan rate limit upload template — pasangan `job_store.recent_job_times`, dan
+    dengan alasan yang sama: dihitung dari yang TERSIMPAN di disk, jadi benar
+    lintas-worker dan tahan restart tanpa store baru. `created_at` sudah ada di
+    manifest sejak template terkompilasi pertama; `owner` sejak isolasi per-pengguna.
+
+    Manifest tanpa `created_at`/`owner` (template lama) tak ikut dihitung: dia
+    memang bukan upload milik siapa pun dalam jendela ini.
+    """
+    if limit <= 0 or not TEMPLATES_STORE.exists():
+        return []
+    times = []
+    for p in TEMPLATES_STORE.iterdir():
+        manifest_path = p / "template.json"
+        if not manifest_path.exists():
+            continue
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        if manifest.get("owner") != owner or not manifest.get("created_at"):
+            continue
+        try:
+            times.append(datetime.fromisoformat(manifest["created_at"]))
+        except ValueError:
+            logger.warning("created_at template %s tak terbaca, dilewati saat rate limit",
+                           p.name)
+    return sorted(times, reverse=True)[:limit]
 
 
 def list_template_ids(caller: Principal | None = None) -> list[str]:
