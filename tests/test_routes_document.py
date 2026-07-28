@@ -648,22 +648,30 @@ def _hs256_token(monkeypatch, sub):
     return {"Authorization": f"Bearer {token}"}
 
 
-def test_mode_dev_tanpa_supabase_tak_butuh_login(client, monkeypatch):
+def test_mode_dev_tanpa_supabase_tak_butuh_login(client, monkeypatch, mock_plantuml_ok):
     """SUPABASE_URL kosong = perilaku lama persis: generate & status jalan tanpa
     header apa pun. Ini yang menjaga repo tetap bisa dipakai/dites $0."""
     from app.core import config
     monkeypatch.setattr(config, "SUPABASE_URL", None)
 
-    job = _generate(client, document_type="SDD")
+    content = _load_fixture("document_content_sdd.json")
+    with patch.object(
+        routes_document._llm_service, "generate_document_content", return_value=content
+    ):
+        job = _generate(client, document_type="SDD")
     assert job["status"] == "done"
     assert client.get(job["download_url"]).status_code == 200
 
 
-def test_dokumen_terisolasi_antar_pengguna(client, monkeypatch):
+def test_dokumen_terisolasi_antar_pengguna(client, monkeypatch, mock_plantuml_ok):
     """Pengguna B tak boleh melihat/mengunduh job pengguna A — 404 (bukan 403,
     supaya keberadaan job A tak bocor). Inti klaim multi-tenant."""
     alice = _hs256_token(monkeypatch, "alice")
-    job = _generate(client, headers=alice, document_type="SDD")
+    content = _load_fixture("document_content_sdd.json")
+    with patch.object(
+        routes_document._llm_service, "generate_document_content", return_value=content
+    ):
+        job = _generate(client, headers=alice, document_type="SDD")
     job_id = job["job_id"]
 
     # Alice: bisa.
@@ -682,17 +690,94 @@ def test_auth_aktif_tanpa_token_ditolak_401(client, monkeypatch):
                        json={"document_type": "SDD"}).status_code == 401
 
 
+# --- Rate limit per-akun ------------------------------------------------------
+
+def test_generate_ke_n_plus_1_dijawab_429_bukan_job_berbayar_baru(
+        client, monkeypatch, mock_plantuml_ok):
+    """Inti issue #11: kuota habis harus berhenti SEBELUM job berbayar dibuat.
+
+    Diuji lewat HTTP sungguhan (bukan cuma servicenya) karena yang harus dijamin
+    justru batas endpoint-nya: 429 + `Retry-After`, dan TIDAK ada baris job baru.
+    """
+    from app.core import config
+    monkeypatch.setattr(config, "RATE_LIMIT_GENERATE_PER_WINDOW", 2)
+    alice = _hs256_token(monkeypatch, "alice")
+    content = _load_fixture("document_content_sdd.json")
+
+    with patch.object(
+        routes_document._llm_service, "generate_document_content", return_value=content
+    ):
+        for _ in range(2):
+            assert client.post("/documents/generate", headers=alice,
+                               json={"document_type": "SDD", "repositories": []}
+                               ).status_code == 202
+        ditolak = client.post("/documents/generate", headers=alice,
+                              json={"document_type": "SDD", "repositories": []})
+
+    assert ditolak.status_code == 429
+    assert int(ditolak.headers["Retry-After"]) > 0
+    assert "batas" in ditolak.json()["detail"].lower()
+    # Yang paling penting: tak ada job ke-3 — 429 berarti tak ada kerja berbayar.
+    assert len(job_store.list_jobs("alice")) == 2
+
+
+def test_kuota_habis_satu_akun_tak_menyentuh_akun_lain(
+        client, monkeypatch, mock_plantuml_ok):
+    """Batas per-akun, bukan global: satu pengguna berisik tak boleh mematikan
+    layanan untuk semua orang."""
+    from app.core import config
+    monkeypatch.setattr(config, "RATE_LIMIT_GENERATE_PER_WINDOW", 1)
+    alice = _hs256_token(monkeypatch, "alice")
+    content = _load_fixture("document_content_sdd.json")
+
+    with patch.object(
+        routes_document._llm_service, "generate_document_content", return_value=content
+    ):
+        assert client.post("/documents/generate", headers=alice,
+                           json={"document_type": "SDD", "repositories": []}
+                           ).status_code == 202
+        assert client.post("/documents/generate", headers=alice,
+                           json={"document_type": "SDD", "repositories": []}
+                           ).status_code == 429
+
+        bob = _hs256_token(monkeypatch, "bob")
+        assert client.post("/documents/generate", headers=bob,
+                           json={"document_type": "SDD", "repositories": []}
+                           ).status_code == 202
+
+
+def test_mode_dev_tak_kena_rate_limit(client, monkeypatch, mock_plantuml_ok):
+    """Auth mati = semua pemanggil satu identitas anonim; membatasinya berarti
+    membatasi SEMUA orang sekaligus, dan sesi dev/demo $0 mati di tengah jalan."""
+    from app.core import config
+    monkeypatch.setattr(config, "SUPABASE_URL", None)
+    monkeypatch.setattr(config, "RATE_LIMIT_GENERATE_PER_WINDOW", 1)
+    content = _load_fixture("document_content_sdd.json")
+
+    with patch.object(
+        routes_document._llm_service, "generate_document_content", return_value=content
+    ):
+        for _ in range(3):
+            assert client.post("/documents/generate",
+                               json={"document_type": "SDD", "repositories": []}
+                               ).status_code == 202
+
+
 # --- "Dokumen Saya": GET /documents/jobs (riwayat per-owner) -------------------
 
-def test_list_jobs_owner_scoped_dan_terbaru_dulu(client, monkeypatch):
+def test_list_jobs_owner_scoped_dan_terbaru_dulu(client, monkeypatch, mock_plantuml_ok):
     """Riwayat hanya menampilkan job milik pemanggil, terbaru dulu — inti
     "Dokumen Saya"."""
     alice = _hs256_token(monkeypatch, "alice")
     bob = _hs256_token(monkeypatch, "bob")
+    content = _load_fixture("document_content_sdd.json")
 
-    _generate(client, headers=alice, document_type="SDD", project_name="Proyek A1")
-    _generate(client, headers=alice, document_type="UAT", project_name="Proyek A2")
-    _generate(client, headers=bob, document_type="SDD", project_name="Punya Bob")
+    with patch.object(
+        routes_document._llm_service, "generate_document_content", return_value=content
+    ):
+        _generate(client, headers=alice, document_type="SDD", project_name="Proyek A1")
+        _generate(client, headers=alice, document_type="UAT", project_name="Proyek A2")
+        _generate(client, headers=bob, document_type="SDD", project_name="Punya Bob")
 
     resp = client.get("/documents/jobs", headers=alice)
     assert resp.status_code == 200

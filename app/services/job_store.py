@@ -316,6 +316,46 @@ def purge_expired_documents(max_age_seconds: float = DOCUMENT_TTL_SECONDS) -> in
     return purged
 
 
+def recent_job_times(owner: Optional[str], limit: int) -> list[datetime]:
+    """Waktu-buat `limit` job TERBARU milik `owner`, urut MENURUN (terbaru dulu).
+
+    Bahan penghitung rate limit (`rate_limit_service`). Sengaja dihitung dari
+    tabel `jobs`, BUKAN dari dict di memori proses — dua alasan yang dua-duanya
+    sudah dibuktikan mahal di project ini:
+
+    1. **Lintas-worker.** `uvicorn --workers 3` menjalankan tiga proses; penghitung
+       in-memory berarti tiap proses punya kuotanya sendiri dan batas efektifnya
+       jadi 3N. CLAUDE.md sudah mencatat pelajaran ini terbalik-arah: multi-worker
+       JALAN di produk ini justru KARENA state-nya di SQLite, bukan di dict Python.
+    2. **Tahan restart.** Kuota yang hilang tiap deploy/crash bukan kuota — dan
+       restart adalah hal yang paling mungkin terjadi saat sistem sedang dihajar.
+
+    Dibatasi `limit` baris (bukan menyapu seluruh riwayat): keputusan sliding
+    window cuma butuh N permintaan terakhir — kalau N terbaru semuanya masih di
+    dalam jendela, batasnya sudah terlampaui, dan yang lebih tua tak mengubah apa
+    pun. Owner-scoped di lapisan QUERY, aturan yang sama dengan `list_jobs`.
+
+    Timestamp yang tak terbaca dilewati (aturan yang sama dengan `reap_stale_jobs`:
+    jangan mengambil keputusan di atas tebakan) — akibatnya menolong pemanggil,
+    bukan menghukumnya.
+    """
+    if limit <= 0:
+        return []
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT created_at FROM jobs WHERE owner IS ?"
+            " ORDER BY created_at DESC LIMIT ?",
+            (owner, limit),
+        ).fetchall()
+    times = []
+    for row in rows:
+        try:
+            times.append(datetime.fromisoformat(row["created_at"]))
+        except ValueError:
+            logger.warning("created_at job tak terbaca, dilewati saat rate limit")
+    return times
+
+
 def _update(job_id: str, **fields: Any) -> None:
     fields["updated_at"] = _now()
     assignments = ", ".join(f"{k} = ?" for k in fields)

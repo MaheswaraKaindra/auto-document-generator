@@ -558,8 +558,13 @@ function App() {
       })
 
       if (!response.ok) {
-        const detail = await response.text()
-        throw new Error(`Server merespons ${response.status}: ${detail}`)
+        // Pesan server ditampilkan APA ADANYA kalau ada — dia sudah ditulis untuk
+        // dibaca pengguna (mis. 429 "Batas pemakaian tercapai: ... coba lagi ~12
+        // menit lagi", 422 template x jenis dokumen). Membungkusnya jadi
+        // `Server merespons 429: {"detail":"..."}` justru menyembunyikan kalimat
+        // yang berguna di balik JSON mentah. Pola sama dengan jalur upload template.
+        const body = await response.json().catch(() => ({}))
+        throw new Error(body.detail || `Server merespons ${response.status}`)
       }
 
       // 202 Accepted: pekerjaannya BELUM jalan, baru diantrikan.

@@ -16,7 +16,7 @@ from docx.opc.exceptions import PackageNotFoundError
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, rate_limited_template_upload
 from app.services import compiler_service
 from app.services.auth_service import Principal
 from app.services.template_compiler_service import (
@@ -54,7 +54,7 @@ def upload_template(
     name: str | None = Form(None),
     doc_types: str | None = Form(None),
     use_llm_mapping: bool = Form(False),
-    principal: Principal = Depends(get_current_user),
+    principal: Principal = Depends(rate_limited_template_upload),
 ):
     """Upload `.docx` template → ukur + kompilasi jadi template terdaftar. Balik
     `template_id` + rencana peta bab (untuk ditinjau sebelum dipakai). SINKRON.
@@ -62,6 +62,10 @@ def upload_template(
     `doc_types` opsional (comma-separated "SDD,UAT"); kosong = tebak dari dokumen.
     Menghasilkan template UAT dari outline SDD (atau sebaliknya) cuma menghasilkan
     placeholder, jadi tebakan biasanya yang benar.
+
+    Dilindungi rate limit per-akun (`rate_limited_template_upload`) → **429 +
+    Retry-After** kalau kuota habis: jalur `use_llm_mapping=true` BERBAYAR, dan
+    bahkan jalur $0-nya memakan CPU/disk untuk file sampai 50 MB.
 
     `use_llm_mapping` opsional (default False = peta bab heuristik, $0). True =
     peta bab BER-LLM (BERBAYAR — satu panggilan Claude per doc_type), berguna untuk

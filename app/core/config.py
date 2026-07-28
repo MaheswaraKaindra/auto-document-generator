@@ -3,6 +3,26 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+
+def _int_env(name: str, default: int) -> int:
+    """Env numerik, gagal BERISIK kalau tak masuk akal.
+
+    Batas rate limit yang salah-ketik ("sepuluh", "10 ", "-1") tak boleh diam-diam
+    jatuh ke default: yang dikira "batas 10/jam" bisa jadi TANPA batas sama sekali,
+    dan itu baru ketahuan lewat tagihan. Salah konfigurasi harus menggagalkan
+    startup, bukan mengubah kebijakan tanpa memberi tahu siapa pun.
+    """
+    raw = os.getenv(name)
+    if raw is None or raw.strip() == "":
+        return default
+    try:
+        value = int(raw.strip())
+    except ValueError as e:
+        raise ValueError(f"{name} harus bilangan bulat, dapat {raw!r}.") from e
+    if value < 0:
+        raise ValueError(f"{name} tak boleh negatif, dapat {value}. Pakai 0 untuk mematikan batas.")
+    return value
+
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 
@@ -55,6 +75,31 @@ GITHUB_OAUTH_REDIRECT_URI = os.getenv("GITHUB_OAUTH_REDIRECT_URI", "http://local
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET")
 SUPABASE_JWT_AUD = os.getenv("SUPABASE_JWT_AUD", "authenticated")
+
+# --- Rate limiting per-akun -------------------------------------------------
+# Tiap POST /documents/generate memicu panggilan Claude BERBAYAR, jadi tanpa batas
+# satu akun (atau token yang bocor) bisa membengkakkan tagihan tanpa ada yang
+# menyadarinya sampai akhir bulan. Batas dikunci ke identitas yang sudah ada
+# (`Principal.id`) — lihat `rate_limit_service`.
+#
+# Jendelanya SLIDING (bukan "reset tiap jam bulat"): batas per-jam yang di-reset
+# di menit ke-0 memperbolehkan 2N generate dalam dua menit di sekitar pergantian
+# jam — persis lonjakan yang batas ini ada untuk mencegah.
+#
+# 0 = MATIKAN batas untuk endpoint itu. Sengaja ada: instance internal satu tim
+# tak butuh kuota, dan mematikannya lewat env lebih jujur daripada menyetel angka
+# raksasa yang terlihat seperti batas sungguhan.
+RATE_LIMIT_WINDOW_SECONDS = _int_env("RATE_LIMIT_WINDOW_SECONDS", 3600)
+
+# 10/jam: satu dokumen butuh ~2-3 menit, jadi pemakaian MANUSIA yang paling rajin
+# pun sulit menembusnya, sementara skrip yang lepas kendali menabraknya dalam
+# hitungan detik. Angka konservatif — dinaikkan lewat env kalau memang menghalangi.
+RATE_LIMIT_GENERATE_PER_WINDOW = _int_env("RATE_LIMIT_GENERATE_PER_WINDOW", 10)
+
+# Upload template lebih longgar: jalur $0-nya cuma pandoc + pengukuran docx. Tetap
+# dibatasi karena `use_llm_mapping=true` BERBAYAR (satu panggilan Claude per
+# doc_type) dan file 50 MB tetap memakan CPU/disk walau tanpa LLM.
+RATE_LIMIT_TEMPLATE_UPLOAD_PER_WINDOW = _int_env("RATE_LIMIT_TEMPLATE_UPLOAD_PER_WINDOW", 20)
 
 # Direktori hasil build frontend (Vite). Kalau ADA, FastAPI menyajikannya dari
 # origin yang SAMA dengan API — satu container, satu URL, tanpa CORS. Kalau tidak

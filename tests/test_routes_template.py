@@ -281,6 +281,30 @@ def test_mode_dev_tanpa_supabase_tak_menyaring_apa_pun(client):
     compiler_service.validate_template(tid, "SDD", caller=auth_service.ANONYMOUS)
 
 
+def test_upload_template_kena_rate_limit_per_akun(client, monkeypatch):
+    """Upload dibatasi juga: `use_llm_mapping=true` BERBAYAR, dan bahkan jalur
+    $0-nya memakan CPU/disk untuk file sampai 50 MB. Batasnya per-akun."""
+    from app.core import config
+    monkeypatch.setattr(config, "RATE_LIMIT_TEMPLATE_UPLOAD_PER_WINDOW", 1)
+    alice = _hs256_token(monkeypatch, "alice")
+
+    _upload(client, ["Deskripsi Aplikasi"], name="Pertama", headers=alice)
+    ditolak = client.post(
+        "/templates",
+        files={"file": ("kedua.docx", _docx_bytes(["Use Case"]), DOCX_MIME)},
+        data={"name": "Kedua", "doc_types": "SDD"},
+        headers=alice,
+    )
+    assert ditolak.status_code == 429
+    assert int(ditolak.headers["Retry-After"]) > 0
+    # Template kedua tak pernah dikompilasi — 429 berarti kerjanya tak dikerjakan.
+    assert not (compiler_service.TEMPLATES_STORE / "kedua").exists()
+
+    # Akun lain tak ikut terhukum.
+    bob = _hs256_token(monkeypatch, "bob")
+    _upload(client, ["Deskripsi Aplikasi"], name="Punya Bob", headers=bob)
+
+
 def test_daftar_binding_tersedia_untuk_dropdown(client):
     """Path statis harus menang atas `/{template_id}` — kalau urutan deklarasinya
     terbalik, parameter menelan "bindings" dan endpoint ini balas 404 diam-diam."""

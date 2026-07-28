@@ -238,15 +238,17 @@ canggung (Java/pandoc/plantuml) terbundel:
 docker compose up --build   # -> http://localhost:8000
 ```
 
-Auth per-pengguna opsional (Supabase; kosong = mode dev tanpa login). Panduan
-lengkap, konfigurasi, dan **penilaian jujur "apa yang siap / tinggal colok /
-batasnya"** ada di **[DEPLOY.md](DEPLOY.md)**.
+Auth per-pengguna opsional (Supabase; kosong = mode dev tanpa login). Begitu auth
+aktif, dokumen & template terisolasi per-akun dan endpoint berbayar dibatasi
+kuota per-akun (429 + `Retry-After`). Panduan lengkap, konfigurasi, dan
+**penilaian jujur "apa yang siap / tinggal colok / batasnya"** ada di
+**[DEPLOY.md](DEPLOY.md)**.
 
 ## Endpoint utama
 
 | Method | Path | Fungsi |
 |---|---|---|
-| `POST` | `/documents/generate` | **Titik masuk utama (async).** Balik `202` + `job_id`; pipeline jalan di latar belakang. Menerima repo GitHub **atau** `zip_files` (base64), `document_metadata`, `logo_base64`, `template_id` |
+| `POST` | `/documents/generate` | **Titik masuk utama (async).** Balik `202` + `job_id`; pipeline jalan di latar belakang. Menerima repo GitHub **atau** `zip_files` (base64), `document_metadata`, `logo_base64`, `template_id`. Dibatasi kuota per-akun → `429` + `Retry-After` |
 | `GET` | `/documents/jobs/{id}` | Status job (`queued`/`running`/`done`/`failed`) |
 | `GET` | `/documents/jobs/{id}/download` | Unduh `.docx` hasil |
 | `POST` | `/documents/{sdd,uat}` | Render Contract B langsung → `.docx` (untuk uji template tanpa ingest+LLM) |
@@ -259,7 +261,10 @@ Daftar lengkap + perilaku error tiap endpoint ada di [`CLAUDE.md`](CLAUDE.md).
 ## Testing
 
 ```bash
-pytest                                       # 312 test; LLM/PlantUML/GitHub di-mock, $0
+pytest                                       # 390 test; LLM/PlantUML/GitHub di-mock, $0
+ANTHROPIC_API_KEY=sk-ant-palsu pytest        # buktikan $0-nya: tetap hijau = nol
+                                             #   panggilan berbayar (klaim ini pernah
+                                             #   salah — lihat CLAUDE.md > Testing)
 python scripts/render_fixtures.py            # render Contract B tersimpan -> docx, $0
                                              #   (regresi visual saat kuota API habis)
 python scripts/validation/run_validation.py  # ingest+parse ke repo publik nyata, gratis
