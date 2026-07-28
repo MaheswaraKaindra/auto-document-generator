@@ -55,3 +55,9 @@ GITHUB_OAUTH_REDIRECT_URI = os.getenv("GITHUB_OAUTH_REDIRECT_URI", "http://local
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET")
 SUPABASE_JWT_AUD = os.getenv("SUPABASE_JWT_AUD", "authenticated")
+
+# Direktori hasil build frontend (Vite). Kalau ADA, FastAPI menyajikannya dari
+# origin yang SAMA dengan API — satu container, satu URL, tanpa CORS. Kalau tidak
+# (dev pakai `npm run dev`, atau test), penyajian ini mati total dan tak
+# berpengaruh. Di image Docker, build frontend disalin ke sini.
+FRONTEND_DIST = os.getenv("FRONTEND_DIST", "frontend/dist")

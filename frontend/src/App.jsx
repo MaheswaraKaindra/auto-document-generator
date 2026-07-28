@@ -2,10 +2,13 @@ import { useState, useEffect } from 'react'
 import './App.css'
 import { authHeader } from './supabaseClient'
 
-// Bisa dioverride tanpa menyentuh kode: taruh VITE_API_BASE_URL di
-// frontend/.env.local (atau environment saat build). Fallback-nya localhost
-// karena itu satu-satunya lingkungan yang produk ini jalani hari ini.
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
+// Base URL backend. Prioritas: VITE_API_BASE_URL (override eksplisit) → kalau
+// build PRODUKSI, string kosong = ORIGIN YANG SAMA (frontend disajikan FastAPI di
+// container, jadi /documents/... relatif ke host yang sama) → selain itu (dev)
+// localhost:8000. Pakai `??` bukan `||` supaya "" (same-origin) tidak jatuh ke
+// fallback. Dev (`npm run dev`) tetap menembak localhost:8000.
+const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL ?? (import.meta.env.PROD ? '' : 'http://localhost:8000')
 
 const emptyRepo = () => ({ repo_tag: '', repo_url: '', branch: '' })
 

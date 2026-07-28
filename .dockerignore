@@ -1,0 +1,30 @@
+# Konteks build ramping = build cepat & image bersih. Yang di-EXCLUDE:
+# dependency yang di-install ulang di dalam image, artefak lokal, dan rahasia.
+
+# Python lokal
+venv/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Node lokal & build (frontend dibangun ULANG di stage 1)
+frontend/node_modules/
+frontend/dist/
+
+# Data runtime & rahasia (JANGAN ikut ke image; diberikan saat run)
+data/
+.env
+frontend/.env.local
+*.db
+
+# Bahan kerja yang tak ikut repo & tak dibutuhkan image
+ref/
+tools/plantuml.jar
+scripts/validation/out/
+
+# Git & meta. CATATAN: JANGAN exclude *.md secara global — template Jinja produk
+# ini (app/templates/*.md) adalah .md dan WAJIB ikut ke image. Dokumen root (.md)
+# kecil & tak mengganggu, jadi dibiarkan ikut daripada mengambil risiko regex.
+.git/
+.gitignore

@@ -1,10 +1,14 @@
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.api.routes_auth import router as auth_router
 from app.api.routes_document import router as document_router
 from app.api.routes_ingestion import router as ingestion_router
 from app.api.routes_template import router as template_router
+from app.core import config
 from app.services import job_store
 
 app = FastAPI(title="Auto Document Generator")
@@ -54,3 +58,15 @@ app.include_router(template_router)
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+# Frontend hasil build (SPA) disajikan dari origin yang SAMA dengan API — satu
+# `docker run` = aplikasi utuh, tanpa CORS. Di-mount PALING AKHIR supaya semua
+# route API (/health, /documents, /templates, ...) menang lebih dulu; mount "/"
+# cuma menangkap sisanya (index.html + /assets). `html=True` menyajikan
+# index.html untuk "/". Hanya aktif kalau build ADA: dev (`npm run dev`) dan
+# test tak punya dist, jadi baris ini no-op di sana.
+_frontend_dist = Path(config.FRONTEND_DIST)
+if _frontend_dist.is_dir():
+    app.mount("/", StaticFiles(directory=str(_frontend_dist), html=True),
+              name="frontend")
