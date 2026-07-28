@@ -8,8 +8,12 @@ import base64
 import logging
 from typing import Callable
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from fastapi.responses import FileResponse
+
+from app.api.deps import get_current_user
+from app.services import auth_service
+from app.services.auth_service import Principal
 
 from app.api.schemas_document import GenerateDocumentRequest, ZipFileIn
 from app.domain.exceptions import (
@@ -171,7 +175,8 @@ def _run_generation(
 
 @router.post("/generate", status_code=202)
 def generate_document_full_pipeline(
-    body: GenerateDocumentRequest, background_tasks: BackgroundTasks
+    body: GenerateDocumentRequest, background_tasks: BackgroundTasks,
+    principal: Principal = Depends(get_current_user),
 ):
     """Titik masuk sistem untuk end user. ASYNC sejak 2026-07-16.
 
@@ -219,6 +224,7 @@ def generate_document_full_pipeline(
         document_type=doc_type,
         project_name=body.project_name,
         template_id=body.template_id,
+        owner=principal.id,
     )
     background_tasks.add_task(_run_generation, job_id, body, logo_bytes, zip_requests)
     return {
@@ -229,7 +235,7 @@ def generate_document_full_pipeline(
 
 
 @router.get("/jobs/{job_id}")
-def get_job_status(job_id: str):
+def get_job_status(job_id: str, principal: Principal = Depends(get_current_user)):
     """Status job. 200 walau job-nya gagal — pertanyaannya ("job ini bagaimana?")
     berhasil dijawab; kegagalan generation-nya ada di dalam payload, lengkap
     dengan `error_status` supaya klien tahu ini kegagalan permanen atau bukan."""
@@ -241,7 +247,9 @@ def get_job_status(job_id: str):
     job_store.reap_stale_jobs()
     job_store.purge_expired_documents()
     job = job_store.get_job(job_id)
-    if job is None:
+    # 404 (bukan 403) untuk job milik orang lain: samakan dengan "tidak ada" supaya
+    # keberadaan job orang lain tak bocor lewat beda kode status.
+    if job is None or not auth_service.owns(job.get("owner"), principal):
         raise HTTPException(status_code=404, detail=f"Job {job_id} tidak ditemukan.")
 
     payload = {
@@ -274,9 +282,9 @@ def get_job_status(job_id: str):
 
 
 @router.get("/jobs/{job_id}/download")
-def download_job_document(job_id: str):
+def download_job_document(job_id: str, principal: Principal = Depends(get_current_user)):
     job = job_store.get_job(job_id)
-    if job is None:
+    if job is None or not auth_service.owns(job.get("owner"), principal):
         raise HTTPException(status_code=404, detail=f"Job {job_id} tidak ditemukan.")
     if job["status"] != job_store.STATUS_DONE:
         # 409, bukan 404: job-nya ADA, cuma belum siap. 404 akan bikin klien
@@ -293,7 +301,7 @@ def download_job_document(job_id: str):
 
 
 @router.get("/jobs/{job_id}/diagrams")
-def download_job_diagrams(job_id: str):
+def download_job_diagrams(job_id: str, principal: Principal = Depends(get_current_user)):
     """Bundel `.drawio` activity diagram dokumen ini — versi yang bisa DISUNTING.
 
     Gambar di dokumen digambar dari geometri yang dihitung sendiri
@@ -306,7 +314,7 @@ def download_job_diagrams(job_id: str):
     (UAT, atau SDD yang diagramnya jatuh ke jalur PlantUML).
     """
     job = job_store.get_job(job_id)
-    if job is None:
+    if job is None or not auth_service.owns(job.get("owner"), principal):
         raise HTTPException(status_code=404, detail=f"Job {job_id} tidak ditemukan.")
     if job["status"] != job_store.STATUS_DONE:
         raise HTTPException(

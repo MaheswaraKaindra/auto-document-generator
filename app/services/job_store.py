@@ -83,6 +83,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     document_type TEXT NOT NULL,
     project_name  TEXT,
     template_id   TEXT,
+    owner         TEXT,
     progress      TEXT,
     docx_path     TEXT,
     error         TEXT,
@@ -100,6 +101,7 @@ CREATE TABLE IF NOT EXISTS jobs (
 _MIGRATIONS = [
     ("progress", "ALTER TABLE jobs ADD COLUMN progress TEXT"),
     ("template_id", "ALTER TABLE jobs ADD COLUMN template_id TEXT"),
+    ("owner", "ALTER TABLE jobs ADD COLUMN owner TEXT"),
 ]
 
 
@@ -145,18 +147,24 @@ def create_job(
     document_type: str,
     project_name: Optional[str],
     template_id: Optional[str] = None,
+    owner: Optional[str] = None,
 ) -> str:
     """`template_id` dicatat supaya riwayat job bisa menjawab "dokumen ini gaya
     apa" — sebelumnya tidak bisa, dan itu jadi pertanyaan begitu ada lebih dari
     satu gaya (default/premco/hasil-upload). Opsional supaya pemanggil lama
-    (dan job di DB lama) tetap sah."""
+    (dan job di DB lama) tetap sah.
+
+    `owner` = id pemilik (Principal.id dari auth). None = dibuat saat auth non-
+    aktif / DB lama; `auth_service.owns` memperlakukan owner None sebagai boleh-
+    diakses (tak ada pemilik untuk dilanggar)."""
     job_id = uuid.uuid4().hex
     now = _now()
     with _connect() as conn:
         conn.execute(
             "INSERT INTO jobs (id, status, document_type, project_name, template_id,"
-            " created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (job_id, STATUS_QUEUED, document_type, project_name, template_id, now, now),
+            " owner, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (job_id, STATUS_QUEUED, document_type, project_name, template_id,
+             owner, now, now),
         )
     return job_id
 

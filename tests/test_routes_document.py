@@ -66,17 +66,21 @@ def client():
     return TestClient(app)
 
 
-def _generate(client, **body) -> dict:
+def _generate(client, headers=None, **body) -> dict:
     """POST /documents/generate lalu ambil status job-nya.
 
     TestClient menjalankan BackgroundTasks SESUDAH response terkirim tapi SEBELUM
     client.post() balik — jadi begitu baris ini selesai, job-nya sudah rampung.
     Itu yang bikin test async ini tetap deterministik tanpa sleep/polling.
+
+    `headers` diteruskan ke POST DAN GET status — auth memfilter per-pemanggil,
+    jadi keduanya harus memakai identitas yang sama.
     """
-    response = client.post("/documents/generate", json={"repositories": [], **body})
+    response = client.post("/documents/generate",
+                           json={"repositories": [], **body}, headers=headers)
     assert response.status_code == 202, response.text
     job_id = response.json()["job_id"]
-    return client.get(f"/documents/jobs/{job_id}").json()
+    return client.get(f"/documents/jobs/{job_id}", headers=headers).json()
 
 
 @pytest.fixture
@@ -626,3 +630,53 @@ def test_pembersihan_dokumen_ikut_menghapus_bundel_drawio(client, tmp_path, monk
 
     assert not tersimpan.exists()
     assert not bundel.exists()
+
+
+# --- Isolasi kepemilikan (seam auth) ------------------------------------------
+
+def _hs256_token(monkeypatch, sub):
+    """Aktifkan auth Supabase (HS256) + kembalikan header Bearer untuk `sub`."""
+    import time
+    import jwt
+    from app.core import config
+    secret = "rahasia-test-yang-cukup-panjang-tiga-puluh-dua"
+    monkeypatch.setattr(config, "SUPABASE_URL", "https://proj.supabase.co")
+    monkeypatch.setattr(config, "SUPABASE_JWT_SECRET", secret)
+    monkeypatch.setattr(config, "SUPABASE_JWT_AUD", "authenticated")
+    token = jwt.encode({"sub": sub, "aud": "authenticated",
+                        "exp": int(time.time()) + 3600}, secret, algorithm="HS256")
+    return {"Authorization": f"Bearer {token}"}
+
+
+def test_mode_dev_tanpa_supabase_tak_butuh_login(client, monkeypatch):
+    """SUPABASE_URL kosong = perilaku lama persis: generate & status jalan tanpa
+    header apa pun. Ini yang menjaga repo tetap bisa dipakai/dites $0."""
+    from app.core import config
+    monkeypatch.setattr(config, "SUPABASE_URL", None)
+
+    job = _generate(client, document_type="SDD")
+    assert job["status"] == "done"
+    assert client.get(job["download_url"]).status_code == 200
+
+
+def test_dokumen_terisolasi_antar_pengguna(client, monkeypatch):
+    """Pengguna B tak boleh melihat/mengunduh job pengguna A — 404 (bukan 403,
+    supaya keberadaan job A tak bocor). Inti klaim multi-tenant."""
+    alice = _hs256_token(monkeypatch, "alice")
+    job = _generate(client, headers=alice, document_type="SDD")
+    job_id = job["job_id"]
+
+    # Alice: bisa.
+    assert client.get(f"/documents/jobs/{job_id}", headers=alice).status_code == 200
+    assert client.get(f"/documents/jobs/{job_id}/download", headers=alice).status_code == 200
+
+    # Bob: job yang sama tampak TIDAK ADA.
+    bob = _hs256_token(monkeypatch, "bob")
+    assert client.get(f"/documents/jobs/{job_id}", headers=bob).status_code == 404
+    assert client.get(f"/documents/jobs/{job_id}/download", headers=bob).status_code == 404
+
+
+def test_auth_aktif_tanpa_token_ditolak_401(client, monkeypatch):
+    _hs256_token(monkeypatch, "siapa-saja")  # aktifkan auth
+    assert client.post("/documents/generate",
+                       json={"document_type": "SDD"}).status_code == 401

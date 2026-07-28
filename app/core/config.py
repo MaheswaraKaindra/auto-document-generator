@@ -39,3 +39,19 @@ PLANTUML_JAR = os.getenv("PLANTUML_JAR", "tools/plantuml.jar")
 GITHUB_CLIENT_ID = os.getenv("GITHUB_CLIENT_ID")
 GITHUB_CLIENT_SECRET = os.getenv("GITHUB_CLIENT_SECRET")
 GITHUB_OAUTH_REDIRECT_URI = os.getenv("GITHUB_OAUTH_REDIRECT_URI", "http://localhost:8000/auth/github/callback")
+
+# --- Autentikasi (Supabase) -------------------------------------------------
+# Identitas pengguna untuk mengisolasi dokumen per-akun. INI SATU-SATUNYA seam
+# auth: kalau SUPABASE_URL kosong, aplikasi jalan mode ANONYMOUS (dev) — semua
+# job jadi milik "anonymous", tak ada yang ditolak. Begitu diisi, backend
+# memverifikasi JWT Supabase yang dikirim frontend dan memfilter data per-owner.
+# Jadi "pasang auth" harfiah = isi tiga env ini, bukan mengubah kode.
+#
+# SUPABASE_URL         : https://<ref>.supabase.co (Project Settings -> API).
+# SUPABASE_JWT_SECRET  : "JWT Secret" (Project Settings -> API -> JWT Settings).
+#                        Untuk project ber-signing-key ASIMETRIS, kosongkan —
+#                        backend verifikasi lewat JWKS yang diturunkan dari URL.
+# SUPABASE_JWT_AUD     : audience token; Supabase memakai "authenticated".
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET")
+SUPABASE_JWT_AUD = os.getenv("SUPABASE_JWT_AUD", "authenticated")
