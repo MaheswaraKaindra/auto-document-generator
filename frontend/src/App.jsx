@@ -1,14 +1,8 @@
 import { useState, useEffect } from 'react'
 import './App.css'
 import { authHeader } from './supabaseClient'
-
-// Base URL backend. Prioritas: VITE_API_BASE_URL (override eksplisit) → kalau
-// build PRODUKSI, string kosong = ORIGIN YANG SAMA (frontend disajikan FastAPI di
-// container, jadi /documents/... relatif ke host yang sama) → selain itu (dev)
-// localhost:8000. Pakai `??` bukan `||` supaya "" (same-origin) tidak jatuh ke
-// fallback. Dev (`npm run dev`) tetap menembak localhost:8000.
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL ?? (import.meta.env.PROD ? '' : 'http://localhost:8000')
+import { API_BASE_URL } from './api'
+import DocumentsPanel from './DocumentsPanel'
 
 const emptyRepo = () => ({ repo_tag: '', repo_url: '', branch: '' })
 
@@ -295,6 +289,9 @@ function App() {
   const [seconds, setSeconds] = useState(0)
   const [errorMessage, setErrorMessage] = useState('')
   const [download, setDownload] = useState(null)
+  // Dinaikkan tiap dokumen selesai — memberi tahu panel "Dokumen Saya" untuk
+  // memuat ulang daftarnya (tanpa mengoper fungsi/ref lintas komponen).
+  const [docsReload, setDocsReload] = useState(0)
 
   // Gaya dokumen dari server (GET /templates) + widget upload template (V2).
   const [templates, setTemplates] = useState([])
@@ -598,6 +595,7 @@ function App() {
 
       setDownload({ filename, url: downloadUrl })
       setPhase('done')
+      setDocsReload((n) => n + 1)   // dokumen baru -> segarkan "Dokumen Saya"
     } catch (error) {
       setErrorMessage(error.message)
       setPhase('failed')
@@ -1086,6 +1084,8 @@ function App() {
           <a href={download.url}>Unduh ulang</a> kalau file-nya tidak muncul di folder unduhan.
         </div>
       )}
+
+      <DocumentsPanel reloadSignal={docsReload} />
     </main>
   )
 }

@@ -597,6 +597,117 @@ form button.add-row {
   font-size: 14px;
 }
 
+/* ==== Dokumen Saya (riwayat) ============================================ */
+.history {
+  margin-top: 24px;
+}
+
+.linklike {
+  padding: 0;
+  font: inherit;
+  color: var(--accent-ink);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.linklike:hover {
+  text-decoration: underline;
+}
+
+.doc-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.doc-card {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 18px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.doc-main {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.doc-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-h);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.doc-meta {
+  font-size: 13px;
+  color: var(--text-mut);
+}
+
+.doc-status {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 11px;
+  border-radius: var(--radius-pill);
+  white-space: nowrap;
+}
+
+.doc-status-done {
+  color: var(--ok);
+  background: var(--ok-bg);
+}
+
+.doc-status-failed {
+  color: var(--err);
+  background: var(--err-bg);
+}
+
+.doc-status-running,
+.doc-status-queued {
+  color: var(--accent-ink);
+  background: var(--accent-soft);
+}
+
+.doc-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.doc-actions button {
+  padding: 9px 16px;
+  font-size: 14px;
+  color: #fff;
+  background: var(--accent);
+  border: none;
+}
+
+.doc-actions button:not(:disabled):hover {
+  background: var(--accent-hover);
+}
+
+.doc-actions button.ghost {
+  color: var(--accent-ink);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+}
+
+.doc-actions button.ghost:not(:disabled):hover {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
 /* ==== Responsif ========================================================= */
 @media (max-width: 640px) {
   main {
@@ -627,5 +738,13 @@ form button.add-row {
 
   .review-chapter {
     grid-template-columns: 1fr;
+  }
+
+  .doc-card {
+    grid-template-columns: 1fr auto;
+  }
+
+  .doc-actions {
+    grid-column: 1 / -1;
   }
 }
