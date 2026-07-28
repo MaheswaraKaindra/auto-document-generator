@@ -1,0 +1,2476 @@
+{
+  "project_name": "MyPertamina.id Clone",
+  "repositories": [
+    {
+      "repo_tag": "App",
+      "files": [
+        {
+          "file_name": "package.json",
+          "file_path": "backend/package.json",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "db.js",
+          "file_path": "backend/src/config/db.js",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "appAuthController.js",
+          "file_path": "backend/src/controllers/appAuthController.js",
+          "type": "controller",
+          "dependencies": [],
+          "classes": [],
+          "functions": [
+            {
+              "function_name": "login",
+              "parameters": [
+                "req",
+                "res"
+              ],
+              "return_type": null,
+              "description": ""
+            }
+          ],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "authController.js",
+          "file_path": "backend/src/controllers/authController.js",
+          "type": "controller",
+          "dependencies": [],
+          "classes": [],
+          "functions": [
+            {
+              "function_name": "login",
+              "parameters": [
+                "req",
+                "res"
+              ],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "me",
+              "parameters": [
+                "req",
+                "res"
+              ],
+              "return_type": null,
+              "description": ""
+            }
+          ],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "brightGasPriceController.js",
+          "file_path": "backend/src/controllers/brightGasPriceController.js",
+          "type": "controller",
+          "dependencies": [],
+          "classes": [],
+          "functions": [
+            {
+              "function_name": "list",
+              "parameters": [
+                "req",
+                "res"
+              ],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "create",
+              "parameters": [
+                "req",
+                "res"
+              ],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "update",
+              "parameters": [
+                "req",
+                "res"
+              ],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "remove",
+              "parameters": [
+                "req",
+                "res"
+              ],
+              "return_type": null,
+              "description": ""
+            }
+          ],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "contentController.js",
+          "file_path": "backend/src/controllers/contentController.js",
+          "type": "controller",
+          "dependencies": [],
+          "classes": [],
+          "functions": [
+            {
+              "function_name": "list",
+              "parameters": [
+                "req",
+                "res"
+              ],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "detail",
+              "parameters": [
+                "req",
+                "res"
+              ],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "create",
+              "parameters": [
+                "req",
+                "res"
+              ],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "update",
+              "parameters": [
+                "req",
+                "res"
+              ],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "remove",
+              "parameters": [
+                "req",
+                "res"
+              ],
+              "return_type": null,
+              "description": ""
+            }
+          ],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "dashboardController.js",
+          "file_path": "backend/src/controllers/dashboardController.js",
+          "type": "controller",
+          "dependencies": [],
+          "classes": [],
+          "functions": [
+            {
+              "function_name": "dashboard",
+              "parameters": [
+                "req",
+                "res"
+              ],
+              "return_type": null,
+              "description": ""
+            }
+          ],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "faqController.js",
+          "file_path": "backend/src/controllers/faqController.js",
+          "type": "controller",
+          "dependencies": [],
+          "classes": [],
+          "functions": [
+            {
+              "function_name": "list",
+              "parameters": [
+                "req",
+                "res"
+              ],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "create",
+              "parameters": [
+                "req",
+                "res"
+              ],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "update",
+              "parameters": [
+                "req",
+                "res"
+              ],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "remove",
+              "parameters": [
+                "req",
+                "res"
+              ],
+              "return_type": null,
+              "description": ""
+            }
+          ],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "locationController.js",
+          "file_path": "backend/src/controllers/locationController.js",
+          "type": "controller",
+          "dependencies": [],
+          "classes": [],
+          "functions": [
+            {
+              "function_name": "list",
+              "parameters": [
+                "req",
+                "res"
+              ],
+              "return_type": null,
+              "description": ""
+            }
+          ],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "priceController.js",
+          "file_path": "backend/src/controllers/priceController.js",
+          "type": "controller",
+          "dependencies": [],
+          "classes": [],
+          "functions": [
+            {
+              "function_name": "list",
+              "parameters": [
+                "req",
+                "res"
+              ],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "create",
+              "parameters": [
+                "req",
+                "res"
+              ],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "update",
+              "parameters": [
+                "req",
+                "res"
+              ],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "remove",
+              "parameters": [
+                "req",
+                "res"
+              ],
+              "return_type": null,
+              "description": ""
+            }
+          ],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "productController.js",
+          "file_path": "backend/src/controllers/productController.js",
+          "type": "controller",
+          "dependencies": [],
+          "classes": [],
+          "functions": [
+            {
+              "function_name": "list",
+              "parameters": [
+                "req",
+                "res"
+              ],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "detail",
+              "parameters": [
+                "req",
+                "res"
+              ],
+              "return_type": null,
+              "description": ""
+            }
+          ],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "roleController.js",
+          "file_path": "backend/src/controllers/roleController.js",
+          "type": "controller",
+          "dependencies": [],
+          "classes": [],
+          "functions": [
+            {
+              "function_name": "list",
+              "parameters": [
+                "req",
+                "res"
+              ],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "listPermissions",
+              "parameters": [
+                "req",
+                "res"
+              ],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "create",
+              "parameters": [
+                "req",
+                "res"
+              ],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "update",
+              "parameters": [
+                "req",
+                "res"
+              ],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "remove",
+              "parameters": [
+                "req",
+                "res"
+              ],
+              "return_type": null,
+              "description": ""
+            }
+          ],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "sustainabilityController.js",
+          "file_path": "backend/src/controllers/sustainabilityController.js",
+          "type": "controller",
+          "dependencies": [],
+          "classes": [],
+          "functions": [
+            {
+              "function_name": "listFacilityStats",
+              "parameters": [
+                "req",
+                "res"
+              ],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "listUcollectLocations",
+              "parameters": [
+                "req",
+                "res"
+              ],
+              "return_type": null,
+              "description": ""
+            }
+          ],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "userController.js",
+          "file_path": "backend/src/controllers/userController.js",
+          "type": "controller",
+          "dependencies": [],
+          "classes": [],
+          "functions": [
+            {
+              "function_name": "list",
+              "parameters": [
+                "req",
+                "res"
+              ],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "create",
+              "parameters": [
+                "req",
+                "res"
+              ],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "update",
+              "parameters": [
+                "req",
+                "res"
+              ],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "resetPassword",
+              "parameters": [
+                "req",
+                "res"
+              ],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "remove",
+              "parameters": [
+                "req",
+                "res"
+              ],
+              "return_type": null,
+              "description": ""
+            }
+          ],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "userDataController.js",
+          "file_path": "backend/src/controllers/userDataController.js",
+          "type": "controller",
+          "dependencies": [],
+          "classes": [],
+          "functions": [
+            {
+              "function_name": "me",
+              "parameters": [
+                "req",
+                "res"
+              ],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "balance",
+              "parameters": [
+                "req",
+                "res"
+              ],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "points",
+              "parameters": [
+                "req",
+                "res"
+              ],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "listVehicles",
+              "parameters": [
+                "req",
+                "res"
+              ],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "listTransactions",
+              "parameters": [
+                "req",
+                "res"
+              ],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "vouchers",
+              "parameters": [
+                "req",
+                "res"
+              ],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "notifications",
+              "parameters": [
+                "req",
+                "res"
+              ],
+              "return_type": null,
+              "description": ""
+            }
+          ],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "seed.js",
+          "file_path": "backend/src/db/seed.js",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [
+            {
+              "function_name": "seed",
+              "parameters": [],
+              "return_type": null,
+              "description": ""
+            }
+          ],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "index.js",
+          "file_path": "backend/src/index.js",
+          "type": "controller",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": [
+            {
+              "method": "GET",
+              "path": "/api/health",
+              "payload": null
+            }
+          ]
+        },
+        {
+          "file_name": "auth.js",
+          "file_path": "backend/src/middlewares/auth.js",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [
+            {
+              "function_name": "requireAuth",
+              "parameters": [
+                "req",
+                "res",
+                "next"
+              ],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "requirePermission",
+              "parameters": [
+                "codes"
+              ],
+              "return_type": null,
+              "description": ""
+            }
+          ],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "authMiddleware.js",
+          "file_path": "backend/src/middlewares/authMiddleware.js",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [
+            {
+              "function_name": "requireAppToken",
+              "parameters": [
+                "req",
+                "res",
+                "next"
+              ],
+              "return_type": null,
+              "description": ""
+            }
+          ],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "errorHandler.js",
+          "file_path": "backend/src/middlewares/errorHandler.js",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [
+            {
+              "function_name": "notFoundHandler",
+              "parameters": [
+                "req",
+                "res"
+              ],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "errorHandler",
+              "parameters": [
+                "err",
+                "req",
+                "res",
+                "next"
+              ],
+              "return_type": null,
+              "description": ""
+            }
+          ],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "upload.js",
+          "file_path": "backend/src/middlewares/upload.js",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "brightGasPriceModel.js",
+          "file_path": "backend/src/models/brightGasPriceModel.js",
+          "type": "model",
+          "dependencies": [],
+          "classes": [],
+          "functions": [
+            {
+              "function_name": "list",
+              "parameters": [],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "findById",
+              "parameters": [
+                "id"
+              ],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "lastUpdatedAt",
+              "parameters": [],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "create",
+              "parameters": [
+                "{ province, price5_5kg, price12kg, updatedBy }"
+              ],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "update",
+              "parameters": [
+                "id",
+                "{ price5_5kg, price12kg, updatedBy }"
+              ],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "remove",
+              "parameters": [
+                "id"
+              ],
+              "return_type": null,
+              "description": ""
+            }
+          ],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "contentModel.js",
+          "file_path": "backend/src/models/contentModel.js",
+          "type": "model",
+          "dependencies": [],
+          "classes": [],
+          "functions": [
+            {
+              "function_name": "list",
+              "parameters": [
+                "{ type, activeOnly, category, search } = {}"
+              ],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "findById",
+              "parameters": [
+                "id"
+              ],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "findBySlug",
+              "parameters": [
+                "slug"
+              ],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "create",
+              "parameters": [
+                "{ type, category, slug, title, description, bodyHtml, imageUrl, isActive, startDate, endDate, createdBy }"
+              ],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "update",
+              "parameters": [
+                "id",
+                "{ type, category, slug, title, description, bodyHtml, imageUrl, isActive, startDate, endDate }"
+              ],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "remove",
+              "parameters": [
+                "id"
+              ],
+              "return_type": null,
+              "description": ""
+            }
+          ],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "facilityStatModel.js",
+          "file_path": "backend/src/models/facilityStatModel.js",
+          "type": "model",
+          "dependencies": [],
+          "classes": [],
+          "functions": [
+            {
+              "function_name": "list",
+              "parameters": [],
+              "return_type": null,
+              "description": ""
+            }
+          ],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "faqModel.js",
+          "file_path": "backend/src/models/faqModel.js",
+          "type": "model",
+          "dependencies": [],
+          "classes": [],
+          "functions": [
+            {
+              "function_name": "list",
+              "parameters": [
+                "{ activeOnly } = {}"
+              ],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "findById",
+              "parameters": [
+                "id"
+              ],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "create",
+              "parameters": [
+                "{ question, answer, sortOrder, isActive }"
+              ],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "update",
+              "parameters": [
+                "id",
+                "{ question, answer, sortOrder, isActive }"
+              ],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "remove",
+              "parameters": [
+                "id"
+              ],
+              "return_type": null,
+              "description": ""
+            }
+          ],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "locationModel.js",
+          "file_path": "backend/src/models/locationModel.js",
+          "type": "model",
+          "dependencies": [],
+          "classes": [],
+          "functions": [
+            {
+              "function_name": "buildWhere",
+              "parameters": [
+                "{ channel, search, type, facility }"
+              ],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "list",
+              "parameters": [
+                "{ channel, search, type, facility, page, pageSize }"
+              ],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "count",
+              "parameters": [
+                "{ channel, search, type, facility }"
+              ],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "lastUpdatedAt",
+              "parameters": [
+                "channel"
+              ],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "summary",
+              "parameters": [
+                "channel"
+              ],
+              "return_type": null,
+              "description": ""
+            }
+          ],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "permissionModel.js",
+          "file_path": "backend/src/models/permissionModel.js",
+          "type": "model",
+          "dependencies": [],
+          "classes": [],
+          "functions": [
+            {
+              "function_name": "list",
+              "parameters": [],
+              "return_type": null,
+              "description": ""
+            }
+          ],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "priceModel.js",
+          "file_path": "backend/src/models/priceModel.js",
+          "type": "model",
+          "dependencies": [],
+          "classes": [],
+          "functions": [
+            {
+              "function_name": "list",
+              "parameters": [
+                "province"
+              ],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "findById",
+              "parameters": [
+                "id"
+              ],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "create",
+              "parameters": [
+                "{ province, fuelType, price, unit, updatedBy }"
+              ],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "update",
+              "parameters": [
+                "id",
+                "{ price, unit, updatedBy }"
+              ],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "remove",
+              "parameters": [
+                "id"
+              ],
+              "return_type": null,
+              "description": ""
+            }
+          ],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "productModel.js",
+          "file_path": "backend/src/models/productModel.js",
+          "type": "model",
+          "dependencies": [],
+          "classes": [],
+          "functions": [
+            {
+              "function_name": "listPublished",
+              "parameters": [
+                "{ category, excludeSlug } = {}"
+              ],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "findDetailBySlug",
+              "parameters": [
+                "category",
+                "slug"
+              ],
+              "return_type": null,
+              "description": ""
+            }
+          ],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "roleModel.js",
+          "file_path": "backend/src/models/roleModel.js",
+          "type": "model",
+          "dependencies": [],
+          "classes": [],
+          "functions": [
+            {
+              "function_name": "list",
+              "parameters": [],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "findById",
+              "parameters": [
+                "id"
+              ],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "create",
+              "parameters": [
+                "{ name, description, permissionIds }"
+              ],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "update",
+              "parameters": [
+                "id",
+                "{ name, description, permissionIds }"
+              ],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "setPermissions",
+              "parameters": [
+                "roleId",
+                "permissionIds"
+              ],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "remove",
+              "parameters": [
+                "id"
+              ],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "countUsersWithRole",
+              "parameters": [
+                "id"
+              ],
+              "return_type": null,
+              "description": ""
+            }
+          ],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "ucollectLocationModel.js",
+          "file_path": "backend/src/models/ucollectLocationModel.js",
+          "type": "model",
+          "dependencies": [],
+          "classes": [],
+          "functions": [
+            {
+              "function_name": "list",
+              "parameters": [
+                "{ search } = {}"
+              ],
+              "return_type": null,
+              "description": ""
+            }
+          ],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "userModel.js",
+          "file_path": "backend/src/models/userModel.js",
+          "type": "model",
+          "dependencies": [],
+          "classes": [],
+          "functions": [
+            {
+              "function_name": "findByEmail",
+              "parameters": [
+                "email"
+              ],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "findById",
+              "parameters": [
+                "id"
+              ],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "list",
+              "parameters": [],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "create",
+              "parameters": [
+                "{ name, email, passwordHash, roleId }"
+              ],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "update",
+              "parameters": [
+                "id",
+                "{ name, email, roleId, isActive }"
+              ],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "updatePassword",
+              "parameters": [
+                "id",
+                "passwordHash"
+              ],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "remove",
+              "parameters": [
+                "id"
+              ],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "getPermissions",
+              "parameters": [
+                "userId"
+              ],
+              "return_type": null,
+              "description": ""
+            }
+          ],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "appAuthRoutes.js",
+          "file_path": "backend/src/routes/appAuthRoutes.js",
+          "type": "controller",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": [
+            {
+              "method": "POST",
+              "path": "/login",
+              "payload": null
+            }
+          ]
+        },
+        {
+          "file_name": "authRoutes.js",
+          "file_path": "backend/src/routes/authRoutes.js",
+          "type": "controller",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": [
+            {
+              "method": "POST",
+              "path": "/login",
+              "payload": null
+            },
+            {
+              "method": "GET",
+              "path": "/me",
+              "payload": null
+            }
+          ]
+        },
+        {
+          "file_name": "brightGasPriceRoutes.js",
+          "file_path": "backend/src/routes/brightGasPriceRoutes.js",
+          "type": "controller",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": [
+            {
+              "method": "GET",
+              "path": "/",
+              "payload": null
+            },
+            {
+              "method": "POST",
+              "path": "/",
+              "payload": null
+            },
+            {
+              "method": "PUT",
+              "path": "/:id",
+              "payload": null
+            },
+            {
+              "method": "DELETE",
+              "path": "/:id",
+              "payload": null
+            }
+          ]
+        },
+        {
+          "file_name": "contentRoutes.js",
+          "file_path": "backend/src/routes/contentRoutes.js",
+          "type": "controller",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": [
+            {
+              "method": "GET",
+              "path": "/",
+              "payload": null
+            },
+            {
+              "method": "GET",
+              "path": "/slug/:slug",
+              "payload": null
+            },
+            {
+              "method": "POST",
+              "path": "/",
+              "payload": null
+            },
+            {
+              "method": "PUT",
+              "path": "/:id",
+              "payload": null
+            },
+            {
+              "method": "DELETE",
+              "path": "/:id",
+              "payload": null
+            }
+          ]
+        },
+        {
+          "file_name": "dashboardRoutes.js",
+          "file_path": "backend/src/routes/dashboardRoutes.js",
+          "type": "controller",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": [
+            {
+              "method": "GET",
+              "path": "/dashboard",
+              "payload": null
+            }
+          ]
+        },
+        {
+          "file_name": "faqRoutes.js",
+          "file_path": "backend/src/routes/faqRoutes.js",
+          "type": "controller",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": [
+            {
+              "method": "GET",
+              "path": "/",
+              "payload": null
+            },
+            {
+              "method": "POST",
+              "path": "/",
+              "payload": null
+            },
+            {
+              "method": "PUT",
+              "path": "/:id",
+              "payload": null
+            },
+            {
+              "method": "DELETE",
+              "path": "/:id",
+              "payload": null
+            }
+          ]
+        },
+        {
+          "file_name": "locationRoutes.js",
+          "file_path": "backend/src/routes/locationRoutes.js",
+          "type": "controller",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": [
+            {
+              "method": "GET",
+              "path": "/:channel",
+              "payload": null
+            }
+          ]
+        },
+        {
+          "file_name": "priceRoutes.js",
+          "file_path": "backend/src/routes/priceRoutes.js",
+          "type": "controller",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": [
+            {
+              "method": "GET",
+              "path": "/",
+              "payload": null
+            },
+            {
+              "method": "POST",
+              "path": "/",
+              "payload": null
+            },
+            {
+              "method": "PUT",
+              "path": "/:id",
+              "payload": null
+            },
+            {
+              "method": "DELETE",
+              "path": "/:id",
+              "payload": null
+            }
+          ]
+        },
+        {
+          "file_name": "productRoutes.js",
+          "file_path": "backend/src/routes/productRoutes.js",
+          "type": "controller",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": [
+            {
+              "method": "GET",
+              "path": "/",
+              "payload": null
+            },
+            {
+              "method": "GET",
+              "path": "/:category/:slug",
+              "payload": null
+            }
+          ]
+        },
+        {
+          "file_name": "roleRoutes.js",
+          "file_path": "backend/src/routes/roleRoutes.js",
+          "type": "controller",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": [
+            {
+              "method": "GET",
+              "path": "/",
+              "payload": null
+            },
+            {
+              "method": "GET",
+              "path": "/permissions",
+              "payload": null
+            },
+            {
+              "method": "POST",
+              "path": "/",
+              "payload": null
+            },
+            {
+              "method": "PUT",
+              "path": "/:id",
+              "payload": null
+            },
+            {
+              "method": "DELETE",
+              "path": "/:id",
+              "payload": null
+            }
+          ]
+        },
+        {
+          "file_name": "sustainabilityRoutes.js",
+          "file_path": "backend/src/routes/sustainabilityRoutes.js",
+          "type": "controller",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": [
+            {
+              "method": "GET",
+              "path": "/facility-stats",
+              "payload": null
+            },
+            {
+              "method": "GET",
+              "path": "/ucollect-locations",
+              "payload": null
+            }
+          ]
+        },
+        {
+          "file_name": "userDataRoutes.js",
+          "file_path": "backend/src/routes/userDataRoutes.js",
+          "type": "controller",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": [
+            {
+              "method": "GET",
+              "path": "/me",
+              "payload": null
+            },
+            {
+              "method": "GET",
+              "path": "/balance",
+              "payload": null
+            },
+            {
+              "method": "GET",
+              "path": "/points",
+              "payload": null
+            },
+            {
+              "method": "GET",
+              "path": "/vehicles",
+              "payload": null
+            },
+            {
+              "method": "GET",
+              "path": "/transactions",
+              "payload": null
+            },
+            {
+              "method": "GET",
+              "path": "/vouchers",
+              "payload": null
+            },
+            {
+              "method": "GET",
+              "path": "/notifications",
+              "payload": null
+            }
+          ]
+        },
+        {
+          "file_name": "userRoutes.js",
+          "file_path": "backend/src/routes/userRoutes.js",
+          "type": "controller",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": [
+            {
+              "method": "GET",
+              "path": "/",
+              "payload": null
+            },
+            {
+              "method": "POST",
+              "path": "/",
+              "payload": null
+            },
+            {
+              "method": "PUT",
+              "path": "/:id",
+              "payload": null
+            },
+            {
+              "method": "PUT",
+              "path": "/:id/password",
+              "payload": null
+            },
+            {
+              "method": "DELETE",
+              "path": "/:id",
+              "payload": null
+            }
+          ]
+        },
+        {
+          "file_name": "appServiceClient.js",
+          "file_path": "backend/src/services/appServiceClient.js",
+          "type": "service",
+          "dependencies": [],
+          "classes": [
+            {
+              "class_name": "AppServiceError",
+              "methods": [
+                {
+                  "method_name": "constructor",
+                  "parameters": [
+                    "status",
+                    "message"
+                  ],
+                  "return_type": null,
+                  "description": ""
+                }
+              ]
+            }
+          ],
+          "functions": [
+            {
+              "function_name": "request",
+              "parameters": [
+                "method",
+                "path",
+                "{ token, body } = {}"
+              ],
+              "return_type": null,
+              "description": ""
+            }
+          ],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "findOrNotFound.js",
+          "file_path": "backend/src/utils/findOrNotFound.js",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [
+            {
+              "function_name": "findOrNotFound",
+              "parameters": [
+                "model",
+                "id",
+                "res",
+                "message"
+              ],
+              "return_type": null,
+              "description": ""
+            }
+          ],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "jwt.js",
+          "file_path": "backend/src/utils/jwt.js",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [
+            {
+              "function_name": "signToken",
+              "parameters": [
+                "payload"
+              ],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "verifyToken",
+              "parameters": [
+                "token"
+              ],
+              "return_type": null,
+              "description": ""
+            }
+          ],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "app.vue",
+          "file_path": "cms/app/app.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "useApi.ts",
+          "file_path": "cms/app/composables/useApi.ts",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [
+            {
+              "function_name": "useApi",
+              "parameters": [
+                "path",
+                "opts"
+              ],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "apiFetch",
+              "parameters": [
+                "path",
+                "opts"
+              ],
+              "return_type": null,
+              "description": ""
+            }
+          ],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "useAuth.ts",
+          "file_path": "cms/app/composables/useAuth.ts",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [
+            {
+              "function_name": "useAuthToken",
+              "parameters": [],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "useAuthUser",
+              "parameters": [],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "useAuth",
+              "parameters": [],
+              "return_type": null,
+              "description": ""
+            }
+          ],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "auth.vue",
+          "file_path": "cms/app/layouts/auth.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "default.vue",
+          "file_path": "cms/app/layouts/default.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "auth.global.ts",
+          "file_path": "cms/app/middleware/auth.global.ts",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "create.vue",
+          "file_path": "cms/app/pages/contents/create.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "index.vue",
+          "file_path": "cms/app/pages/contents/index.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "index.vue",
+          "file_path": "cms/app/pages/index.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "login.vue",
+          "file_path": "cms/app/pages/login.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "index.vue",
+          "file_path": "cms/app/pages/prices/index.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "index.vue",
+          "file_path": "cms/app/pages/roles/index.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "index.vue",
+          "file_path": "cms/app/pages/users/index.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "nuxt.config.ts",
+          "file_path": "cms/nuxt.config.ts",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "package.json",
+          "file_path": "cms/package.json",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "app.vue",
+          "file_path": "frontend/app/app.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "AppFooter.vue",
+          "file_path": "frontend/app/components/AppFooter.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "AppHeader.vue",
+          "file_path": "frontend/app/components/AppHeader.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "BenefitHero.vue",
+          "file_path": "frontend/app/components/BenefitHero.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "BenefitSolutions.vue",
+          "file_path": "frontend/app/components/BenefitSolutions.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "BrightCafeAbout.vue",
+          "file_path": "frontend/app/components/BrightCafeAbout.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "BrightCafeFeatureCards.vue",
+          "file_path": "frontend/app/components/BrightCafeFeatureCards.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "BrightCafeGallery.vue",
+          "file_path": "frontend/app/components/BrightCafeGallery.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "BrightCafeHero.vue",
+          "file_path": "frontend/app/components/BrightCafeHero.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "BrightCafeIntro.vue",
+          "file_path": "frontend/app/components/BrightCafeIntro.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "BrightGasHero.vue",
+          "file_path": "frontend/app/components/BrightGasHero.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "BrightGasLocationCta.vue",
+          "file_path": "frontend/app/components/BrightGasLocationCta.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "BrightGasOutletChecklist.vue",
+          "file_path": "frontend/app/components/BrightGasOutletChecklist.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "BrightGasSafetyAccordion.vue",
+          "file_path": "frontend/app/components/BrightGasSafetyAccordion.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "BrightGasScanner.vue",
+          "file_path": "frontend/app/components/BrightGasScanner.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "BrightGasVariants.vue",
+          "file_path": "frontend/app/components/BrightGasVariants.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "BrightGasVideoShowcase.vue",
+          "file_path": "frontend/app/components/BrightGasVideoShowcase.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "BrightStoreFeatureCards.vue",
+          "file_path": "frontend/app/components/BrightStoreFeatureCards.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "BrightStoreGallery.vue",
+          "file_path": "frontend/app/components/BrightStoreGallery.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "BrightStoreHero.vue",
+          "file_path": "frontend/app/components/BrightStoreHero.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "BrightStoreRewardsTable.vue",
+          "file_path": "frontend/app/components/BrightStoreRewardsTable.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "BrightStoreShowcase.vue",
+          "file_path": "frontend/app/components/BrightStoreShowcase.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "ChannelCard.vue",
+          "file_path": "frontend/app/components/ChannelCard.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "ContentGrid.vue",
+          "file_path": "frontend/app/components/ContentGrid.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "EVoucherAboutSection.vue",
+          "file_path": "frontend/app/components/EVoucherAboutSection.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "EVoucherBenefitsCarousel.vue",
+          "file_path": "frontend/app/components/EVoucherBenefitsCarousel.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "EVoucherHero.vue",
+          "file_path": "frontend/app/components/EVoucherHero.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "EVoucherStepsGuide.vue",
+          "file_path": "frontend/app/components/EVoucherStepsGuide.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "EVoucherVideoShowcase.vue",
+          "file_path": "frontend/app/components/EVoucherVideoShowcase.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "FaqAccordion.vue",
+          "file_path": "frontend/app/components/FaqAccordion.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "FinalDownloadCta.vue",
+          "file_path": "frontend/app/components/FinalDownloadCta.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "FuelPriceTable.vue",
+          "file_path": "frontend/app/components/FuelPriceTable.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "GuideDownload.vue",
+          "file_path": "frontend/app/components/GuideDownload.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "HeroSection.vue",
+          "file_path": "frontend/app/components/HeroSection.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "ImagePlaceholder.vue",
+          "file_path": "frontend/app/components/ImagePlaceholder.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "LocationDirectory.vue",
+          "file_path": "frontend/app/components/LocationDirectory.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "LocationPagination.vue",
+          "file_path": "frontend/app/components/LocationPagination.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "LoyaltyTierImage.vue",
+          "file_path": "frontend/app/components/LoyaltyTierImage.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "MascotShowcase.vue",
+          "file_path": "frontend/app/components/MascotShowcase.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "OtherChannelsSection.vue",
+          "file_path": "frontend/app/components/OtherChannelsSection.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "PaymentMethodsCarousel.vue",
+          "file_path": "frontend/app/components/PaymentMethodsCarousel.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "PriceInfoHeader.vue",
+          "file_path": "frontend/app/components/PriceInfoHeader.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "PriceTable.vue",
+          "file_path": "frontend/app/components/PriceTable.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "ProductCategoryShowcase.vue",
+          "file_path": "frontend/app/components/ProductCategoryShowcase.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "PromoCard.vue",
+          "file_path": "frontend/app/components/PromoCard.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "ScrollToTopButton.vue",
+          "file_path": "frontend/app/components/ScrollToTopButton.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "SlideCarousel.vue",
+          "file_path": "frontend/app/components/SlideCarousel.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "SocialFollow.vue",
+          "file_path": "frontend/app/components/SocialFollow.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "YoutubeEmbed.vue",
+          "file_path": "frontend/app/components/YoutubeEmbed.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "ProductBenefits.vue",
+          "file_path": "frontend/app/components/product/ProductBenefits.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "ProductBrandAmbassador.vue",
+          "file_path": "frontend/app/components/product/ProductBrandAmbassador.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "ProductHero.vue",
+          "file_path": "frontend/app/components/product/ProductHero.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "ProductIcon.vue",
+          "file_path": "frontend/app/components/product/ProductIcon.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "ProductRelated.vue",
+          "file_path": "frontend/app/components/product/ProductRelated.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "ProductTechnology.vue",
+          "file_path": "frontend/app/components/product/ProductTechnology.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "ProductVideoShowcase.vue",
+          "file_path": "frontend/app/components/product/ProductVideoShowcase.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "useApi.ts",
+          "file_path": "frontend/app/composables/useApi.ts",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [
+            {
+              "function_name": "useApi",
+              "parameters": [
+                "path",
+                "opts"
+              ],
+              "return_type": null,
+              "description": ""
+            }
+          ],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "useBenefitContent.ts",
+          "file_path": "frontend/app/composables/useBenefitContent.ts",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "useFuelPriceMatrix.ts",
+          "file_path": "frontend/app/composables/useFuelPriceMatrix.ts",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "bright-gas-price.vue",
+          "file_path": "frontend/app/pages/about/bright-gas-price.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "keuntungan-mypertamina.vue",
+          "file_path": "frontend/app/pages/about/keuntungan-mypertamina.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "mypertamina-channel.vue",
+          "file_path": "frontend/app/pages/about/mypertamina-channel.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "product-price.vue",
+          "file_path": "frontend/app/pages/about/product-price.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "contact.vue",
+          "file_path": "frontend/app/pages/contact.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "index.vue",
+          "file_path": "frontend/app/pages/index.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "[slug].vue",
+          "file_path": "frontend/app/pages/product/[category]/[slug].vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "e-voucher.vue",
+          "file_path": "frontend/app/pages/product/e-voucher.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "bright-gas.vue",
+          "file_path": "frontend/app/pages/product/lpg/bright-gas.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "[slug].vue",
+          "file_path": "frontend/app/pages/promo-event/[slug].vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "index.vue",
+          "file_path": "frontend/app/pages/promo-event/index.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "bright-cafe.vue",
+          "file_path": "frontend/app/pages/spbu-location/bright-cafe.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "bright-store.vue",
+          "file_path": "frontend/app/pages/spbu-location/bright-store.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "ges.vue",
+          "file_path": "frontend/app/pages/spbu-location/ges.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "lpg.vue",
+          "file_path": "frontend/app/pages/spbu-location/lpg.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "pertamax-green-95.vue",
+          "file_path": "frontend/app/pages/spbu-location/pertamax-green-95.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "spbu-pertamina.vue",
+          "file_path": "frontend/app/pages/spbu-location/spbu-pertamina.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "green-energy-station.vue",
+          "file_path": "frontend/app/pages/sustainability/green-energy-station.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "kumpulkan-minyak-jelantah.vue",
+          "file_path": "frontend/app/pages/sustainability/kumpulkan-minyak-jelantah.vue",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "nuxt.config.ts",
+          "file_path": "frontend/nuxt.config.ts",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "package.json",
+          "file_path": "frontend/package.json",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,1413 @@
+{
+  "project_name": "esteler-flask",
+  "repositories": [
+    {
+      "repo_tag": "Backend",
+      "files": [
+        {
+          "file_name": "index.py",
+          "file_path": "api/index.py",
+          "type": "other",
+          "dependencies": [
+            "os",
+            "sys",
+            "Flask",
+            "session",
+            "LoginManager",
+            "Migrate",
+            "load_dotenv",
+            "cloudinary",
+            "Config",
+            "db",
+            "User",
+            "customer_bp",
+            "admin_bp",
+            "auth_bp"
+          ],
+          "classes": [],
+          "functions": [
+            {
+              "function_name": "create_app",
+              "parameters": [],
+              "return_type": "Flask",
+              "description": ""
+            }
+          ],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "app.py",
+          "file_path": "app.py",
+          "type": "other",
+          "dependencies": [
+            "app"
+          ],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "config.py",
+          "file_path": "config.py",
+          "type": "other",
+          "dependencies": [
+            "os",
+            "load_dotenv"
+          ],
+          "classes": [
+            {
+              "class_name": "Config",
+              "methods": []
+            }
+          ],
+          "functions": [
+            {
+              "function_name": "_normalize_db_url",
+              "parameters": [
+                "url"
+              ],
+              "return_type": "str",
+              "description": "Normalisasi DATABASE_URL agar selalu siap pakai untuk Neon.\n    - postgres:// \u2192 postgresql:// (SQLAlchemy 1.4+ requirement)\n    - Auto-tambahin sslmode=require kalau belum ada"
+            }
+          ],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "init_db.py",
+          "file_path": "init_db.py",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "env.py",
+          "file_path": "migrations/env.py",
+          "type": "other",
+          "dependencies": [
+            "logging",
+            "fileConfig",
+            "current_app",
+            "context"
+          ],
+          "classes": [],
+          "functions": [
+            {
+              "function_name": "get_engine",
+              "parameters": [],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "get_engine_url",
+              "parameters": [],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "get_metadata",
+              "parameters": [],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "run_migrations_offline",
+              "parameters": [],
+              "return_type": null,
+              "description": "Run migrations in 'offline' mode.\n\n    This configures the context with just a URL\n    and not an Engine, though an Engine is acceptable\n    here as well.  By skipping the Engine creation\n    we don't even need a DBAPI to be available.\n\n    Calls to context.execute() here emit the given string to the\n    script output."
+            },
+            {
+              "function_name": "run_migrations_online",
+              "parameters": [],
+              "return_type": null,
+              "description": "Run migrations in 'online' mode.\n\n    In this scenario we need to create an Engine\n    and associate a connection with the context."
+            }
+          ],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "26876f5b8f1d_.py",
+          "file_path": "migrations/versions/26876f5b8f1d_.py",
+          "type": "other",
+          "dependencies": [
+            "op",
+            "sa"
+          ],
+          "classes": [],
+          "functions": [
+            {
+              "function_name": "upgrade",
+              "parameters": [],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "downgrade",
+              "parameters": [],
+              "return_type": null,
+              "description": ""
+            }
+          ],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "models.py",
+          "file_path": "models.py",
+          "type": "model",
+          "dependencies": [
+            "SQLAlchemy",
+            "UserMixin",
+            "generate_password_hash",
+            "check_password_hash",
+            "datetime",
+            "timezone",
+            "timedelta",
+            "Index"
+          ],
+          "classes": [
+            {
+              "class_name": "User",
+              "methods": [
+                {
+                  "method_name": "set_password",
+                  "parameters": [
+                    "password"
+                  ],
+                  "return_type": "None",
+                  "description": "Hash password sebelum disimpan."
+                },
+                {
+                  "method_name": "check_password",
+                  "parameters": [
+                    "password"
+                  ],
+                  "return_type": "bool",
+                  "description": "Verifikasi password input dengan hash di DB."
+                },
+                {
+                  "method_name": "to_dict",
+                  "parameters": [],
+                  "return_type": null,
+                  "description": ""
+                }
+              ]
+            },
+            {
+              "class_name": "Menu",
+              "methods": [
+                {
+                  "method_name": "to_dict",
+                  "parameters": [],
+                  "return_type": null,
+                  "description": ""
+                }
+              ]
+            },
+            {
+              "class_name": "Cart",
+              "methods": []
+            },
+            {
+              "class_name": "CartItem",
+              "methods": []
+            },
+            {
+              "class_name": "Order",
+              "methods": [
+                {
+                  "method_name": "calculate_total",
+                  "parameters": [],
+                  "return_type": null,
+                  "description": "Hitung ulang total dari order_items (untuk validasi)."
+                },
+                {
+                  "method_name": "to_dict",
+                  "parameters": [],
+                  "return_type": null,
+                  "description": ""
+                }
+              ]
+            },
+            {
+              "class_name": "OrderItem",
+              "methods": [
+                {
+                  "method_name": "to_dict",
+                  "parameters": [],
+                  "return_type": null,
+                  "description": ""
+                }
+              ]
+            },
+            {
+              "class_name": "Recommendation",
+              "methods": [
+                {
+                  "method_name": "to_dict",
+                  "parameters": [],
+                  "return_type": null,
+                  "description": ""
+                }
+              ]
+            }
+          ],
+          "functions": [
+            {
+              "function_name": "now_utc",
+              "parameters": [],
+              "return_type": null,
+              "description": "Timezone-aware UTC datetime (replacement untuk datetime.utcnow)."
+            }
+          ],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "requirements.txt",
+          "file_path": "requirements.txt",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "__init__.py",
+          "file_path": "routes/__init__.py",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "admin.py",
+          "file_path": "routes/admin.py",
+          "type": "controller",
+          "dependencies": [
+            "Blueprint",
+            "request",
+            "redirect",
+            "url_for",
+            "render_template",
+            "flash",
+            "jsonify",
+            "send_file",
+            "login_required",
+            "current_user",
+            "MenuService",
+            "OrderService",
+            "AnalyticsService",
+            "UploadService",
+            "Order",
+            "OrderItem",
+            "io"
+          ],
+          "classes": [],
+          "functions": [
+            {
+              "function_name": "dashboard",
+              "parameters": [],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "menu_management",
+              "parameters": [],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "menu_create",
+              "parameters": [],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "menu_edit",
+              "parameters": [
+                "menu_id"
+              ],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "toggle_menu",
+              "parameters": [
+                "menu_id"
+              ],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "order_list",
+              "parameters": [],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "process_order",
+              "parameters": [
+                "order_id"
+              ],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "ready_order",
+              "parameters": [
+                "order_id"
+              ],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "complete_order",
+              "parameters": [
+                "order_id"
+              ],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "cancel_order",
+              "parameters": [
+                "order_id"
+              ],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "delete_order",
+              "parameters": [
+                "order_id"
+              ],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "walkin_order",
+              "parameters": [],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "download_report",
+              "parameters": [],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "print_receipt",
+              "parameters": [
+                "order_id"
+              ],
+              "return_type": null,
+              "description": ""
+            }
+          ],
+          "api_endpoints": [
+            {
+              "method": "GET",
+              "path": "/admin/",
+              "payload": null
+            },
+            {
+              "method": "GET",
+              "path": "/admin/dashboard",
+              "payload": null
+            },
+            {
+              "method": "GET",
+              "path": "/admin/menu",
+              "payload": null
+            },
+            {
+              "method": "GET",
+              "path": "/admin/menu/create",
+              "payload": null
+            },
+            {
+              "method": "POST",
+              "path": "/admin/menu/create",
+              "payload": null
+            },
+            {
+              "method": "GET",
+              "path": "/admin/menu/<int:menu_id>/edit",
+              "payload": "menu_id"
+            },
+            {
+              "method": "POST",
+              "path": "/admin/menu/<int:menu_id>/edit",
+              "payload": "menu_id"
+            },
+            {
+              "method": "POST",
+              "path": "/admin/menu/<int:menu_id>/toggle",
+              "payload": "menu_id"
+            },
+            {
+              "method": "GET",
+              "path": "/admin/orders",
+              "payload": null
+            },
+            {
+              "method": "POST",
+              "path": "/admin/orders/<int:order_id>/process",
+              "payload": "order_id"
+            },
+            {
+              "method": "POST",
+              "path": "/admin/orders/<int:order_id>/ready",
+              "payload": "order_id"
+            },
+            {
+              "method": "POST",
+              "path": "/admin/orders/<int:order_id>/complete",
+              "payload": "order_id"
+            },
+            {
+              "method": "POST",
+              "path": "/admin/orders/<int:order_id>/cancel",
+              "payload": "order_id"
+            },
+            {
+              "method": "POST",
+              "path": "/admin/orders/<int:order_id>/delete",
+              "payload": "order_id"
+            },
+            {
+              "method": "GET",
+              "path": "/admin/orders/walkin",
+              "payload": null
+            },
+            {
+              "method": "POST",
+              "path": "/admin/orders/walkin",
+              "payload": null
+            },
+            {
+              "method": "GET",
+              "path": "/admin/report/download",
+              "payload": null
+            },
+            {
+              "method": "GET",
+              "path": "/admin/orders/<int:order_id>/receipt",
+              "payload": "order_id"
+            }
+          ]
+        },
+        {
+          "file_name": "auth.py",
+          "file_path": "routes/auth.py",
+          "type": "controller",
+          "dependencies": [
+            "Blueprint",
+            "request",
+            "redirect",
+            "url_for",
+            "flash",
+            "render_template",
+            "login_user",
+            "logout_user",
+            "login_required",
+            "current_user",
+            "AuthService"
+          ],
+          "classes": [],
+          "functions": [
+            {
+              "function_name": "login",
+              "parameters": [],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "logout",
+              "parameters": [],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "forgot_password",
+              "parameters": [],
+              "return_type": null,
+              "description": "Stub - implementasi reset password via email belum dibuat."
+            }
+          ],
+          "api_endpoints": [
+            {
+              "method": "GET",
+              "path": "/login",
+              "payload": null
+            },
+            {
+              "method": "POST",
+              "path": "/login",
+              "payload": null
+            },
+            {
+              "method": "GET",
+              "path": "/logout",
+              "payload": null
+            },
+            {
+              "method": "GET",
+              "path": "/forgot",
+              "payload": null
+            },
+            {
+              "method": "POST",
+              "path": "/forgot",
+              "payload": null
+            }
+          ]
+        },
+        {
+          "file_name": "customer.py",
+          "file_path": "routes/customer.py",
+          "type": "controller",
+          "dependencies": [
+            "re",
+            "uuid",
+            "Blueprint",
+            "current_app",
+            "request",
+            "redirect",
+            "url_for",
+            "session",
+            "render_template",
+            "flash",
+            "abort",
+            "jsonify",
+            "MenuService",
+            "CartService",
+            "OrderService",
+            "RecommendationService",
+            "ChatbotService"
+          ],
+          "classes": [],
+          "functions": [
+            {
+              "function_name": "get_session_id",
+              "parameters": [],
+              "return_type": "str",
+              "description": "Ambil/buat session_id untuk identifikasi customer anonim."
+            },
+            {
+              "function_name": "home",
+              "parameters": [],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "menu_list",
+              "parameters": [],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "cart_view",
+              "parameters": [],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "add_to_cart",
+              "parameters": [],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "update_cart",
+              "parameters": [
+                "item_id"
+              ],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "remove_from_cart",
+              "parameters": [
+                "item_id"
+              ],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "cart_summary",
+              "parameters": [],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "preorder",
+              "parameters": [],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "create_order",
+              "parameters": [],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "track_form",
+              "parameters": [],
+              "return_type": null,
+              "description": "Form input order code."
+            },
+            {
+              "function_name": "track_status",
+              "parameters": [
+                "code"
+              ],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "payment",
+              "parameters": [
+                "order_code"
+              ],
+              "return_type": null,
+              "description": "Halaman bayar sekarang - arahkan customer ke WhatsApp admin."
+            },
+            {
+              "function_name": "submit_rating",
+              "parameters": [
+                "order_code"
+              ],
+              "return_type": null,
+              "description": ""
+            },
+            {
+              "function_name": "chat",
+              "parameters": [],
+              "return_type": null,
+              "description": ""
+            }
+          ],
+          "api_endpoints": [
+            {
+              "method": "GET",
+              "path": "/",
+              "payload": null
+            },
+            {
+              "method": "GET",
+              "path": "/menu",
+              "payload": null
+            },
+            {
+              "method": "GET",
+              "path": "/cart",
+              "payload": null
+            },
+            {
+              "method": "POST",
+              "path": "/cart/add",
+              "payload": null
+            },
+            {
+              "method": "POST",
+              "path": "/cart/update/<int:item_id>",
+              "payload": "item_id"
+            },
+            {
+              "method": "POST",
+              "path": "/cart/remove/<int:item_id>",
+              "payload": "item_id"
+            },
+            {
+              "method": "GET",
+              "path": "/cart/summary",
+              "payload": null
+            },
+            {
+              "method": "GET",
+              "path": "/preorder",
+              "payload": null
+            },
+            {
+              "method": "POST",
+              "path": "/preorder",
+              "payload": null
+            },
+            {
+              "method": "POST",
+              "path": "/order/create",
+              "payload": null
+            },
+            {
+              "method": "GET",
+              "path": "/track",
+              "payload": null
+            },
+            {
+              "method": "GET",
+              "path": "/track/<code>",
+              "payload": "code"
+            },
+            {
+              "method": "GET",
+              "path": "/order/<order_code>/payment",
+              "payload": "order_code"
+            },
+            {
+              "method": "POST",
+              "path": "/api/order/<order_code>/rating",
+              "payload": "order_code"
+            },
+            {
+              "method": "POST",
+              "path": "/api/chat",
+              "payload": null
+            }
+          ]
+        },
+        {
+          "file_name": "seed.py",
+          "file_path": "seed.py",
+          "type": "other",
+          "dependencies": [
+            "app",
+            "db",
+            "User",
+            "Menu"
+          ],
+          "classes": [],
+          "functions": [
+            {
+              "function_name": "seed",
+              "parameters": [],
+              "return_type": null,
+              "description": ""
+            }
+          ],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "__init__.py",
+          "file_path": "services/__init__.py",
+          "type": "other",
+          "dependencies": [],
+          "classes": [],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "analytics_service.py",
+          "file_path": "services/analytics_service.py",
+          "type": "service",
+          "dependencies": [
+            "datetime",
+            "timezone",
+            "timedelta",
+            "List",
+            "Dict",
+            "func",
+            "case",
+            "db",
+            "Order",
+            "OrderItem",
+            "Menu"
+          ],
+          "classes": [
+            {
+              "class_name": "AnalyticsService",
+              "methods": [
+                {
+                  "method_name": "_today_start",
+                  "parameters": [],
+                  "return_type": null,
+                  "description": ""
+                },
+                {
+                  "method_name": "get_dashboard_summary",
+                  "parameters": [],
+                  "return_type": "Dict",
+                  "description": "Ringkasan untuk dashboard admin (yang muncul di halaman utama).\n        Dipakai oleh routes/admin.py."
+                },
+                {
+                  "method_name": "get_top_menus",
+                  "parameters": [
+                    "limit",
+                    "days"
+                  ],
+                  "return_type": "List[Dict]",
+                  "description": "Menu terlaris berdasarkan jumlah terjual dalam N hari terakhir.\n        SQL aggregation - tidak load semua order_items ke Python."
+                },
+                {
+                  "method_name": "get_weekly_revenue",
+                  "parameters": [],
+                  "return_type": "List[Dict]",
+                  "description": "Revenue per hari dalam 7 hari terakhir (minggu ini) dan 7 hari sebelumnya (minggu lalu)."
+                },
+                {
+                  "method_name": "get_order_source_distribution",
+                  "parameters": [
+                    "days"
+                  ],
+                  "return_type": "Dict",
+                  "description": "Distribusi sumber order: ONLINE_PREORDER vs WALKIN.\n        Sesuai SDD revisi."
+                },
+                {
+                  "method_name": "get_peak_hours",
+                  "parameters": [
+                    "days"
+                  ],
+                  "return_type": "List[Dict]",
+                  "description": "Jam paling ramai (sesuai SDD).\n        Aggregate by hour-of-day dalam N hari terakhir."
+                }
+              ]
+            }
+          ],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "auth_service.py",
+          "file_path": "services/auth_service.py",
+          "type": "service",
+          "dependencies": [
+            "Optional",
+            "db",
+            "User"
+          ],
+          "classes": [
+            {
+              "class_name": "AuthService",
+              "methods": [
+                {
+                  "method_name": "register",
+                  "parameters": [
+                    "username",
+                    "email",
+                    "password",
+                    "role"
+                  ],
+                  "return_type": "Optional[User]",
+                  "description": "Daftarkan admin baru.\n        Return None jika username/email sudah dipakai."
+                },
+                {
+                  "method_name": "login",
+                  "parameters": [
+                    "username",
+                    "password"
+                  ],
+                  "return_type": "Optional[User]",
+                  "description": "Verifikasi login. Return User object kalau valid, None kalau gagal."
+                },
+                {
+                  "method_name": "get_by_email",
+                  "parameters": [
+                    "email"
+                  ],
+                  "return_type": "Optional[User]",
+                  "description": ""
+                }
+              ]
+            }
+          ],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "cart_service.py",
+          "file_path": "services/cart_service.py",
+          "type": "service",
+          "dependencies": [
+            "Optional",
+            "joinedload",
+            "db",
+            "Cart",
+            "CartItem",
+            "Menu"
+          ],
+          "classes": [
+            {
+              "class_name": "CartService",
+              "methods": [
+                {
+                  "method_name": "get_cart",
+                  "parameters": [
+                    "session_id"
+                  ],
+                  "return_type": "Cart",
+                  "description": "Ambil atau buat keranjang baru (idempotent)."
+                },
+                {
+                  "method_name": "get_cart_with_items",
+                  "parameters": [
+                    "session_id"
+                  ],
+                  "return_type": "Optional[Cart]",
+                  "description": "Ambil cart + items + menu dalam SATU query (eager loading).\n        Optimasi penting: hindari N+1 query di halaman cart."
+                },
+                {
+                  "method_name": "add_item",
+                  "parameters": [
+                    "session_id",
+                    "menu_id",
+                    "quantity"
+                  ],
+                  "return_type": "CartItem",
+                  "description": "Tambah item ke cart. Kalau sudah ada, increment quantity."
+                },
+                {
+                  "method_name": "update_quantity",
+                  "parameters": [
+                    "item_id",
+                    "qty"
+                  ],
+                  "return_type": "Optional[CartItem]",
+                  "description": "Update quantity. Kalau qty <= 0, hapus item."
+                },
+                {
+                  "method_name": "remove_item",
+                  "parameters": [
+                    "item_id"
+                  ],
+                  "return_type": "bool",
+                  "description": ""
+                },
+                {
+                  "method_name": "clear_cart",
+                  "parameters": [
+                    "session_id"
+                  ],
+                  "return_type": "None",
+                  "description": "Kosongkan cart (setelah checkout)."
+                },
+                {
+                  "method_name": "get_summary",
+                  "parameters": [
+                    "session_id"
+                  ],
+                  "return_type": "dict",
+                  "description": "Hitung total harga & jumlah item di cart.\n        FIX: function ini di code lama KEPUTUS di tengah - sekarang lengkap.\n        Optimasi: SATU query untuk ambil cart + items + menus (eager loading)."
+                }
+              ]
+            }
+          ],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "chatbot_service.py",
+          "file_path": "services/chatbot_service.py",
+          "type": "service",
+          "dependencies": [
+            "json",
+            "re",
+            "Groq",
+            "BadRequestError",
+            "current_app",
+            "MenuService",
+            "CartService",
+            "OrderService",
+            "RecommendationService"
+          ],
+          "classes": [
+            {
+              "class_name": "ChatbotService",
+              "methods": [
+                {
+                  "method_name": "chat",
+                  "parameters": [
+                    "session_id",
+                    "messages"
+                  ],
+                  "return_type": "dict",
+                  "description": "messages: list of {\"role\": \"user\"|\"assistant\", \"content\": str}\n        Return: {\n            \"reply\": str,\n            \"history\": list,\n            \"show_checkout\": bool   # True = frontend tampilkan panel checkout\n        }"
+                }
+              ]
+            }
+          ],
+          "functions": [
+            {
+              "function_name": "_menu_brief",
+              "parameters": [
+                "menu"
+              ],
+              "return_type": "dict",
+              "description": "Hanya field yang benar-benar dibutuhkan model untuk menjawab."
+            },
+            {
+              "function_name": "_menu_detail",
+              "parameters": [
+                "menu"
+              ],
+              "return_type": "dict",
+              "description": "Versi lengkap, dipakai hanya saat pelanggan tanya detail spesifik."
+            },
+            {
+              "function_name": "_extract_pseudo_tool_call",
+              "parameters": [
+                "content"
+              ],
+              "return_type": null,
+              "description": "Deteksi tool call yang ditulis sebagai teks biasa.\n\n    Mendukung tiga format:\n    1. Tag XML:   <function=nama>{...}</function>\n    2. Inline:    nama_tool {\"key\": \"val\"}\n    3. Plain:     nama_tool kata kunci tanpa JSON\n\n    Return (nama_tool, args_dict) jika valid, else None."
+            },
+            {
+              "function_name": "_execute_tool",
+              "parameters": [
+                "name",
+                "args",
+                "session_id"
+              ],
+              "return_type": "dict",
+              "description": ""
+            },
+            {
+              "function_name": "_should_show_checkout",
+              "parameters": [
+                "reply",
+                "session_id"
+              ],
+              "return_type": "bool",
+              "description": "Cek apakah reply model mengandung sinyal checkout DAN keranjang tidak kosong.\n    Ini mencegah checkout terbuka saat keranjang masih kosong."
+            }
+          ],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "menu_service.py",
+          "file_path": "services/menu_service.py",
+          "type": "service",
+          "dependencies": [
+            "re",
+            "List",
+            "Optional",
+            "db",
+            "Menu"
+          ],
+          "classes": [
+            {
+              "class_name": "MenuService",
+              "methods": [
+                {
+                  "method_name": "get_all",
+                  "parameters": [
+                    "active_only"
+                  ],
+                  "return_type": "List[Menu]",
+                  "description": "Ambil semua menu, default cuma yang aktif (untuk customer)."
+                },
+                {
+                  "method_name": "get_by_id",
+                  "parameters": [
+                    "menu_id"
+                  ],
+                  "return_type": "Optional[Menu]",
+                  "description": ""
+                },
+                {
+                  "method_name": "get_by_category",
+                  "parameters": [
+                    "category",
+                    "active_only"
+                  ],
+                  "return_type": "List[Menu]",
+                  "description": ""
+                },
+                {
+                  "method_name": "search",
+                  "parameters": [
+                    "keyword",
+                    "active_only"
+                  ],
+                  "return_type": "List[Menu]",
+                  "description": "Cari menu berdasarkan kata kunci (nama atau deskripsi).\n\n        Keyword dibersihkan dulu (hapus angka & kata filler seperti \"pesan\",\n        \"mau\") dan dipecah per kata, lalu di-AND-kan - supaya frasa mentah\n        seperti \"pesan 2 es teler ori\" tetap match ke \"Es Teler Ori Regular\".\n        Kalau hasil AND kosong, fallback ke pencarian substring keyword asli."
+                },
+                {
+                  "method_name": "get_best_sellers",
+                  "parameters": [
+                    "limit"
+                  ],
+                  "return_type": "List[Menu]",
+                  "description": "Menu terlaris: gabungan flag is_best_seller + sorted by sold_count."
+                },
+                {
+                  "method_name": "create",
+                  "parameters": [
+                    "data"
+                  ],
+                  "return_type": "Menu",
+                  "description": ""
+                },
+                {
+                  "method_name": "update",
+                  "parameters": [
+                    "menu_id",
+                    "data"
+                  ],
+                  "return_type": "Optional[Menu]",
+                  "description": ""
+                },
+                {
+                  "method_name": "delete",
+                  "parameters": [
+                    "menu_id"
+                  ],
+                  "return_type": "bool",
+                  "description": "Soft delete: set is_active=False (sesuai SDD)."
+                },
+                {
+                  "method_name": "toggle_active",
+                  "parameters": [
+                    "menu_id"
+                  ],
+                  "return_type": "bool",
+                  "description": ""
+                },
+                {
+                  "method_name": "count_active",
+                  "parameters": [],
+                  "return_type": "int",
+                  "description": ""
+                }
+              ]
+            }
+          ],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "order_service.py",
+          "file_path": "services/order_service.py",
+          "type": "service",
+          "dependencies": [
+            "uuid",
+            "datetime",
+            "timezone",
+            "Optional",
+            "List",
+            "joinedload",
+            "func",
+            "db",
+            "Order",
+            "OrderItem",
+            "Menu",
+            "CartService"
+          ],
+          "classes": [
+            {
+              "class_name": "OrderService",
+              "methods": [
+                {
+                  "method_name": "generate_code",
+                  "parameters": [],
+                  "return_type": "str",
+                  "description": "Format: ORD-YYYYMMDD-XXXX (sesuai SDD)."
+                },
+                {
+                  "method_name": "create_order",
+                  "parameters": [
+                    "session_id",
+                    "customer_data"
+                  ],
+                  "return_type": "Optional[Order]",
+                  "description": "Buat order baru dari isi cart (ONLINE_PREORDER).\n        Transactional: rollback kalau ada error di tengah proses."
+                },
+                {
+                  "method_name": "create_walkin",
+                  "parameters": [
+                    "items",
+                    "customer_data"
+                  ],
+                  "return_type": "Optional[Order]",
+                  "description": "Buat order walk-in (admin input manual customer datang langsung).\n        items: [{menu_id: int, quantity: int}]"
+                },
+                {
+                  "method_name": "get_by_code",
+                  "parameters": [
+                    "order_code"
+                  ],
+                  "return_type": "Optional[Order]",
+                  "description": "Ambil order + items + menu dalam SATU query (eager loading).\n\n        Lookup case-insensitive karena kode pesanan kadang ditulis ulang\n        dengan huruf besar/kecil berbeda (misal oleh chatbot atau saat\n        diketik manual oleh pelanggan di /track)."
+                },
+                {
+                  "method_name": "get_recent",
+                  "parameters": [
+                    "limit"
+                  ],
+                  "return_type": "List[Order]",
+                  "description": "Ambil order terbaru dengan items pre-loaded."
+                },
+                {
+                  "method_name": "get_active",
+                  "parameters": [],
+                  "return_type": "List[Order]",
+                  "description": "Order yang masih diproses (menunggu/memasak/siap)."
+                },
+                {
+                  "method_name": "update_status",
+                  "parameters": [
+                    "order_id",
+                    "new_status"
+                  ],
+                  "return_type": "Optional[Order]",
+                  "description": ""
+                },
+                {
+                  "method_name": "cancel",
+                  "parameters": [
+                    "order_id"
+                  ],
+                  "return_type": "bool",
+                  "description": ""
+                },
+                {
+                  "method_name": "count_active",
+                  "parameters": [],
+                  "return_type": "int",
+                  "description": ""
+                },
+                {
+                  "method_name": "count_completed_today",
+                  "parameters": [],
+                  "return_type": "int",
+                  "description": "Order yang selesai hari ini."
+                },
+                {
+                  "method_name": "count_completed_all",
+                  "parameters": [],
+                  "return_type": "int",
+                  "description": "Semua order yang selesai sepanjang waktu."
+                },
+                {
+                  "method_name": "save_rating",
+                  "parameters": [
+                    "order_code",
+                    "rating_val"
+                  ],
+                  "return_type": "bool",
+                  "description": "Update rata-rata rating menu yang dibeli."
+                },
+                {
+                  "method_name": "delete_order",
+                  "parameters": [
+                    "order_id"
+                  ],
+                  "return_type": "bool",
+                  "description": "Menghapus pesanan beserta item di dalamnya secara permanen."
+                }
+              ]
+            }
+          ],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "recommendation_service.py",
+          "file_path": "services/recommendation_service.py",
+          "type": "service",
+          "dependencies": [
+            "timedelta",
+            "List",
+            "joinedload",
+            "db",
+            "Menu",
+            "Recommendation",
+            "CartItem",
+            "Cart",
+            "now_utc"
+          ],
+          "classes": [
+            {
+              "class_name": "RecommendationService",
+              "methods": [
+                {
+                  "method_name": "get_recommendations",
+                  "parameters": [
+                    "session_id",
+                    "limit"
+                  ],
+                  "return_type": "List[dict]",
+                  "description": "Entry point utama (dipanggil dari routes/customer.py).\n        Cek cache dulu, generate baru kalau perlu."
+                },
+                {
+                  "method_name": "_get_cached",
+                  "parameters": [
+                    "session_id"
+                  ],
+                  "return_type": "List[Recommendation]",
+                  "description": "Ambil cache rekomendasi yang masih valid (belum expired)."
+                },
+                {
+                  "method_name": "generate_for_session",
+                  "parameters": [
+                    "session_id",
+                    "limit"
+                  ],
+                  "return_type": "List[Recommendation]",
+                  "description": "Generate rekomendasi baru dan simpan ke DB sebagai cache.\n        Algoritma: rule-based scoring."
+                },
+                {
+                  "method_name": "_get_user_preferred_categories",
+                  "parameters": [
+                    "session_id"
+                  ],
+                  "return_type": "dict",
+                  "description": "Hitung kategori favorit user berdasarkan history cart.\n        Return: {category: count}"
+                },
+                {
+                  "method_name": "_calculate_match_score",
+                  "parameters": [
+                    "menu",
+                    "user_categories"
+                  ],
+                  "return_type": "tuple",
+                  "description": "Hitung match score (0.0 - 1.0) + reason.\n\n        Faktor:\n        - Best seller flag: +0.30\n        - Favorite flag: +0.20\n        - High sold count: +0.15 (relatif)\n        - High rating: +0.15 (relatif)\n        - Match kategori favorit user: +0.20\n        Base: 0.30"
+                }
+              ]
+            }
+          ],
+          "functions": [],
+          "api_endpoints": []
+        },
+        {
+          "file_name": "upload_service.py",
+          "file_path": "services/upload_service.py",
+          "type": "service",
+          "dependencies": [
+            "Optional",
+            "cloudinary.uploader",
+            "CloudinaryError",
+            "FileStorage"
+          ],
+          "classes": [
+            {
+              "class_name": "UploadService",
+              "methods": [
+                {
+                  "method_name": "is_allowed",
+                  "parameters": [
+                    "filename"
+                  ],
+                  "return_type": "bool",
+                  "description": ""
+                },
+                {
+                  "method_name": "upload_menu_image",
+                  "parameters": [
+                    "file"
+                  ],
+                  "return_type": "Optional[str]",
+                  "description": "Upload gambar menu ke Cloudinary, return secure URL.\n        Raise ValueError kalau format tidak didukung atau upload gagal."
+                }
+              ]
+            }
+          ],
+          "functions": [],
+          "api_endpoints": []
+        }
+      ]
+    }
+  ]
+}

@@ -40,8 +40,67 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from app.services.compiler_service import generate_docx  # noqa: E402
+from scripts.evaluate_document import evaluate  # noqa: E402
 
 FIXTURE_DIRS = [ROOT / "dummy_data", ROOT / "scripts" / "validation" / "out"]
+
+
+def _contract_a_for(fixture: Path) -> Path | None:
+    """Contract A pasangan sebuah fixture Contract B, kalau ada.
+
+    Dua konvensi penamaan yang dipakai repo ini:
+      `esteler-flask__SDD_contract_b.json` -> `esteler-flask__contract_a.json`
+      `contract_b_rich_sdd.json`           -> `contract_a_rich_sdd.json`
+
+    Mengembalikan None kalau tak ketemu — itu bukan kesalahan: metrik konsistensi
+    tetap jalan tanpa Contract A, dan lebih baik mengukur SEBAGIAN daripada diam.
+    """
+    stem = fixture.stem
+    kandidat = []
+    if "__" in stem:
+        kandidat.append(f"{stem.split('__', 1)[0]}__contract_a.json")
+    if "contract_b" in stem:
+        kandidat.append(f"{stem.replace('contract_b', 'contract_a')}.json")
+    for nama in kandidat:
+        path = fixture.parent / nama
+        if path.exists():
+            return path
+    return None
+
+
+def _is_stale_schema(data: dict) -> bool:
+    """Contract B pra-2026-07-16 — field diagram masih bentuk Mermaid.
+
+    Dipakai untuk MELEWATI pengukuran mutu, sama seperti render melewatinya.
+    Alasannya bukan kerapian: id node Mermaid (`BukaHome[Buka Home]`) terbaca
+    sebagai istilah teknis tak berjejak, dan dua fixture basi menyumbang 42 dari
+    50 temuan — cukup untuk menenggelamkan temuan yang sungguhan.
+    """
+    diagrams = data.get("diagrams", {})
+    skalar = [v for v in diagrams.values() if isinstance(v, str) and v.strip()]
+    return bool(skalar) and not any("@start" in v for v in skalar)
+
+
+def _quality_line(fixture: Path, data: dict) -> tuple[str, int]:
+    """Satu baris ringkas mutu ISI + jumlah temuan yang layak diperiksa manusia.
+
+    Ada di sini supaya mutu isi ikut TERUKUR tiap kali regresi visual dijalankan,
+    bukan sekali saat ditulis lalu terlupakan. Grounding & representasi butuh
+    Contract A; konsistensi tidak, jadi dia selalu jalan.
+    """
+    if _is_stale_schema(data):
+        return ("dilewati (fixture skema lama)", 0)
+    contract_a_path = _contract_a_for(fixture)
+    contract_a = (json.loads(contract_a_path.read_text(encoding="utf-8"))
+                  if contract_a_path else {})
+    hasil = evaluate(contract_a, data)
+    g, r, k = hasil["grounding"], hasil["representasi"], hasil["konsistensi"]
+    temuan = len(g["tak_berjejak"]) + k["jumlah"]
+    if contract_a_path is None:
+        return (f"konsistensi {k['jumlah']} pertentangan "
+                f"(grounding/representasi dilewati: Contract A tak ada)", k["jumlah"])
+    return (f"grounding {g['rasio']:.0%}, representasi {r['rasio']:.0%}, "
+            f"{k['jumlah']} pertentangan", temuan)
 
 
 def _find_fixtures(pattern: str | None) -> list[Path]:
@@ -99,6 +158,7 @@ def main() -> int:
     print(f"{len(fixtures)} fixture x {len(templates)} template — plantuml SUNGGUHAN, $0\n")
     failures = 0
     stale = 0
+    findings = 0
     for path in fixtures:
         data = json.loads(path.read_text(encoding="utf-8"))
         counts = (f"{len(data.get('feature_requirements', []))}f/"
@@ -106,6 +166,15 @@ def main() -> int:
                   f"{len(data.get('diagrams', {}).get('activity_diagrams', []))}ad/"
                   f"{len(data.get('uat_test_cases', []))}tc")
         print(f"{path.stem[:44]:46} {counts}")
+        try:
+            mutu, temuan = _quality_line(path, data)
+            findings += temuan
+            print(f"  {'mutu isi':22} {mutu}")
+        except Exception as e:                              # noqa: BLE001
+            # Fixture skema lama bisa saja tak punya bentuk yang diharapkan
+            # evaluator. Itu tak boleh menggagalkan regresi VISUAL — dua
+            # pertanyaan yang berbeda.
+            print(f"  {'mutu isi':22} tak terukur ({type(e).__name__})")
         for doc_type in ("SDD", "UAT"):
             for template_id in templates:
                 label = f"  {doc_type}/{template_id}"
@@ -142,7 +211,13 @@ def main() -> int:
     summary = f"Selesai. {failures} gagal"
     if stale:
         summary += f", {stale} dilewati (fixture skema lama — bukan regresi)"
+    if findings:
+        summary += f", {findings} temuan mutu isi (periksa manual)"
     print(summary + ".")
+    # Exit code SENGAJA cuma mencerminkan kegagalan render. Temuan mutu itu
+    # sinyal untuk dibaca manusia, bukan vonis: grounding bisa keliru menuduh
+    # (istilah sah yang tak muncul literal di Contract A), dan harness yang
+    # selalu merah akan diabaikan orang — saat itulah regresi SUNGGUHAN terlewat.
     return 1 if failures else 0
 
 
