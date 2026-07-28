@@ -196,8 +196,11 @@ def generate_document_full_pipeline(
 
     # Prinsip yang sama untuk pilihan template: kombinasi template x jenis
     # dokumen yang tidak tersedia ditolak SEKARANG, bukan jadi job gagal.
+    # `principal` ikut supaya template hasil-upload MILIK ORANG LAIN ditolak
+    # persis seperti template yang tidak ada — pesan & kode yang sama, sebab
+    # membedakannya justru memberi tahu template siapa saja yang ada di server.
     try:
-        validate_template(body.template_id, doc_type)
+        validate_template(body.template_id, doc_type, caller=principal)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e)) from e
 
