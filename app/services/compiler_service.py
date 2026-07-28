@@ -14,10 +14,12 @@ import base64
 import copy
 import io
 import json
+import logging
 import re
 import subprocess
 import tempfile
 import uuid
+import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -25,16 +27,19 @@ from typing import Any
 import docx
 import pypandoc
 from docx.enum.section import WD_ORIENT
-from docx.enum.table import WD_ROW_HEIGHT_RULE
+from docx.enum.table import WD_ALIGN_VERTICAL, WD_ROW_HEIGHT_RULE
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
-from docx.shared import Inches
+from docx.shared import Inches, Pt, RGBColor
 from jinja2 import Environment, FileSystemLoader
-from PIL import Image, UnidentifiedImageError
+from PIL import Image, ImageChops, ImageDraw, UnidentifiedImageError
 
 from app.core import config
+from app.diagram import activity_render
 from app.domain.exceptions import DiagramRenderError
+
+logger = logging.getLogger(__name__)
 
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
 OUTPUT_DIR = Path(tempfile.gettempdir()) / "auto_document_generator"
@@ -123,6 +128,9 @@ REFERENCE_DOCX = TEMPLATES_DIR / "reference.docx"
 # hasil-kompilasi upload membawa flag ini di manifest-nya.
 _BUILTIN_GROUPS_TEST_CASES = {"premco"}   # sisanya (default) pakai tabel test flat
 _BUILTIN_UAT_TOC = {"default"}            # sisanya (premco) tanpa Daftar Isi
+# Cover SDD di-align KANAN (blok judul + identitas), meniru cover PREMCO — atas
+# permintaan pemilik (2026-07-21 lanjutan 11). Hanya premco; default tetap tengah.
+_BUILTIN_COVER_ALIGN_RIGHT = {"premco"}
 
 
 @dataclass(frozen=True)
@@ -136,6 +144,7 @@ class _ResolvedTemplate:
     uses_component_integration: bool  # render diagram Component Integration?
     groups_test_cases: bool           # UAT: kelompokkan test-case per modul?
     uat_toc: bool                     # UAT: pasang --toc?
+    cover_align_right: bool           # SDD: ratakan kanan blok judul cover?
 
 
 def _load_compiled_manifest(template_id: str) -> dict | None:
@@ -193,6 +202,7 @@ def _resolve_template(template_id: str, normalized_type: str) -> _ResolvedTempla
             uses_component_integration=template_id in _TEMPLATES_USING_COMPONENT_INTEGRATION,
             groups_test_cases=template_id in _BUILTIN_GROUPS_TEST_CASES,
             uat_toc=template_id in _BUILTIN_UAT_TOC,
+            cover_align_right=template_id in _BUILTIN_COVER_ALIGN_RIGHT,
         )
     manifest = _load_compiled_manifest(template_id)
     if manifest is None:
@@ -207,6 +217,7 @@ def _resolve_template(template_id: str, normalized_type: str) -> _ResolvedTempla
         uses_component_integration=manifest.get("uses_component_integration", False),
         groups_test_cases=manifest.get("groups_test_cases", True),
         uat_toc=manifest.get("uat_toc", False),
+        cover_align_right=manifest.get("cover_align_right", False),
     )
 
 # Ketajaman render PlantUML. Default PlantUML 96 dpi — cukup untuk layar, buram
@@ -223,25 +234,141 @@ _PLANTUML_LIMIT_SIZE = 16384
 
 # Gaya visual diagram disuntik DI SINI, bukan ditulis LLM — filosofi yang sama
 # dengan reference.docx: rupa dokumen diatur dari satu tempat yang deterministik,
-# bukan dari output model yang bisa berubah-ubah antar panggilan. `!theme plain`
-# = UML klasik hitam-putih, gaya yang dipakai dokumen acuan enterprise.
-_PLANTUML_STYLE_PREAMBLE = ("!theme plain", f"skinparam dpi {_PLANTUML_DPI}")
+# bukan dari output model yang bisa berubah-ubah antar panggilan.
+#
+# "TEMA ENTERPRISE" (Fase 1, 2026-07-22): menggantikan tampilan hitam-putih polos
+# `!theme plain` yang membuat diagram terlihat seperti default PlantUML. Dipilih
+# lewat Fase 0 — perbandingan berdampingan render esteler (PlantUML kini vs
+# ber-tema vs D2, di scratchpad): tema ini uplift SERAGAM di ketiga tipe diagram
+# (arsitektur/use case/activity) tanpa dependency baru & tanpa menyentuh pipeline
+# AI, dan untuk use case + activity JUSTRU lebih baik daripada D2 (layout UML
+# klasiknya lebih terbaca; D2 unggul hanya di graf-node arsitektur). Ikon vendor
+# TIDAK ditambahkan: glyph generik redundan dengan bentuk (cylinder = database),
+# dan logo vendor mustahil dicocokkan andal untuk service sembarang (cherry-pick).
+#
+# `!theme plain` TETAP jadi BASIS (menetralkan latar kuning default PlantUML untuk
+# elemen yang tak kita warnai eksplisit); skinparam di bawahnya menimpanya. Palet:
+# biru-abu korporat + aksen hangat (database) & ungu (cloud). Font SENGAJA tidak
+# dipatok (mis. "Segoe UI" cuma ada di Windows; diagram dirender SERVER-SIDE) —
+# biar konsisten lintas OS; uplift-nya datang dari warna/rounded/shadow, bukan font.
+_PLANTUML_STYLE_PREAMBLE = (
+    "!theme plain",
+    f"skinparam dpi {_PLANTUML_DPI}",
+    "skinparam backgroundColor #FFFFFF",
+    "skinparam shadowing true",
+    "skinparam roundcorner 12",
+    "skinparam defaultFontSize 13",
+    "skinparam ArrowColor #6B7A8D",
+    "skinparam ArrowThickness 1.2",
+    "skinparam ArrowFontColor #55636F",
+    "skinparam componentStyle rectangle",
+    "skinparam componentBackgroundColor #EEF4FB",
+    "skinparam componentBorderColor #2E6BB0",
+    "skinparam componentFontColor #17324D",
+    "skinparam databaseBackgroundColor #FBEFE0",
+    "skinparam databaseBorderColor #C87E22",
+    "skinparam databaseFontColor #6B3F0B",
+    "skinparam cloudBackgroundColor #F3EEF9",
+    "skinparam cloudBorderColor #7A4FB0",
+    "skinparam cloudFontColor #3A2560",
+    "skinparam actorBackgroundColor #EAF2FA",
+    "skinparam actorBorderColor #2E6BB0",
+    "skinparam usecaseBackgroundColor #EEF4FB",
+    "skinparam usecaseBorderColor #2E6BB0",
+    "skinparam usecaseFontColor #17324D",
+    "skinparam rectangleBackgroundColor #F8FAFC",
+    "skinparam rectangleBorderColor #C2CDDA",
+    "skinparam activityBackgroundColor #EEF4FB",
+    "skinparam activityBorderColor #2E6BB0",
+    "skinparam activityFontColor #17324D",
+    "skinparam activityDiamondBackgroundColor #FBEFE0",
+    "skinparam activityDiamondBorderColor #C87E22",
+    "skinparam activityStartColor #2E6BB0",
+    "skinparam activityEndColor #C0392B",
+)
+
+# Gaya POLOS — UML klasik hitam-putih, TANPA warna tema. Dipakai untuk tiga tipe
+# diagram yang dokumen acuannya (PREMCO, digambar draw.io) memang hitam-putih:
+# use case, activity, dan flow proses bisnis. Keputusan pemilik 2026-07-22:
+# "use case, activity, dan flow proses bisnis tidak perlu tema supaya lebih mirip".
+# Tema berwarna TETAP dipakai diagram arsitektur & integrasi komponen, yang di
+# acuan memang bukan UML hitam-putih dan terbukti lebih terbaca dengan warna.
+# `conditionStyle InsideDiamond` = keputusan digambar sebagai DIAMOND sungguhan
+# dengan teks kondisi DI DALAMNYA dan label cabang di kiri-kanan — bentuk yang
+# dipakai activity diagram draw.io acuan. Bawaan PlantUML menggambar heksagon
+# dengan teks menempel di sisinya, yang tak pernah terbaca seperti flowchart.
+# (Diprobe berdampingan: default vs `diamond` vs `InsideDiamond`; yang terakhir
+# paling dekat ke acuan.) Hanya berpengaruh pada diagram activity.
+_PLANTUML_PLAIN_PREAMBLE = ("!theme plain", f"skinparam dpi {_PLANTUML_DPI}",
+                            "skinparam conditionStyle InsideDiamond")
+
+# Bingkai penutup swimlane (lihat _close_swimlane_border): napas antara isi dan
+# garis bingkai, dan tebal garisnya. Disamakan dengan tebal garis lane PlantUML
+# supaya bingkai terbaca sebagai bagian diagram, bukan tempelan.
+_SWIMLANE_BORDER_PAD = 10
+_SWIMLANE_BORDER_WIDTH = 2
+# Garis header lane dicari hanya di pita ATAS diagram. Kalau "celah sepi" baru
+# ketemu lebih jauh dari ini, yang terdeteksi hampir pasti bukan baris judul —
+# lebih baik tanpa garis header daripada memotong badan diagram.
+_SWIMLANE_HEADER_MAX_FRAC = 0.25
+# Paling banyak dua pita header: judul diagram, lalu baris nama lane.
+_SWIMLANE_HEADER_MAX_LINES = 2
 
 # Ruang yang benar-benar tersedia di halaman, dipakai _image_attr untuk membatasi
 # ukuran tampil diagram. Lebar: 8,5 inci dikurangi margin 1 inci di dua sisi.
-# Tinggi: 11 dikurangi margin, dikurangi lagi ruang untuk judul sub-bab dan
-# caption di bawah gambar — 8 inci konservatif, dan lebih baik diagram sedikit
-# lebih kecil daripada tumpah ke halaman berikutnya.
 _PAGE_WIDTH_IN = 6.5
-_PAGE_HEIGHT_IN = 8.0
 
-# Berapa piksel PNG per inci TAMPIL di dokumen. Ini kunci dua cacat visual
-# sekaligus: (1) diagram kecil yang DIRENTANGKAN selebar halaman jadi buram +
-# hurufnya raksasa — jangan pernah upscale; (2) teks diagram harus seragam antar
-# diagram. 360 px/inci pada render 300 dpi ≈ teks ~9pt di kertas (sedikit di
-# bawah body 11pt, seperti diagram dokumen acuan) dengan ketajaman efektif
-# 360 dpi. Menaikkan angka ini = teks lebih kecil & lebih tajam.
+# Tinggi maksimum diagram. BUKAN sekadar "tinggi halaman dikurangi margin":
+# gambar tidak pernah berjalan sendirian — judul sub-bab, kalimat pengantar, dan
+# caption terikat padanya (keepNext, lihat _bind_lead_in_to_figure). Kalau
+# batasnya dibiarkan setinggi mungkin, kelompok itu tak akan pernah muat di satu
+# halaman, dan Word memindahkan SELURUHNYA — meninggalkan halaman yang isinya
+# cuma sisa paragraf sebelumnya lalu 8 inci putih (terlihat di render esteler
+# halaman 13: 4 baris teks, sisanya kosong). Jadi batas ini menyisakan ruang
+# untuk rombongannya sendiri.
+_TEXT_HEIGHT_IN = 9.0  # 11 inci - margin 1 inci atas & bawah
+_FIGURE_GROUP_RESERVE_IN = 2.0  # judul sub-bab + pengantar + caption
+_PAGE_HEIGHT_IN = _TEXT_HEIGHT_IN - _FIGURE_GROUP_RESERVE_IN
+
+# Berapa piksel PNG per inci TAMPIL di dokumen — penentu ukuran teks di dalam
+# diagram, dan teks itu harus seragam ANTAR diagram. 360 px/inci pada render 300
+# dpi ≈ teks ~9pt di kertas (sedikit di bawah body 11pt, seperti diagram dokumen
+# acuan). Menaikkan angka ini = teks lebih kecil & lebih tajam.
 _DIAGRAM_DISPLAY_DPI = 360
+
+# Lantai ukuran diagram (lihat _image_attr aturan 2 & 3). Diagram yang lebih
+# kecil dari `TARGET_WIDTH_FRAC` x lebar area teks dibesarkan sampai menyentuhnya.
+# 0,80 = tengah-tengah pita 75-90% yang diminta pemilik, dan masih di dalam pita
+# 43-95% yang TERUKUR dari diagram dokumen acuan.
+_DIAGRAM_TARGET_WIDTH_FRAC = 0.80
+
+# Ketajaman minimum yang masih pantas dicetak (ambang yang sama dengan komentar
+# _PLANTUML_DPI). Salah satu dari dua batas pembesaran, DITURUNKAN bukan ditebak:
+# gambar dirender _PLANTUML_DPI dan ditampilkan pada _DIAGRAM_DISPLAY_DPI, jadi
+# memperbesar n kali menurunkan kerapatan efektif jadi _PLANTUML_DPI/n.
+_DIAGRAM_MIN_EFFECTIVE_DPI = 150
+
+# Batas kedua, dan biasanya inilah yang menggigit: UKURAN TEKS DI DALAM DIAGRAM.
+# Memperbesar gambar ikut memperbesar hurufnya, dan diagram berhuruf lebih besar
+# dari teks badan terbaca seperti poster — tidak ada dokumen enterprise yang
+# begitu (di PDF acuan teks diagram justru LEBIH KECIL dari teks badan).
+#
+# Ukuran alaminya dihitung, bukan ditebak: PlantUML memakai font 14 px pada 96
+# dpi, dirender pada _PLANTUML_DPI, lalu ditampilkan pada _DIAGRAM_DISPLAY_DPI.
+_DIAGRAM_NATURAL_TEXT_PT = 14 * (_PLANTUML_DPI / 96) / _DIAGRAM_DISPLAY_DPI * 72
+# 12,5pt = sedikit di atas teks badan 11pt: cukup longgar supaya diagram boleh
+# membesar, cukup ketat supaya tidak pernah terbaca sebagai poster.
+_DIAGRAM_MAX_TEXT_PT = 12.5
+
+# Konsekuensi yang DISENGAJA dari dua batas di atas: diagram yang secara
+# struktur sederhana (use case 1 aktor 2 oval) TIDAK akan mencapai target lebar,
+# karena lebar dan ukuran huruf terkunci satu sama lain — melebarkannya sampai
+# 80% berarti hurufnya jadi 17pt. Diagram yang RUMIT (yang memang perlu ruang)
+# mencapainya. Lantainya naik tanpa ada yang jadi poster.
+_DIAGRAM_MAX_UPSCALE = min(
+    _PLANTUML_DPI / _DIAGRAM_MIN_EFFECTIVE_DPI,
+    _DIAGRAM_MAX_TEXT_PT / _DIAGRAM_NATURAL_TEXT_PT,
+)
 
 _MANUAL_PLACEHOLDER = "*(diisi manual)*"
 
@@ -252,6 +379,21 @@ _MANUAL_PLACEHOLDER = "*(diisi manual)*"
 # bukan ditebak.
 _TITLE_BAR_MARKER = "((BAR))"
 _TITLE_BAR_FILL = "9CC3E5"
+
+# Bar judul HITAM blok tanda tangan gaya PREMCO (Perwakilan User/Pengembang).
+# Mekanisme sama dengan ((BAR)) biru — baris pertama tabel di-merge jadi satu bar
+# berjudul — tapi latarnya HITAM dengan teks PUTIH, dan baris di bawahnya jadi
+# ruang tanda tangan yang ditinggikan. Diukur dari docx PREMCO asli: bar fill
+# 000000, tabel 3 baris × 2 kolom (bar, ruang tanda tangan, nama/jabatan).
+_SIGNATURE_BAR_MARKER = "((SIGBAR))"
+_SIGNATURE_BAR_FILL = "000000"
+_WHITE_INK = "FFFFFF"
+
+# Kolom "Entitas" tabel Tim Project cover gaya PREMCO di-merge VERTIKAL: satu
+# nilai perusahaan memayungi seluruh baris tim. Pipe table Markdown tak bisa
+# merge vertikal, jadi template menandai sel HEADER kolom itu dengan marker ini;
+# post-process yang menggabung sel data kolom 0 (baris 1..N) jadi satu.
+_COVER_MERGE_MARKER = "((CVMERGE))"
 
 # Pemisah baris DI DALAM sel tabel. Markdown pipe table tidak bisa memuat baris
 # baru, dan `<br/>` DIBUANG diam-diam oleh writer docx Pandoc (raw HTML tidak
@@ -275,6 +417,33 @@ _GREEN_HEADER_FILL = "a8d08d"
 # memecah section di situ dan memutar sisanya jadi landscape. Pandoc tidak punya
 # konsep "section landscape sebagian", jadi ini satu-satunya tempat deterministik.
 _LANDSCAPE_MARKER = "((LANDSCAPE))"
+
+# Pasangan `((LANDSCAPE))`: mengembalikan orientasi ke potret. Tidak dibutuhkan
+# premco UAT (di sana landscape memang sampai akhir dokumen), tapi WAJIB ada
+# untuk template hasil-upload: template sembarang bisa punya satu bab landscape
+# di TENGAH lalu kembali potret, dan tanpa penutup ini sisa dokumennya ikut
+# terputar. Lihat _apply_orientation_markers.
+_PORTRAIT_MARKER = "((PORTRAIT))"
+
+# Blok cover yang TANPA kotak-kotak tabel. Keduanya tetap ditulis sebagai pipe
+# table di template — itu satu-satunya cara Markdown menjamin kolom yang lurus —
+# lalu post-process MELEPAS rupa tabelnya. Hasilnya: perataan seakurat tabel,
+# tampilan setenang teks. Marker ditaruh di sel PERTAMA (pola yang sama dengan
+# ((GH))), dan dibuang saat diproses.
+#
+#   ((CVBAND)) = pita identitas 3 kolom (Versi | RFC # | Classification):
+#                tanpa garis sama sekali, label kecil-abu di atas nilai besar.
+#   ((CVLIST)) = daftar label→nilai 2 kolom (kodifikasi, katalog, tim project):
+#                cuma hairline antar-baris, tanpa bingkai luar.
+_COVER_BAND_MARKER = "((CVBAND))"
+_COVER_LIST_MARKER = "((CVLIST))"
+
+# Abu-abu garis & teks sekunder cover. Nilainya SAMA dengan yang dipakai
+# reference_synthesis_service (GRID / SEMIBOLD_INK); di-copy sebagai konstanta
+# lokal karena compiler tidak boleh bergantung ke modul sintesis reference —
+# reference.docx bisa datang dari template hasil upload (V2).
+_COVER_RULE_INK = "BFBFBF"
+_COVER_LABEL_INK = "595959"
 
 # Logo di header: tinggi standar meniru logo dokumen acuan (~0,45 inci di kanan
 # atas tiap halaman). Logo pita yang sangat lebar dibatasi LEBARNYA supaya tidak
@@ -395,7 +564,240 @@ def _sanitize_route_param_brackets(script: str) -> str:
     return script
 
 
-def _normalize_plantuml(diagram_script: str) -> str:
+# Subjek kalimat yang menandai satu langkah dikerjakan SISTEM (bukan aktor).
+# Dipakai `_add_swimlanes` untuk menebak lane tiap langkah.
+_SYSTEM_SUBJECTS = ("sistem", "aplikasi", "server", "backend", "api", "service",
+                    "layanan", "database", "chatbot")
+# Kata pembuka yang menandai langkah dikerjakan MANUSIA, kalau nama aktornya
+# sendiri tidak muncul di awal kalimat.
+_ACTOR_SUBJECTS = ("user", "pengguna", "admin", "customer", "pelanggan", "kasir",
+                   "staf", "petugas", "operator")
+_ACTIVITY_ACTION = re.compile(r"^(\s*):(.+);\s*$")   # baris aksi `:Langkah;`
+_EXISTING_LANE = re.compile(r"^\s*\|[^|]*\|\s*$")    # baris `|Lane|` yang sudah ada
+
+
+def _lane_for_step(text: str, actor_lane: str, system_lane: str) -> str | None:
+    """Lane untuk satu langkah activity, atau None kalau SUBJEKNYA TIDAK JELAS.
+
+    None berarti "warisi lane berjalan" — sengaja, bukan malas: menebak lane untuk
+    kalimat tanpa subjek jelas ("Validasi data") lebih berbahaya daripada
+    membiarkannya di lane sebelumnya, karena lane yang SALAH menyatakan tanggung
+    jawab yang salah — dan itu kesalahan isi, bukan sekadar rupa.
+    """
+    lowered = text.strip().lower()
+    if any(lowered.startswith(word) for word in _SYSTEM_SUBJECTS):
+        return system_lane
+    first_word = actor_lane.strip().lower().split()[0] if actor_lane.strip() else ""
+    if first_word and lowered.startswith(first_word):
+        return actor_lane
+    if any(lowered.startswith(word) for word in _ACTOR_SUBJECTS):
+        return actor_lane
+    return None
+
+
+def _has_swimlanes(diagram_script: str) -> bool:
+    """Apakah script sudah memuat baris lane `|Nama|`? Dipakai untuk memutuskan
+    apakah diagram perlu dibingkai — lane bisa datang dari LLM ATAU dari
+    `_add_swimlanes`, dan keduanya sama-sama butuh bingkai penutup."""
+    return any(_EXISTING_LANE.match(line) for line in diagram_script.splitlines())
+
+
+def _add_swimlanes(diagram_script: str, actor: str | None) -> str:
+    """Sisipkan swimlane `|Aktor|`/`|Sistem|` ke PlantUML ACTIVITY dari LLM.
+
+    Kenapa di sini dan bukan di prompt: dokumen acuan (PREMCO, dibuat draw.io)
+    memakai swimlane User|Sistem, dan itulah ciri utama "activity diagram yang
+    baik" menurut pemilik. PlantUML mendukungnya native — yang kurang cuma
+    INFORMASI siapa mengerjakan apa. Ternyata informasi itu SUDAH ada: prompt
+    llm_service mewajibkan tiap langkah difrasakan "Aktor melakukan X" /
+    "Sistem merespons Y", jadi subjeknya selalu di awal kalimat dan bisa dibaca
+    tanpa menyentuh pipeline AI sama sekali. Diukur pada 8 diagram esteler nyata:
+    8/8 render sukses, NOL langkah ambigu.
+
+    Konservatif — dikembalikan APA ADANYA kalau:
+      * script sudah punya lane (LLM/temp lain sudah mengaturnya), atau
+      * bukan activity beta (tak ada baris `:Langkah;`) — jadi diagram
+        arsitektur/komponen/use case tak mungkin tersentuh.
+    Lane hanya ditulis saat BERUBAH (PlantUML mewariskan lane berjalan).
+    """
+    actor_lane = (actor or "User").strip() or "User"
+    system_lane = "Sistem"
+    if actor_lane.lower() == system_lane.lower():
+        actor_lane = "User"
+
+    lines = diagram_script.splitlines()
+    if _has_swimlanes(diagram_script):
+        return diagram_script
+    if not any(_ACTIVITY_ACTION.match(line) for line in lines):
+        return diagram_script
+
+    out: list[str] = []
+    current: str | None = None
+    for line in lines:
+        match = _ACTIVITY_ACTION.match(line)
+        if match:
+            indent, text = match.group(1), match.group(2)
+            lane = _lane_for_step(text, actor_lane, system_lane)
+            if lane is not None and lane != current:
+                out.append(f"{indent}|{lane}|")
+                current = lane
+        elif line.strip() == "start" and current is None:
+            # Alur activity selalu dimulai dari sisi manusia di dokumen acuan.
+            out.append(f"|{actor_lane}|")
+            current = actor_lane
+        out.append(line)
+    return "\n".join(out)
+
+
+def _swimlane_header_bottoms(image, content_top: int) -> list[int]:
+    """Cari batas bawah pita-pita HEADER di atas diagram swimlane.
+
+    Membaca "tinta per baris": pita berteks (judul diagram, lalu nama lane) berisi
+    banyak piksel gelap, dan di antaranya ada CELAH yang isinya cuma garis lane
+    vertikal (tinta sangat sedikit). Tiap peralihan berteks -> sepi = satu batas.
+
+    Kembalikan sampai `_SWIMLANE_HEADER_MAX_LINES` batas, urut dari atas:
+      * dengan `title` -> 2 batas (bawah judul, bawah baris nama lane)
+      * tanpa `title`  -> 1 batas (bawah baris nama lane)
+    Dibatasi `_SWIMLANE_HEADER_MAX_FRAC` tinggi diagram: di luar itu yang
+    terdeteksi hampir pasti badan diagram, dan menggambar garis di situ akan
+    memotongnya.
+    """
+    grey = image.convert("L")
+    width, height = grey.size
+    pixels = grey.load()
+    quiet = max(6, int(0.01 * width))     # ambang "cuma garis lane vertikal"
+    limit = min(height, content_top + int(height * _SWIMLANE_HEADER_MAX_FRAC))
+    bottoms: list[int] = []
+    seen_text = False
+    for y in range(content_top, limit):
+        ink = sum(1 for x in range(width) if pixels[x, y] < 200)
+        if ink > quiet:
+            seen_text = True
+        elif seen_text:
+            bottoms.append(y)
+            seen_text = False
+            if len(bottoms) >= _SWIMLANE_HEADER_MAX_LINES:
+                break
+    return bottoms
+
+
+def _close_swimlane_border(image_path: str) -> None:
+    """Bingkai diagram swimlane jadi TABEL: kotak penutup + garis di bawah baris
+    judul lane.
+
+    Dua cacat yang ditutup, keduanya dikeluhkan pemilik. (1) PlantUML menggambar
+    swimlane hanya sebagai garis VERTIKAL — tak ada garis atas & bawah, jadi
+    kotaknya menganga; tidak ada skinparam untuk menutupnya (dua varian diprobe,
+    hasilnya identik). (2) Baris judul lane cuma teks mengambang, sehingga tidak
+    terbaca sebagai header tabel; acuan draw.io memisahkannya dengan garis.
+
+    Hasilnya: kolom kiri = lajur aktor, kolom kanan = lajur Sistem, dengan header
+    ber-garis — "tabel sebagai latar, alur menyesuaikan lajurnya".
+
+    Digambar sesudah PNG jadi — pola yang sama dengan post-process docx: yang tak
+    bisa diminta ke generator, direbut setelah hasilnya ada. Bingkai ditarik pada
+    kotak-batas ISI + sedikit napas, jadi menempel pada ujung garis lane.
+    """
+    with Image.open(image_path) as image:
+        rgb = image.convert("RGB")
+        content = ImageChops.difference(
+            rgb, Image.new("RGB", rgb.size, (255, 255, 255))
+        ).getbbox()
+        if content is None:          # diagram kosong — tak ada yang dibingkai
+            return
+        header_bottoms = _swimlane_header_bottoms(rgb, content[1])
+        pad = _SWIMLANE_BORDER_PAD
+        canvas = Image.new("RGB", (rgb.width + 2 * pad, rgb.height + 2 * pad), "white")
+        canvas.paste(rgb, (pad, pad))
+        left, top, right, bottom = content
+        pen = ImageDraw.Draw(canvas)
+        pen.rectangle([left, top, right + 2 * pad, bottom + 2 * pad],
+                      outline=(0, 0, 0), width=_SWIMLANE_BORDER_WIDTH)
+        for y in header_bottoms:
+            pen.line([left, y + pad, right + 2 * pad, y + pad],
+                     fill=(0, 0, 0), width=_SWIMLANE_BORDER_WIDTH)
+        canvas.save(image_path)
+
+
+def _add_diagram_title(diagram_script: str, title: str | None) -> str:
+    """Sisipkan `title` PlantUML sesudah `@startuml`, kalau belum ada.
+
+    Judul dirender di ATAS diagram — dan karena bingkai swimlane ditarik pada
+    kotak-batas ISI, judul itu ikut TERKURUNG di dalam kotak, tepat di atas baris
+    nama lane. Hasilnya pita judul seperti activity diagram draw.io acuan
+    ("Login Premco Website" membentang di atas kolom User|Sistem)."""
+    if not title or not title.strip():
+        return diagram_script
+    if any(line.strip().lower().startswith("title ")
+           for line in diagram_script.splitlines()):
+        return diagram_script            # LLM sudah menulis judul sendiri
+    out, injected = [], False
+    for line in diagram_script.splitlines():
+        out.append(line)
+        if not injected and line.strip().startswith("@startuml"):
+            out.append(f"title {title.strip()}")
+            injected = True
+    return "\n".join(out)
+
+
+def _render_activity_diagram(diagram_script: str, images_dir: Path,
+                             actor: str | None = None,
+                             title: str | None = None) -> str:
+    """Render diagram ACTIVITY: gaya POLOS (hitam-putih) + swimlane + bingkai
+    penutup. Jatuh kembali ke versi TANPA lane kalau versi ber-lane gagal.
+
+    Fallback sempit ini disengaja (bukan `except` lebar yang meratakan sebab —
+    prinsip #3): swimlane itu peningkatan RUPA, dan rupa tidak boleh sanggup
+    menggagalkan seluruh dokumen. Presedennya nyata — kurung route-param Nuxt
+    pernah mematikan SELURUH generate premco lewat satu diagram. Kalau script
+    aslinya sendiri yang rusak, error tetap muncul dari percobaan kedua.
+    """
+    # Jalur draw.io: tata letak dihitung sendiri lalu digambar langsung jadi PNG
+    # (lihat app/diagram/activity_render.py). Dipakai kalau script masih di dalam
+    # subset yang parsernya pahami; kalau tidak (mis. ada `repeat`/`fork`), jatuh
+    # ke PlantUML — lebih baik gaya lama daripada diagram yang isinya hilang.
+    laned = _add_swimlanes(diagram_script, actor)
+    if activity_render.supports(laned):
+        try:
+            ir = activity_render.build_ir(laned, title or "")
+            if ir.nodes:
+                images_dir.mkdir(parents=True, exist_ok=True)
+                path = str(images_dir / f"{uuid.uuid4().hex}.png")
+                activity_render.render_png(ir, path)
+                # Sekalian tulis versi yang BISA DISUNTING, bersebelahan dengan
+                # PNG-nya (stem sama). Gratis: geometrinya sudah dihitung, jadi
+                # gambar di dokumen dan file suntingan mustahil beda bentuk.
+                # Ditulis best-effort — file bonus tak boleh menggagalkan dokumen.
+                try:
+                    Path(path).with_suffix(".drawio").write_text(
+                        activity_render.to_drawio(ir), encoding="utf-8")
+                except OSError:
+                    logger.warning("Gagal menulis .drawio untuk %s", path, exc_info=True)
+                return path
+        except Exception:
+            logger.warning("Render activity gaya draw.io gagal; "
+                           "jatuh ke PlantUML.", exc_info=True)
+
+    script = _add_diagram_title(laned, title)
+    try:
+        path = _render_diagram_to_image(script, images_dir, _PLANTUML_PLAIN_PREAMBLE)
+    except DiagramRenderError:
+        if script == diagram_script:
+            raise            # bukan sisipan kita yang merusak — script aslinya rusak
+        path = _render_diagram_to_image(diagram_script, images_dir,
+                                        _PLANTUML_PLAIN_PREAMBLE)
+        script = diagram_script
+    # Dibingkai kalau hasil AKHIR punya lane — entah lane itu ditulis LLM sendiri
+    # atau disisipkan `_add_swimlanes`. (Dulu keliru: cuma dibingkai kalau KITA
+    # yang menambah, sehingga lane tulisan LLM lolos tanpa bingkai.)
+    if _has_swimlanes(script):
+        _close_swimlane_border(path)
+    return path
+
+
+def _normalize_plantuml(diagram_script: str,
+                        style: tuple[str, ...] = _PLANTUML_STYLE_PREAMBLE) -> str:
     """Siapkan script LLM untuk plantuml.jar: buang fence, lepas kurung siku
     route-param yang merusak sintaks, pastikan terbungkus @startuml/@enduml, lalu
     suntik preamble gaya (theme + dpi) TEPAT sesudah @startuml.
@@ -414,7 +816,7 @@ def _normalize_plantuml(diagram_script: str) -> str:
     for line in script.splitlines():
         lines.append(line)
         if not injected and line.strip().startswith("@startuml"):
-            lines.extend(_PLANTUML_STYLE_PREAMBLE)
+            lines.extend(style)
             injected = True
     return "\n".join(lines)
 
@@ -477,10 +879,15 @@ def _run_plantuml(plantuml_source: str) -> bytes:
     return result.stdout
 
 
-def _render_diagram_to_image(diagram_script: str, images_dir: Path) -> str:
-    """Render satu script PlantUML jadi file PNG lokal; kembalikan path-nya."""
+def _render_diagram_to_image(diagram_script: str, images_dir: Path,
+                             style: tuple[str, ...] = _PLANTUML_STYLE_PREAMBLE) -> str:
+    """Render satu script PlantUML jadi file PNG lokal; kembalikan path-nya.
+
+    `style` memilih preamble gaya: tema berwarna (default, untuk arsitektur &
+    integrasi komponen) atau `_PLANTUML_PLAIN_PREAMBLE` (UML hitam-putih, untuk
+    use case / activity / flow proses bisnis)."""
     images_dir.mkdir(parents=True, exist_ok=True)
-    png = _run_plantuml(_normalize_plantuml(diagram_script))
+    png = _run_plantuml(_normalize_plantuml(diagram_script, style))
     image_path = images_dir / f"{uuid.uuid4().hex}.png"
     image_path.write_bytes(png)
     return str(image_path)
@@ -489,16 +896,30 @@ def _render_diagram_to_image(diagram_script: str, images_dir: Path) -> str:
 def _image_attr(image_path: str) -> str:
     """Atribut ukuran Pandoc (`{width=...}` / `{height=...}`) untuk satu diagram.
 
-    Dua aturan, dua cacat yang dicegah:
+    Tiga aturan, tiga cacat yang dicegah:
 
-    1. JANGAN UPSCALE. Ukuran tampil alami = piksel / _DIAGRAM_DISPLAY_DPI.
-       Aturan lama merentangkan SEMUA diagram selebar halaman — diagram kecil
-       (mis. component diagram 3 kotak) jadi buram dengan huruf raksasa, dan
-       ukuran teks antar diagram tidak konsisten. Kalau muat, pakai ukuran alami.
-    2. Kalau tidak muat, ciutkan di sisi yang lebih dulu mentok: diagram lebar
-       dibatasi LEBARNYA, diagram tinggi dibatasi TINGGINYA — sisi satunya ikut
-       proporsional, jadi tidak ada yang gepeng. (Kasus lama yang terukur pada
-       esteler: 5 dari 11 diagram setinggi 9,7-17,2 inci di halaman 11 inci.)
+    1. JANGAN MELUBER. Diagram yang lebih besar dari area teks diciutkan di sisi
+       yang lebih dulu mentok — diagram lebar dibatasi LEBARnya, diagram tinggi
+       dibatasi TINGGInya, sisi satunya ikut proporsional jadi tak ada yang
+       gepeng. (Kasus terukur pada esteler: 5 dari 11 diagram setinggi 9,7-17,2
+       inci di halaman 11 inci.)
+    2. JANGAN KEKECILAN. Diagram sederhana (use case 1 aktor 2 oval) keluar
+       cuma 0,55 x 0,27 inci pada ukuran alaminya — terukur 42% lebar area teks
+       dengan lautan putih di kiri-kanannya. Kalau masih di bawah
+       `_DIAGRAM_TARGET_WIDTH_FRAC`, diagram DIBESARKAN sampai menyentuh target.
+    3. JANGAN JADI POSTER, JANGAN BURAM. Pembesarannya dibatasi
+       `_DIAGRAM_MAX_UPSCALE` — dua ambang terukur sekaligus: huruf di dalam
+       diagram tak boleh melewati `_DIAGRAM_MAX_TEXT_PT`, dan kerapatan efektif
+       tak boleh turun di bawah `_DIAGRAM_MIN_EFFECTIVE_DPI`. Konsekuensinya
+       jujur: diagram yang secara STRUKTUR sederhana tidak akan mencapai target
+       lebar — lebar dan ukuran huruf terkunci satu sama lain, dan huruf 17pt di
+       dalam diagram lebih merusak daripada diagram yang 60% lebar.
+
+    Aturan 2 sengaja TIDAK memaksa setiap diagram selebar halaman. Diukur dari
+    PDF acuan (87 halaman, tiap gambar diukur): diagramnya sendiri memakai
+    43-95% lebar area teks — mayoritas activity diagram justru 43-54%. Yang
+    membuat diagram acuan terlihat berwibawa bukan lebarnya, melainkan tidak
+    adanya diagram MUNGIL. Target di sini menaikkan lantai, bukan menyamaratakan.
 
     Pillow, bukan parsing header PNG manual: JPEG yang dibaca sebagai PNG
     menghasilkan angka ngawur TANPA error (65536 x 4293001688 — betulan terjadi
@@ -508,11 +929,25 @@ def _image_attr(image_path: str) -> str:
         width, height = image.size
     natural_width_in = width / _DIAGRAM_DISPLAY_DPI
     natural_height_in = height / _DIAGRAM_DISPLAY_DPI
-    if natural_width_in <= _PAGE_WIDTH_IN and natural_height_in <= _PAGE_HEIGHT_IN:
+
+    # Terlalu besar -> ciutkan di sisi yang lebih dulu mentok.
+    if natural_width_in > _PAGE_WIDTH_IN or natural_height_in > _PAGE_HEIGHT_IN:
+        if height / width > _PAGE_HEIGHT_IN / _PAGE_WIDTH_IN:
+            return f"{{height={_PAGE_HEIGHT_IN}in}}"
+        return f"{{width={_PAGE_WIDTH_IN}in}}"
+
+    # Terlalu kecil -> besarkan sampai target, dibatasi ketajaman DAN tinggi
+    # halaman (diagram jangkung tak boleh terdorong keluar halaman oleh aturan
+    # lebar).
+    target_width_in = _PAGE_WIDTH_IN * _DIAGRAM_TARGET_WIDTH_FRAC
+    scale = min(
+        target_width_in / natural_width_in,
+        _PAGE_HEIGHT_IN / natural_height_in,
+        _DIAGRAM_MAX_UPSCALE,
+    )
+    if scale <= 1:
         return f"{{width={natural_width_in:.2f}in}}"
-    if height / width > _PAGE_HEIGHT_IN / _PAGE_WIDTH_IN:
-        return f"{{height={_PAGE_HEIGHT_IN}in}}"
-    return f"{{width={_PAGE_WIDTH_IN}in}}"
+    return f"{{width={natural_width_in * scale:.2f}in}}"
 
 
 def _build_sdd_context(data: dict[str, Any], render_integration: bool = True) -> dict[str, Any]:
@@ -554,12 +989,26 @@ def _build_sdd_context(data: dict[str, Any], render_integration: bool = True) ->
         if render_integration
         else None
     )
-    business_flow = _render_diagram_to_image(diagrams["business_process_flow"], IMAGES_DIR)
+    # Flow proses bisnis SENGAJA tanpa swimlane (keputusan pemilik 2026-07-22):
+    # di dokumen acuan ia berbentuk FLOWCHART bercabang, bukan diagram berlajur
+    # seperti activity per-fitur — "jangan pakai template yang sama dengan
+    # activity diagram". Gaya polos hitam-putih, sama dengan use case & activity.
+    business_flow = _render_diagram_to_image(diagrams["business_process_flow"],
+                                             IMAGES_DIR, _PLANTUML_PLAIN_PREAMBLE)
     # Use case: SATU diagram gabungan (semua aktor dalam satu gambar), sesuai gaya
     # dokumen UML acuan. Untuk dokumen dengan sangat banyak aktor+use case yang
     # dipakai bersama, panah bisa menyilang — itu batas struktural diagram
     # gabungan (layout smetana/dot/elk sama saja; diukur 2026-07-20), bukan bug.
-    use_case = _render_diagram_to_image(diagrams["use_case_diagram"], IMAGES_DIR)
+    use_case = _render_diagram_to_image(diagrams["use_case_diagram"], IMAGES_DIR,
+                                        _PLANTUML_PLAIN_PREAMBLE)
+
+    activity_images = [
+        # `actor` jadi NAMA lane manusianya; `activity_name` jadi pita judul di
+        # dalam kotak (meniru activity diagram draw.io acuan).
+        (a, _render_activity_diagram(a["diagram_script"], IMAGES_DIR,
+                                     a.get("actor"), a.get("activity_name")))
+        for a in diagrams.get("activity_diagrams", [])
+    ]
 
     return {
         **data,
@@ -587,12 +1036,16 @@ def _build_sdd_context(data: dict[str, Any], render_integration: bool = True) ->
                     "image_path": path,
                     "image_attr": _image_attr(path),
                 }
-                for activity, path in (
-                    (a, _render_diagram_to_image(a["diagram_script"], IMAGES_DIR))
-                    for a in diagrams.get("activity_diagrams", [])
-                )
+                for activity, path in activity_images
             ],
         },
+        # Bukan untuk template — dipanen `generate_docx` jadi bundel .drawio.
+        # IMAGES_DIR dipakai BERSAMA semua run, jadi daftar ini harus dikumpulkan
+        # saat render; memindai foldernya belakangan akan menyapu diagram milik
+        # dokumen orang lain.
+        "_drawio_files": [str(d) for d in (Path(p).with_suffix(".drawio")
+                                           for _, p in activity_images)
+                          if d.exists()],
     }
 
 
@@ -658,6 +1111,59 @@ def _pandoc_args(normalized_type: str, title: str, reference_docx: Path = REFERE
     return args
 
 
+def _merge_first_row_into_bar(table, fill: str, white_text: bool) -> None:
+    """Gabung SELURUH sel baris pertama tabel jadi satu BAR judul berwarna: sel
+    tunggal selebar tabel, teks bold di tengah, latar `fill`.
+
+    Dipakai dua bar gaya PREMCO yang beda warna: ((BAR)) biru (use case/activity,
+    teks gelap) dan ((SIGBAR)) hitam (blok tanda tangan, teks putih). Conditional
+    formatting `firstRow` table style (header hitam) DIMATIKAN dulu — kalau tidak,
+    warna bar tertimpa hitam bawaan dan teksnya jadi putih-di-atas-warna.
+    """
+    first_row = table.rows[0]
+    title = first_row.cells[0].text.strip()
+
+    _disable_conditional_header(table)
+
+    merged = first_row.cells[0]
+    for cell in first_row.cells[1:]:
+        merged = merged.merge(cell)
+    # `merged.text = ...` membuang paragraf sel BESERTA style-nya (jadi Normal,
+    # bukan Compact seperti sel tabel lain) — bar judul jadi berhuruf 11pt di
+    # antara isi 10,5pt dan berspasi beda. Yang diganti cukup teksnya; paragraf
+    # pertama dipertahankan.
+    paragraph = merged.paragraphs[0]
+    for extra in merged.paragraphs[1:]:
+        extra._p.getparent().remove(extra._p)
+    for extra_run in paragraph.runs[1:]:
+        extra_run._r.getparent().remove(extra_run._r)
+    if paragraph.runs:
+        paragraph.runs[0].text = title
+    else:
+        paragraph.add_run(title)
+    paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    for run in paragraph.runs:
+        run.bold = True
+        if white_text:
+            run.font.color.rgb = RGBColor.from_string(_WHITE_INK)
+    shading = OxmlElement("w:shd")
+    shading.set(qn("w:val"), "clear")
+    shading.set(qn("w:color"), "auto")
+    shading.set(qn("w:fill"), fill)
+    merged._tc.get_or_add_tcPr().append(shading)
+
+
+def _keep_table_together(table) -> None:
+    """Ikat semua baris kecuali yang terakhir (keepNext) supaya tabel UTUH pindah
+    halaman — tanpa ini tabel kecil gampang patah tepat sesudah barisnya, dan bar
+    header (yang juga tblHeader) terulang membingungkan (terlihat di probe V1)."""
+    rows = list(table.rows)
+    for row in rows[:-1]:
+        for cell in row.cells:
+            for cell_paragraph in cell.paragraphs:
+                _set_keep_next(cell_paragraph._p)
+
+
 def _apply_title_bars(document) -> None:
     """Ubah baris pertama tabel yang ditandai _TITLE_BAR_MARKER jadi BAR JUDUL
     gaya PREMCO: satu sel merged selebar tabel, latar biru muda, teks bold di
@@ -669,41 +1175,94 @@ def _apply_title_bars(document) -> None:
     tidak terbaca. Keduanya cuma bisa dilakukan sesudah docx jadi.
     """
     for table in document.tables:
-        if not table.rows:
+        if _take_table_marker(table, _TITLE_BAR_MARKER) is None:
             continue
-        first_row = table.rows[0]
-        if not first_row.cells[0].text.startswith(_TITLE_BAR_MARKER):
+        _merge_first_row_into_bar(table, _TITLE_BAR_FILL, white_text=False)
+        _keep_table_together(table)
+
+
+def _apply_signature_bars(document) -> None:
+    """Ubah tabel bertanda _SIGNATURE_BAR_MARKER jadi blok tanda tangan gaya
+    PREMCO: bar judul HITAM (teks putih) selebar tabel, lalu ruang tanda tangan
+    di bawahnya. Diukur dari docx asli (Perwakilan User/Pengembang): 3 baris ×
+    2 kolom — bar, ruang tanda tangan (ditinggikan ±1 inci), lalu baris nama.
+
+    Beda dari `_heighten_signature_rows` (yang dipakai template `default`, dikenali
+    dari header kolom "Tanda Tangan"): di sini judul ADA DI DALAM bar hitam, bukan
+    label bold di atas tabel, dan tabelnya 2 kolom tanpa baris header teks.
+    """
+    for table in document.tables:
+        if _take_table_marker(table, _SIGNATURE_BAR_MARKER) is None:
             continue
-        title = first_row.cells[0].text[len(_TITLE_BAR_MARKER):].strip()
+        _merge_first_row_into_bar(table, _SIGNATURE_BAR_FILL, white_text=True)
+        # Baris pertama di bawah bar = ruang tanda tangan basah (±1 inci, seperti
+        # kotak tanda tangan acuan); baris berikutnya (nama/jabatan) tetap.
+        body = list(table.rows)[1:]
+        if body:
+            body[0].height = Inches(1.0)
+            body[0].height_rule = WD_ROW_HEIGHT_RULE.AT_LEAST
+        _keep_table_together(table)
 
-        # Matikan header hitam kondisional (firstRow) untuk tabel INI saja.
-        tbl_look = table._tbl.tblPr.find(qn("w:tblLook"))
-        if tbl_look is not None:
-            tbl_look.set(qn("w:firstRow"), "0")
 
-        merged = first_row.cells[0]
-        for cell in first_row.cells[1:]:
-            merged = merged.merge(cell)
-        merged.text = title
-        paragraph = merged.paragraphs[0]
-        paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        for run in paragraph.runs:
-            run.bold = True
-        shading = OxmlElement("w:shd")
-        shading.set(qn("w:val"), "clear")
-        shading.set(qn("w:color"), "auto")
-        shading.set(qn("w:fill"), _TITLE_BAR_FILL)
-        merged._tc.get_or_add_tcPr().append(shading)
+def _merge_cover_entity_column(document) -> None:
+    """Gabung VERTIKAL kolom pertama (Entitas) tabel Tim Project cover bertanda
+    _COVER_MERGE_MARKER: satu nilai perusahaan memayungi seluruh baris tim,
+    persis tabel "Entitas | Jabatan | Nama" docx PREMCO asli (sel Entitas
+    di-merge lintas baris). Nilainya diambil dari sel data pertama; sel di
+    bawahnya (sengaja kosong di template) ikut lebur ke atas."""
+    for table in document.tables:
+        if _take_table_marker(table, _COVER_MERGE_MARKER) is None:
+            continue
+        body = table.rows[1:]  # lewati baris header
+        if len(body) < 2:
+            continue
+        merged = body[0].cells[0]
+        for row in body[1:]:
+            merged = merged.merge(row.cells[0])
+        merged.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
 
-        # Ikat tabelnya supaya UTUH pindah halaman — tanpa ini tabel kecil
-        # ber-bar gampang patah tepat sesudah bar-nya, dan bar (yang juga
-        # tblHeader) terulang membingungkan (terlihat di probe V1, kembaran
-        # persis kasus blok tanda tangan).
-        rows = list(table.rows)
-        for row in rows[:-1]:
-            for cell in row.cells:
-                for cell_paragraph in cell.paragraphs:
-                    _set_keep_next(cell_paragraph._p)
+
+# Style paragraf blok judul cover (eyebrow, judul, baris identitas) — hanya ini
+# yang di-align kanan; tabel kodifikasi/tim di bawahnya tak tersentuh.
+_COVER_HEADER_STYLES = ("Cover Eyebrow", "Title", "Cover Subtitle")
+
+
+def _right_align_cover(document) -> None:
+    """Ratakan KANAN blok judul cover (eyebrow "SOLUTION DESIGN DOCUMENT", judul
+    project, dan baris identitas No/Versi/RFC/Klasifikasi) — permintaan pemilik
+    untuk template premco (meniru posisi identitas cover PREMCO). Dipanggil SESUDAH
+    `_split_cover_title` supaya paragraf eyebrow-nya sudah ada. Hanya menyentuh
+    paragraf bergaya cover; tabel Fungsi/Katalog/Tim di bawahnya tetap kiri."""
+    for paragraph in document.paragraphs:
+        if paragraph.style.name in _COVER_HEADER_STYLES:
+            paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+
+
+def _is_infra_table(table) -> bool:
+    """Tabel Infrastructure & Capacity Planning premco, dikenali dari HEADER-nya
+    yang khas: `No. | Resources | <kosong> | Remark` (kolom ke-3 header kosong).
+    Tabel lain (Demografi/System Requirement/How to Access/Features) selalu punya
+    judul di kolom ke-3, jadi tak mungkin salah kena; template default tak punya
+    tabel ini sama sekali (pakai teks bebas)."""
+    if not table.rows or len(table.rows[0].cells) != 4:
+        return False
+    h = [c.text.strip() for c in table.rows[0].cells]
+    return h[0] == "No." and h[1] == "Resources" and h[2] == "" and h[3] == "Remark"
+
+
+def _merge_infra_empty_cells(document) -> None:
+    """Di tabel Infrastructure premco, gabung sel kolom sub-environment (idx 2) &
+    Remark (idx 3) pada baris yang KEDUANYA kosong — persis docx PREMCO asli, di
+    mana baris tanpa sub-environment (Infrastructure Tech Req, Network, Data
+    Center) memakai satu sel lebar, bukan dua sel kosong bersebelahan. Baris yang
+    sub-environment-nya terisi (Akses URL → Development/QA/…) tidak disentuh."""
+    for table in document.tables:
+        if not _is_infra_table(table):
+            continue
+        for row in table.rows[1:]:  # lewati header
+            cells = row.cells
+            if len(cells) == 4 and not cells[2].text.strip() and not cells[3].text.strip():
+                cells[2].merge(cells[3])
 
 
 def _apply_green_headers(document) -> None:
@@ -716,17 +1275,11 @@ def _apply_green_headers(document) -> None:
     tetap ditangani _center_table_headers (yang meratakan baris pertama tiap tabel).
     """
     for table in document.tables:
-        if not table.rows:
+        if _take_table_marker(table, _GREEN_HEADER_MARKER) is None:
             continue
         header = table.rows[0]
-        if not header.cells[0].text.startswith(_GREEN_HEADER_MARKER):
-            continue
-        header.cells[0].text = header.cells[0].text[len(_GREEN_HEADER_MARKER):].strip()
 
-        # Matikan header hitam kondisional (firstRow) untuk tabel INI saja.
-        tbl_look = table._tbl.tblPr.find(qn("w:tblLook"))
-        if tbl_look is not None:
-            tbl_look.set(qn("w:firstRow"), "0")
+        _disable_conditional_header(table)
 
         for cell in header.cells:
             shading = OxmlElement("w:shd")
@@ -786,6 +1339,192 @@ def _center_table_headers(document) -> None:
                 paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
 
+def _split_cover_title(document) -> None:
+    """Pecah judul cover jadi DUA tingkat: label jenis dokumen di atas, nama
+    project sebagai judul besar di bawahnya — urutan yang sama dengan cover
+    dokumen acuan (label "Solution Design #..." lalu nama project yang lebih
+    besar).
+
+    Pandoc menulis SATU paragraf style `Title` berisi "<label> — <project>"
+    (lihat `_document_title`), dan teks gabungan itu memang harus tetap utuh:
+    dia juga judul di docProps yang dibaca field TITLE di kaki tiap halaman —
+    satu sumber, dua tempat. Yang dipecah cuma TAMPILANNYA di halaman cover.
+
+    Kalau tidak ada em dash (project_name kosong), paragraf dibiarkan apa
+    adanya — cover jatuh ke rupa lama, bukan error.
+    """
+    for paragraph in document.paragraphs:
+        if paragraph.style.name != "Title":
+            continue
+        label, separator, project = paragraph.text.partition(" — ")
+        if not separator:
+            return
+        eyebrow = paragraph.insert_paragraph_before(label, style="Cover Eyebrow")
+        # Judul besar mewarisi napas atasnya DARI eyebrow yang baru — tanpa ini
+        # jarak `before` style Title menumpuk jadi lubang di tengah cover.
+        paragraph.paragraph_format.space_before = Pt(0)
+        # Tulis ulang isi paragraf judul jadi nama project saja, sambil menjaga
+        # run pertamanya (formatnya ikut style Title).
+        for extra_run in paragraph.runs[1:]:
+            extra_run._r.getparent().remove(extra_run._r)
+        if paragraph.runs:
+            paragraph.runs[0].text = project
+        else:
+            paragraph.add_run(project)
+        del eyebrow  # cuma disisipkan; tidak ada lagi yang perlu dilakukan padanya
+        return
+
+
+def _strip_marker_in_cell(cell, marker: str) -> None:
+    """Buang marker dari sel TANPA menyentuh paragrafnya.
+
+    Sengaja tidak memakai `cell.text = ...`: assignment itu membuang seluruh
+    paragraf sel dan menggantinya dengan paragraf baru bergaya Normal — sel
+    bermarker jadi lebih tinggi dan berhuruf lebih besar daripada sel lain di
+    tabel yang sama (terlihat jelas di probe: baris pertama tiap blok cover
+    menonjol sendiri). Yang diganti cukup teks run pertamanya.
+    """
+    for paragraph in cell.paragraphs:
+        for run in paragraph.runs:
+            if run.text.startswith(marker):
+                run.text = run.text[len(marker):].lstrip()
+                return
+    cell.text = cell.text[len(marker):].strip()  # jaring pengaman
+
+
+def _take_table_marker(table, *markers: str) -> str | None:
+    """Marker mana yang menandai tabel ini? Sekaligus MEMBUANGnya dari selnya.
+
+    Template menyatakan maksud ("tabel ini bar judul biru / header hijau / blok
+    cover") lewat marker di sel pertama, karena Markdown tak punya cara
+    menyatakannya. Deteksi + pembuangannya identik di semua pemakai, jadi
+    disatukan di sini — termasuk jaminan bahwa pembuangan marker tidak
+    menjatuhkan style paragraf selnya (lihat `_strip_marker_in_cell`).
+
+    Kembalikan marker yang cocok, atau None kalau tabel ini bukan miliknya.
+    """
+    if not table.rows:
+        return None
+    first_cell = table.rows[0].cells[0]
+    text = first_cell.text
+    for marker in markers:
+        if text.startswith(marker):
+            _strip_marker_in_cell(first_cell, marker)
+            return marker
+    return None
+
+
+def _clear_table_borders(table) -> None:
+    """Lepas SEMUA garis tabel (termasuk yang datang dari table style)."""
+    borders = OxmlElement("w:tblBorders")
+    for edge in ("top", "left", "bottom", "right", "insideH", "insideV"):
+        element = OxmlElement(f"w:{edge}")
+        element.set(qn("w:val"), "none")
+        element.set(qn("w:sz"), "0")
+        borders.append(element)
+    tbl_pr = table._tbl.tblPr
+    for old in tbl_pr.findall(qn("w:tblBorders")):
+        tbl_pr.remove(old)
+    tbl_pr.append(borders)
+
+
+def _set_row_bottom_rule(row, color: str) -> None:
+    """Hairline di bawah satu baris — dipasang per SEL, karena tblBorders sudah
+    dimatikan seluruhnya (garis per-sel yang menang, bukan sebaliknya)."""
+    for cell in row.cells:
+        tc_pr = cell._tc.get_or_add_tcPr()
+        for old in tc_pr.findall(qn("w:tcBorders")):
+            tc_pr.remove(old)
+        borders = OxmlElement("w:tcBorders")
+        bottom = OxmlElement("w:bottom")
+        bottom.set(qn("w:val"), "single")
+        bottom.set(qn("w:sz"), "4")
+        bottom.set(qn("w:color"), color)
+        borders.append(bottom)
+        tc_pr.append(borders)
+
+
+def _flush_cover_cell_margins(table) -> None:
+    """Nolkan padding KIRI/KANAN sel blok cover; sisakan padding atas/bawah.
+
+    Tanpa ini isi blok masuk ~0,08 inci ke dalam relatif label section dan garis
+    pemisah di atasnya — tepi kiri cover jadi bergerigi, dan itu persis yang
+    paling terlihat pada desain yang bersandar pada perataan. Padding vertikal
+    tetap ada: yang memberi baris ruang bernapas.
+    """
+    tbl_pr = table._tbl.tblPr
+    for old in tbl_pr.findall(qn("w:tblCellMar")):
+        tbl_pr.remove(old)
+    margins = OxmlElement("w:tblCellMar")
+    for edge, width in (("top", 70), ("left", 0), ("bottom", 70), ("right", 0)):
+        element = OxmlElement(f"w:{edge}")
+        element.set(qn("w:w"), str(width))
+        element.set(qn("w:type"), "dxa")
+        margins.append(element)
+    tbl_pr.append(margins)
+
+
+def _disable_conditional_header(table) -> None:
+    """Matikan format kondisional baris pertama (header hitam) untuk satu tabel."""
+    tbl_look = table._tbl.tblPr.find(qn("w:tblLook"))
+    if tbl_look is not None:
+        tbl_look.set(qn("w:firstRow"), "0")
+
+
+def _style_cover_blocks(document) -> None:
+    """Ubah tabel bermarker cover jadi blok TANPA rupa tabel.
+
+    Kenapa post-process, bukan style: Pandoc tidak menyediakan cara menunjuk
+    table style per-tabel (semua tabel memakai style "Table" yang sama), dan
+    Markdown tidak punya sintaks "tabel tanpa garis". Pola yang sama persis
+    dengan ((BAR)) dan ((GH)) — template menyatakan MAKSUD lewat marker, rupa
+    dikerjakan di sini.
+
+    Dijalankan SESUDAH `_center_table_headers` (yang meratakan tengah baris
+    pertama SETIAP tabel): blok daftar cover tidak punya baris header sama
+    sekali, jadi perataannya harus dikembalikan ke kiri di sini.
+    """
+    for table in document.tables:
+        marker = _take_table_marker(table, _COVER_BAND_MARKER, _COVER_LIST_MARKER)
+        if marker is None:
+            continue
+        band = marker == _COVER_BAND_MARKER
+
+        _disable_conditional_header(table)
+        _clear_table_borders(table)
+        _flush_cover_cell_margins(table)
+
+        if band:
+            # Pita identitas: baris 1 = label kecil huruf besar abu, baris 2 =
+            # nilainya besar & tebal. Dua baris, satu makna — jadi label sengaja
+            # jauh lebih kecil dari nilainya (kontras yang membuat pita ini
+            # terbaca sebagai hierarki, bukan sebagai tabel tanpa garis).
+            for index, row in enumerate(table.rows):
+                for cell in row.cells:
+                    for paragraph in cell.paragraphs:
+                        paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                        for run in paragraph.runs:
+                            run.bold = index > 0
+                            run.font.size = Pt(13 if index else 8.5)
+                            if index == 0:
+                                run.font.all_caps = True
+                                run.font.color.rgb = RGBColor.from_string(_COVER_LABEL_INK)
+            continue
+
+        # Daftar label→nilai: hairline antar-baris (baris terakhir TANPA garis,
+        # supaya blok berakhir dengan tenang, bukan dengan garis menggantung),
+        # kolom label abu supaya nilainya yang menonjol.
+        for row in table.rows[:-1]:
+            _set_row_bottom_rule(row, _COVER_RULE_INK)
+        for row in table.rows:
+            for index, cell in enumerate(row.cells):
+                for paragraph in cell.paragraphs:
+                    paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
+                    for run in paragraph.runs:
+                        if index == 0:
+                            run.font.color.rgb = RGBColor.from_string(_COVER_LABEL_INK)
+
+
 def _set_keep_next(paragraph_element) -> None:
     """Pasang w:keepNext pada satu elemen w:p (urutan schema pPr: pStyle dulu)."""
     p_pr = paragraph_element.find(qn("w:pPr"))
@@ -799,6 +1538,34 @@ def _set_keep_next(paragraph_element) -> None:
             p_style.addnext(keep_next)
         else:
             p_pr.insert(0, keep_next)
+
+
+_FIGURE_STYLES = ("Figure", "Captioned Figure")
+
+
+def _bind_lead_in_to_figure(document) -> None:
+    """Ikat paragraf PENGANTAR ke gambar yang mengikutinya (keepNext).
+
+    Style `Figure` sudah keepNext ke CAPTION-nya, jadi gambar+caption selalu
+    sekelompok. Yang belum: kalau gambar itu tidak muat di sisa halaman, dia
+    pindah SENDIRI dan meninggalkan judul sub-bab + kalimat pengantarnya
+    terdampar di kaki halaman sebelumnya dengan ruang kosong menganga di
+    bawahnya (terlihat di probe: "ACTIVITY DIAGRAM" + satu kalimat, lalu 2,5
+    inci kosong). Heading sendiri sudah keepNext ke pengantarnya; dengan
+    mengikat pengantar → gambar, seluruh kelompok heading→pengantar→gambar→
+    caption berpindah utuh.
+
+    Dikerjakan di sini, bukan di style: "paragraf ini kebetulan mendahului
+    gambar" adalah fakta tentang URUTAN dokumen, bukan tentang jenis
+    paragrafnya — style tidak punya cara menyatakannya.
+    """
+    paragraphs = document.paragraphs
+    for current, following in zip(paragraphs, paragraphs[1:]):
+        if following.style.name not in _FIGURE_STYLES:
+            continue
+        if current.style.name in _FIGURE_STYLES or not current.text.strip():
+            continue
+        _set_keep_next(current._p)
 
 
 def _move_table_captions_below(document) -> None:
@@ -919,25 +1686,50 @@ def _add_header_logo(document, logo_bytes: bytes) -> None:
         paragraph.add_run().add_picture(io.BytesIO(logo_bytes), **size)
 
 
-def _landscape_after_marker(document) -> None:
-    """Pecah dokumen di paragraf _LANDSCAPE_MARKER: bagian SEBELUMnya tetap
-    potret, bagian SESUDAHnya (Case Pengujian UAT premco) jadi LANDSCAPE.
+def _set_section_orientation(section, orient: str) -> None:
+    """Set orientasi satu section lewat API python-docx, BUKAN tukar atribut
+    mentah: reference.docx tak punya `<w:pgSz>` sama sekali (page size-nya
+    default), jadi tidak ada yang bisa ditukar — setter page_width/height yang
+    membuatnya. Letter landscape (11x8,5) / potret (8,5x11), margin 1 inci."""
+    if orient == "landscape":
+        section.orientation = WD_ORIENT.LANDSCAPE
+        section.page_width = Inches(11)
+        section.page_height = Inches(8.5)
+    else:
+        section.orientation = WD_ORIENT.PORTRAIT
+        section.page_width = Inches(8.5)
+        section.page_height = Inches(11)
+    section.left_margin = Inches(1)
+    section.right_margin = Inches(1)
 
-    Mekanisme OOXML: properti sebuah section disimpan di sectPr yang MENGAKHIRI-
-    nya. Jadi: (1) salin sectPr body (potret) ke pPr paragraf marker → itu
-    menutup section potret di sana; (2) putar sectPr body sendiri jadi landscape
-    → itu jadi section terakhir, memayungi Case Pengujian sampai akhir dokumen.
-    Marker-driven supaya template lain tak tersentuh; hanya premco UAT yang
-    memancarkannya. Dijalankan sebelum _add_header_logo agar logo (yang meloop
-    document.sections) menjangkau KEDUA section."""
+
+def _apply_orientation_markers(document) -> None:
+    """Pecah dokumen di tiap marker orientasi: `((LANDSCAPE))` memutar bagian
+    SESUDAHnya jadi landscape, `((PORTRAIT))` mengembalikannya jadi potret.
+
+    Mekanisme OOXML: properti sebuah section disimpan di sectPr yang
+    MENGAKHIRInya. Jadi tiap paragraf marker diberi sectPr berisi orientasi
+    segmen yang BERJALAN SAMPAI SITU, lalu orientasi berjalan berganti; sectPr
+    body (yang selalu jadi section TERAKHIR) memayungi segmen penghabisan.
+
+    Dulu fungsi ini cuma menangani SATU marker (`_landscape_after_marker`):
+    potret → landscape sampai akhir dokumen, cukup untuk UAT premco yang
+    memang begitu bentuknya. Digeneralisasi saat template hasil-upload mulai
+    membawa orientasinya sendiri — template sembarang bisa punya satu bab
+    landscape di TENGAH lalu kembali potret, dan mekanisme satu-marker
+    memaksa sisa dokumen ikut landscape. Satu marker `((LANDSCAPE))` sendirian
+    tetap menghasilkan perilaku yang sama persis seperti dulu.
+
+    Dijalankan sebelum _add_header_logo agar logo (yang meloop
+    document.sections) menjangkau SEMUA section."""
     body = document.element.body
-    marker_p = None
+    markers = []
     for paragraph in body.findall(qn("w:p")):
-        text = "".join(t.text or "" for t in paragraph.iter(qn("w:t")))
-        if text.strip() == _LANDSCAPE_MARKER:
-            marker_p = paragraph
-            break
-    if marker_p is None:
+        text = "".join(t.text or "" for t in paragraph.iter(qn("w:t"))).strip()
+        if text in (_LANDSCAPE_MARKER, _PORTRAIT_MARKER):
+            markers.append((paragraph, "landscape" if text == _LANDSCAPE_MARKER
+                            else "portrait"))
+    if not markers:
         return
 
     section_props = body.findall(qn("w:sectPr"))
@@ -945,44 +1737,87 @@ def _landscape_after_marker(document) -> None:
         return
     body_sectpr = section_props[-1]
 
-    # (1) sectPr potret (salinan) → menutup section potret di paragraf marker.
-    #     Salinan ini SENGAJA tanpa pgSz (reference.docx tak punya) → mewarisi
-    #     Letter potret default, persis halaman depan sekarang.
-    portrait = copy.deepcopy(body_sectpr)
-    p_pr = marker_p.find(qn("w:pPr"))
-    if p_pr is None:
-        p_pr = OxmlElement("w:pPr")
-        marker_p.insert(0, p_pr)
-    p_pr.append(portrait)
+    for marker_p, _ in markers:
+        # sectPr (salinan) → menutup segmen berjalan tepat di paragraf marker.
+        closing = copy.deepcopy(body_sectpr)
+        p_pr = marker_p.find(qn("w:pPr"))
+        if p_pr is None:
+            p_pr = OxmlElement("w:pPr")
+            marker_p.insert(0, p_pr)
+        p_pr.append(closing)
+        # Kosongkan teks marker — paragrafnya jadi penutup section (tak terlihat).
+        for run in list(marker_p.findall(qn("w:r"))):
+            marker_p.remove(run)
 
-    # Kosongkan teks marker — paragrafnya jadi penutup section (tak terlihat).
-    for run in list(marker_p.findall(qn("w:r"))):
-        marker_p.remove(run)
-
-    # (2) Section terakhir (sectPr body) → landscape. Lewat API python-docx,
-    #     BUKAN tukar atribut mentah: reference.docx tak punya <w:pgSz> sama
-    #     sekali (page size-nya default), jadi tidak ada yang bisa ditukar —
-    #     setter page_width/height membuat pgSz-nya. Letter landscape (11x8,5),
-    #     margin 1 inci → area teks 9 inci untuk 9 kolom.
-    landscape_section = document.sections[-1]
-    landscape_section.orientation = WD_ORIENT.LANDSCAPE
-    landscape_section.page_width = Inches(11)
-    landscape_section.page_height = Inches(8.5)
-    landscape_section.left_margin = Inches(1)
-    landscape_section.right_margin = Inches(1)
+    # Sesudah N marker ditanam, dokumen punya N+1 section. Section pertama
+    # adalah yang SEBELUM marker pertama (selalu potret — dokumen mulai potret);
+    # section ke-i sesudahnya memakai orientasi yang dideklarasikan marker ke-i.
+    orientations = ["portrait"] + [orient for _, orient in markers]
+    for section, orient in zip(document.sections, orientations):
+        _set_section_orientation(section, orient)
 
 
-def _postprocess_docx(docx_path: str, logo_bytes: bytes | None = None) -> None:
+def _bake_footer_title(document, title: str) -> None:
+    """Isi run HASIL field TITLE di footer dengan judul dokumen sebenarnya.
+
+    Footer memakai field `TITLE` (bukan teks harfiah) karena reference.docx
+    dibangun SEKALI tanpa tahu judul per-dokumen — field membacanya dari properti
+    dokumen saat Word memperbarui field. Tapi run hasilnya KOSONG sampai update
+    itu terjadi, jadi pengguna yang membuka docx lalu menjawab "No" pada prompt
+    update (atau memakai viewer non-Word) melihat footer tanpa judul — cuma nomor
+    halaman (PAGE dihitung Word otomatis, TITLE tidak). Judulnya sudah diketahui
+    di sini, jadi kita bake ke run hasilnya: tampil LANGSUNG, dan field tetap ada
+    sehingga update field pun tetap mengisinya dengan nilai yang sama.
+
+    Cukup footer section pertama — section lain (hasil pecahan orientasi) terpaut
+    ke sana (`is_linked_to_previous`) dan mewarisi footer yang sama.
+    """
+    if not document.sections:
+        return
+    footer = document.sections[0].footer
+    for paragraph in footer.paragraphs:
+        runs = paragraph._p.findall(qn("w:r"))
+        in_title = False
+        for i, run in enumerate(runs):
+            instr = run.find(qn("w:instrText"))
+            if instr is not None and instr.text and "TITLE" in instr.text:
+                in_title = True
+            fld = run.find(qn("w:fldChar"))
+            if (fld is not None and fld.get(qn("w:fldCharType")) == "separate"
+                    and in_title and i + 1 < len(runs)):
+                result = runs[i + 1]
+                text = result.find(qn("w:t"))
+                if text is None:
+                    text = OxmlElement("w:t")
+                    result.append(text)
+                text.set(qn("xml:space"), "preserve")
+                text.text = title
+                return
+
+
+def _postprocess_docx(docx_path: str, logo_bytes: bytes | None = None,
+                      cover_align_right: bool = False,
+                      footer_title: str | None = None) -> None:
     """Sentuhan yang tidak bisa dititipkan ke reference.docx maupun Pandoc —
     satu kali buka-simpan untuk semuanya."""
     document = docx.Document(docx_path)
     _apply_title_bars(document)  # sebelum center: baris pertama masih utuh per-sel
+    _apply_signature_bars(document)  # bar hitam blok tanda tangan premco (idem)
+    _merge_cover_entity_column(document)  # kolom Entitas cover premco -> merge vertikal
+    _merge_infra_empty_cells(document)  # tabel Infrastructure premco -> gabung sel kosong
     _apply_green_headers(document)  # header hijau tabel test-case UAT premco
     _expand_line_break_markers(document)
     _center_table_headers(document)
+    _split_cover_title(document)  # judul cover -> label + nama project
+    if cover_align_right:
+        _right_align_cover(document)  # SESUDAH split: eyebrow sudah ada untuk di-align
+    _style_cover_blocks(document)  # SESUDAH center: daftar cover kembali rata kiri
+    _bind_lead_in_to_figure(document)
     _move_table_captions_below(document)
     _heighten_signature_rows(document)
-    _landscape_after_marker(document)  # Case Pengujian UAT premco → landscape
+    _apply_orientation_markers(document)  # ((LANDSCAPE))/((PORTRAIT)) → section
+    if footer_title:
+        _bake_footer_title(document, footer_title)
     if logo_bytes:
         _add_header_logo(document, logo_bytes)
     document.save(docx_path)
@@ -1035,6 +1870,38 @@ def _build_uat_context(data: dict[str, Any], group: bool = False) -> dict[str, A
     return {**data, "uat_test_cases": cleaned_cases}
 
 
+def drawio_bundle_for(docx_path: str | Path) -> Path:
+    """Path bundel `.drawio` milik sebuah dokumen — DITURUNKAN dari path docx-nya.
+
+    Sengaja turunan, bukan kolom DB sendiri: bundel itu selalu lahir & mati
+    bersama dokumennya, jadi menyimpannya terpisah cuma menciptakan dua sumber
+    kebenaran yang bisa menyimpang (DB menunjuk file yang sudah dibersihkan —
+    persis kelas bug yang `purge_expired_documents` ada untuk mencegahnya).
+    """
+    path = Path(docx_path)
+    return path.with_name(f"{path.stem}_diagrams.zip")
+
+
+def _bundle_drawio(files: list[str], target: Path) -> Path | None:
+    """Kemas file `.drawio` sebuah dokumen jadi satu ZIP. None kalau tak ada.
+
+    Activity diagram di dokumen digambar dari geometri yang kita hitung sendiri,
+    jadi versi yang bisa disunting itu praktis gratis — dan bentuknya dijamin
+    sama persis dengan gambar di dokumen. Best-effort: ini berkas BONUS, dan
+    kegagalannya tak boleh menggagalkan dokumen yang sudah dibayar.
+    """
+    if not files:
+        return None
+    try:
+        with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as bundle:
+            for index, path in enumerate(files, start=1):
+                bundle.write(path, f"activity_{index}.drawio")
+        return target
+    except OSError:
+        logger.warning("Gagal mengemas bundel .drawio", exc_info=True)
+        return None
+
+
 def generate_docx(
     document_type: str,
     document_content: dict[str, Any],
@@ -1084,6 +1951,7 @@ def generate_docx(
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     output_path = OUTPUT_DIR / f"{normalized_type}_{uuid.uuid4().hex}.docx"
+    _bundle_drawio(context.pop("_drawio_files", []), drawio_bundle_for(output_path))
 
     try:
         pypandoc.convert_text(
@@ -1105,5 +1973,10 @@ def generate_docx(
             "`python -c \"import pypandoc; pypandoc.download_pandoc()\"` sekali."
         ) from e
 
-    _postprocess_docx(str(output_path), logo_bytes)
+    _postprocess_docx(
+        str(output_path),
+        logo_bytes,
+        cover_align_right=resolved.cover_align_right and normalized_type == "SDD",
+        footer_title=_document_title(normalized_type, project_name),
+    )
     return str(output_path)

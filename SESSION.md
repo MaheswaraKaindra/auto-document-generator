@@ -1,80 +1,154 @@
-# Catatan Sesi — 2026-07-21 (ZIP UI + reaper → validasi esteler → premco default + onboarding)
+# Catatan Serah-Terima — 2026-07-28
 
-> **File ini ditimpa habis setiap sesi baru.** Isinya cuma satu hal: apa yang
-> dikerjakan sesi kemarin, supaya sesi berikutnya tidak mulai dari nol.
+> **File ini ditimpa habis setiap sesi baru.** Isinya foto sesaat: di mana posisi
+> terakhir dan dari mana sebaiknya melanjutkan. Untuk yang **baru melanjutkan
+> kerja orang lain, baca file ini dulu.**
 >
-> Bedanya dengan `CLAUDE.md`: CLAUDE.md itu **pengetahuan permanen** tentang
-> produk ini (arsitektur, kontrak, keterbatasan) dan tumbuh pelan-pelan.
-> SESSION.md itu **foto sesaat** — dibuang begitu sesi berikutnya selesai.
-> Kalau isinya bertentangan, **CLAUDE.md yang benar.**
+> Tiga file, tiga peran: **CLAUDE.md** = pengetahuan permanen produk (arsitektur,
+> kontrak, keterbatasan) — baca untuk paham produknya. **SESSION.md** (ini) =
+> posisi terakhir. **CHANGELOG.md** = riwayat detail per-perubahan (entri teratas
+> = paling baru). Kalau bertentangan, **CLAUDE.md yang benar.**
 
 ---
 
-## Ringkasan satu paragraf
+## ✅ STATUS: semua ter-commit & push ke `develop`
 
-Sesi panjang dengan titik balik penting. Awalnya lanjutan teknis (UI upload ZIP di
-frontend, lalu job reaper — dua-duanya $0, di-commit & push). Lalu pemilik menegur:
-**"dari kemarin muter-muter, gaada progress."** Audit riwayat MEMBENARKANNYA — jantung
-nilai (kualitas dokumen) tak disentuh sejak 18 Juli; 2 file dok (CLAUDE.md 67×,
-SESSION.md 52×) jadi yang PALING sering diubah; banyak kerja tepi $0 tanpa artefak.
-Diagnosis: produk sebetulnya solid, tapi **buktinya tak pernah dikeluarkan** karena
-membuktikan nilai inti (generate dokumen nyata → baca) itu berbayar & dihindari.
-**Aksi memutus siklus (~$0,10 total):** generate SDD esteler nyata → **terbukti 100%
-berjejak** (nol karangan); temukan & perbaiki salah template (default→premco, $0);
-jadikan **premco default**; tulis ulang README jadi onboarding tim + buat DEMO.md +
-draf laporan magang. **296 test hijau.**
+`HEAD` lokal = `origin/develop` = **`0eb67b7`**, working tree bersih. Tidak ada
+kerja menggantung. **369 test hijau** (`pytest`), `vite build` & `oxlint` bersih.
 
-## Yang dikerjakan (urut)
+Branch kerja: **`develop`** (bukan `main`). Commit langsung ke `develop`.
 
-1. **UI upload ZIP** (`frontend/App.jsx`+`App.css`) — pemilih GitHub/ZIP, kirim
-   `zip_files` base64. **Commit `fa1e302`, pushed.**
-2. **Job reaper** (`job_store.reap_stale_jobs` + `main.py` startup + lazy di GET
-   status) — job macet >30 mnt → `failed` 503. **Commit `0d66e04`, pushed.**
-3. **Validasi end-to-end esteler** (~$0,10): scratchpad script ingest→parse→LLM→docx.
-   22 file/38 endpoint, docx 781 KB. Verifikasi klaim Contract B ke Contract A:
-   `ORD-YYYYMMDD-XXXX`/`session_id`/`walkin_order`/`get_top_menus`/`/admin/menu/create`/
-   arsitektur Neon+Cloudinary+Groq — **semua berjejak, nol karangan.**
-4. **Fix template + premco default**: dokumen awal digenerate `default` (header hitam)
-   → pemilik bilang PROBE23 (premco) lebih bagus. Lihat visual (PyMuPDF): beda =
-   tabel use case **biru menyatu** (premco) vs hitam-terpisah (default). Render ulang
-   esteler premco ($0). Lalu **premco jadi default** (`schemas_document.py="premco"` +
-   frontend `useState('premco')`+fallback). 296 test + build/lint hijau.
-5. **README ditulis ulang** (`7e3c91b`, pushed) — onboarding tim: peta struktur,
-   tabel 3 tahap, "mulai dari mana"; selaras fakta (ZIP tersambung, 296 test, reaper,
-   multi-template). **DEMO.md** baru + **draf laporan magang** (luar repo).
-6. **Dok diselaraskan** (belum commit — ada di working tree): README (premco default
-   + DEMO.md), CLAUDE.md (premco default), CHANGELOG (entri), SESSION ini.
+---
 
-## Kejadian yang layak diingat (jebakan)
+## 🚀 SETUP CEPAT (untuk yang baru mengambil alih)
 
-- **"Muter-muter" itu NYATA tapi di lapisan yang salah** — produk inti solid & selesai
-  sejak ~16 Juli; kerja setelahnya numpuk di tepi ($0) tanpa artefak. Biaya kecil
-  ($0,10) untuk membuktikan nilai inti > berhari-hari kerja tepi. (Prinsip #6/#8.)
-- **Selalu tanya `template_id`** — default lama `default` (header hitam) kalah rapi
-  dari `premco` (tabel use case biru). Instance ini premco-first; premco kini default.
-- **Render docx butuh cwd = root repo** (`tools/plantuml.jar` path relatif). Jalankan
-  script dari root, bukan subfolder.
-- **Verifikasi visual $0 tanpa poppler**: PyMuPDF (`fitz`) render PDF→PNG; docx→PDF
-  via Word COM (PowerShell). Pola dipakai berkali-kali sesi ini.
+`.env` dan `frontend/.env.local` **di-gitignore** — jadi kamu TIDAK dapat file
+itu dari `git clone`. Kamu harus membuatnya sendiri. Ini penyebab #1 orang baru
+gagal jalan.
 
-## Kalau melanjutkan, mulai dari sini
+```bash
+# 1. Backend
+python -m venv venv && venv\Scripts\activate      # Windows
+pip install -r requirements.txt
+cp .env.example .env          # lalu ISI minimal: ANTHROPIC_API_KEY
+python -c "import pypandoc; pypandoc.download_pandoc()"   # sekali, untuk .docx
+# plantuml.jar: unduh sekali dari github.com/plantuml/plantuml/releases -> tools/plantuml.jar
+# (butuh Java 17+ di PATH untuk render diagram)
 
-**Arah pemilik: BERHENTI nambah fitur, kemas & buktikan.** Produk terbukti bekerja.
-- **Laporan magang**: draf di `C:\Kuliah\Magang\LAPORAN_MAGANG_draf.md` — lengkapi
-  bagian `[ISI: ...]`, konversi ke format kampus.
-- **Demo**: ikuti `DEMO.md`. Dokumen contoh siap di folder Magang (default+premco).
-- **Kalau mau dokumen contoh lebih**: generate UAT esteler premco (~$0,10), atau repo
-  lain. Selalu pakai `template_id="premco"`.
+# 2. Frontend
+cd frontend && npm install && cd ..
 
-**Sisa teknis (kalau diminta, $0, tak butuh input eksternal):** cleanup `data/documents/`
-(TTL), job simpan `template_id`. **Butuh input eksternal (tunggu pemilik):** Trek A
-(template sumber lain) → UI edit peta bab + landscape per-section (V2).
+# 3. Jalankan (dua terminal)
+uvicorn app.main:app --reload --port 8000     # -> /docs
+cd frontend && npm run dev                    # -> localhost:5173
+```
 
-## Yang perlu dilakukan manusia
+**Auth OPSIONAL** — kalau `.env` TIDAK punya `SUPABASE_URL`, aplikasi jalan **mode
+dev tanpa login** (semua job milik "anonymous"). Jadi kamu bisa langsung kerja
+tanpa Supabase. Untuk menghidupkan login lihat bagian Auth di bawah.
 
-- **Perubahan sesi ini setelah `7e3c91b` (premco default + DEMO + dok) akan di-commit
-  di akhir sesi** (pemilik minta "commit + push"). Contoh docx & laporan draf di folder
-  **Magang** (luar repo, tak ke-commit).
-- **`Contoh_SDD_EstelerApp.docx` (default) masih di root repo** karena sedang dibuka di
-  Word (gitignored, tak masuk git) — tutup Word lalu pindahkan ke Magang kalau mau.
-- **Utang lama:** revoke `GOOGLE_API_KEY` & `LLAMA_API_KEY`; isi `GITHUB_TOKEN`.
+**Deploy sekali jalan** (butuh Docker Desktop nyala): `docker compose up --build`
+→ app utuh di `http://localhost:8000`. Detail: **`DEPLOY.md`**.
+
+---
+
+## APA YANG DIKERJAKAN SESI-SESI TERAKHIR (semua sudah di `develop`)
+
+Semua $0 kecuali disebut, semua ber-tes. Detail lengkap di **CHANGELOG.md**.
+
+1. **Adaptasi template upload lebih tahan (V2)** — `template_spec_service` kini
+   membaca judul bab di **text box** & judul bernomor tanpa style (dulu 7 bab
+   hilang senyap); deteksi jenis dokumen sinyal-terkuat-menang; `mapping_health`
+   berteriak saat peta bab tipis.
+2. **Evaluator mutu isi** (`scripts/evaluate_document.py`) — grounding/
+   representasi/konsistensi, disambung ke `render_fixtures`. Menangkap karangan.
+3. **premco**: tiap activity diagram jadi **sub-bab 2.N** (Heading 3, masuk TOC);
+   judul footer di-bake (tampil tanpa update field); Daftar Isi/Gambar/Tabel jadi
+   Heading 1 → **TOC 20/20 cocok acuan**; **ekspor `.drawio`** per job
+   (`GET /documents/jobs/{id}/diagrams`).
+4. **Auth Supabase + isolasi per-pengguna** — lihat bagian Auth di bawah.
+5. **Deploy**: `Dockerfile` (bundel Java/pandoc/plantuml) + `docker-compose.yml` +
+   `DEPLOY.md` berisi penilaian jujur "Kesiapan SaaS". FastAPI menyajikan SPA
+   same-origin (satu container = app utuh).
+6. **Redesain UI bergaya Apple** — 3 file CSS + AuthGate. Logika tak tersentuh.
+
+---
+
+## AUTH (yang baru & paling penting untuk dipahami)
+
+Satu seam: `app/services/auth_service.py`. Sisa app cuma bergantung pada
+`Principal` (siapa pemanggil), bukan Supabase/JWT.
+
+- **Mode dipilih dari env**: `SUPABASE_URL` kosong → dev/anonymous (tanpa login).
+  Terisi → auth aktif (frontend login Supabase → JWT → backend verifikasi).
+- Verifikasi menerima **HS256** (JWT Secret) & **ES256/RS256** (JWKS asimetris).
+  Project Supabase yang dipakai sekarang **asimetris (ES256)** → `SUPABASE_JWT_SECRET`
+  dibiarkan KOSONG (verifikasi lewat JWKS).
+- **Isolasi**: kolom `owner` di `jobs`; job orang lain → **404**. Diuji end-to-end.
+- Menghidupkan auth: isi `.env` (`SUPABASE_URL=https://<ref>.supabase.co`) DAN
+  `frontend/.env.local` (`VITE_SUPABASE_URL` + `VITE_SUPABASE_ANON_KEY`). Contoh:
+  `frontend/.env.local.example`. **Kredensial Supabase milik pemilik project** —
+  minta ke dia, atau pakai project Supabase sendiri, atau jalan mode dev.
+- Penjaga sesungguhnya di FastAPI (bukan RLS Supabase), karena FE tak konek
+  langsung ke DB.
+
+---
+
+## DARI MANA MELANJUTKAN — roadmap "jadi SaaS"
+
+Dua penghalang utama SaaS sudah tertutup sesi ini: **auth/identitas** &
+**deployability**. Sisanya (urut prioritas rekomendasi):
+
+**Tingkat 1 — melengkapi multi-tenant (kecil, $0, achievable):**
+1. **Isolasi template upload per-pengguna** — satu-satunya lubang isolasi tersisa
+   (dokumen sudah per-akun; template upload masih dibagi semua). Pola sama dengan
+   `owner` di job: tambah owner ke storage template + filter di `routes_template`.
+2. **Halaman "Dokumen Saya"** — job sudah tersimpan per-owner, tapi FE tak
+   menampilkannya. Butuh endpoint baru `GET /documents/jobs` (list milik saya) +
+   halaman. Paling terasa sebagai "produk SaaS".
+3. **Rate limiting per-akun** — tiap generate memakan biaya LLM; belum ada batas.
+
+**Tingkat 2 — mesin SaaS berbayar (besar, keputusan bisnis):**
+4. Billing/metering + kuota (Stripe; seam `owner` sudah ada).
+5. Worker queue (Redis+RQ) + Postgres — untuk skala horizontal & durabilitas job
+   (`BackgroundTasks` kehilangan job kalau proses mati). `job_store` sudah rata
+   untuk pindah ke Postgres.
+
+**Tingkat 3 — operasional/legal (kalau benar-benar publik):** monitoring/Sentry,
+HTTPS/domain, privacy policy/ToS + ekspor-hapus data.
+
+Framing penting yang belum diputus pemilik: target **tool multi-tenant untuk satu
+organisasi** (Tingkat 1 sudah cukup, billing tak relevan) atau **SaaS publik
+berbayar** (butuh Tingkat 2). Tanyakan sebelum masuk Tingkat 2.
+
+---
+
+## GATE BERBAYAR & DEPENDENCY (belum dituntaskan — butuh keputusan/uang)
+
+- **Build image Docker belum pernah dijalankan** — Docker Desktop belum nyala di
+  mesin ini. Bukti final "benar-benar deploy". `docker compose up --build`; kalau
+  gagal biasanya versi pandoc/plantuml di `Dockerfile` (URL sudah diverifikasi
+  resolve).
+- **Sonnet 5 vs Opus 4.8 belum dibandingkan langsung** untuk kualitas dokumen
+  (~$1 sekali bayar). Produk menjual kualitas dokumen — asumsi lama menggantung.
+- **Karangan fastapi** belum diverifikasi ulang sesudah "ATURAN BUKTI" masuk
+  prompt (~$0,2 regen).
+- **Daftar Isi auto-terisi tanpa Ctrl+A F9** butuh **LibreOffice headless**
+  (belum terpasang) — keputusan dependency pemilik.
+- **Batas 4-`case` per `switch`** di prompt diagram belum diverifikasi ke LLM.
+
+---
+
+## PRINSIP KERJA (jangan diabaikan — ini mengubah CARA kerja)
+
+Ada di CLAUDE.md bagian "Prinsip Kerja", tapi yang paling sering menyelamatkan:
+1. **Buka/ukur barangnya, jangan menebak dari proksi** — buka PDF/docx, ukur
+   token, render diagram lalu LIHAT. Untuk verifikasi visual $0: render → bake
+   Word COM → PDF → raster PyMuPDF → lihat.
+2. **Fixture N=1 buta bug antar-item** — uji dengan ≥2 item.
+3. **Test hijau ≠ produk jalan** — mock menyembunyikan bug nyata; verifikasi ke
+   repo/dokumen NYATA.
+4. **Kelayakan fitur besar dibuktikan $0 dulu** (scratchpad) sebelum tulis kode
+   `app/` atau bayar LLM.
+5. **Jujur soal batas mengalahkan mengarang** — isi yang bisa diturunkan dari
+   kode; kosongkan (placeholder terlihat) yang tidak.

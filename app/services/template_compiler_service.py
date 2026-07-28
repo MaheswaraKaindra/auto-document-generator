@@ -31,7 +31,9 @@ from pathlib import Path
 from app.services import compiler_service
 from app.services.llm_mapping_service import llm_propose_mapping
 from app.services.reference_synthesis_service import build_reference
-from app.services.template_generator_service import generate_jinja_template, propose_mapping
+from app.services.template_generator_service import (
+    ALL_BINDINGS, CONTENT_BINDINGS, generate_jinja_template, mapping_health,
+    propose_mapping)
 from app.services.template_spec_service import build_template_spec
 
 _SLUG_RE = re.compile(r"[^a-z0-9]+")
@@ -83,6 +85,7 @@ def compile_template(spec: dict, name: str, doc_types=None,
     base.mkdir(parents=True, exist_ok=True)
 
     doc_type_files = {}
+    health = {}
     for dt in doc_types:
         mapping = (llm_propose_mapping(spec, dt) if use_llm_mapping
                    else propose_mapping(spec, dt))
@@ -91,6 +94,7 @@ def compile_template(spec: dict, name: str, doc_types=None,
         (base / f"{dt}.md").write_text(
             generate_jinja_template(mapping), encoding="utf-8")
         doc_type_files[dt] = f"{dt}.md"
+        health[dt] = mapping_health(mapping, dt)
 
     # Sintesis reference.docx dari spec (increment 2) — identitas visual template.
     build_reference(base / "reference.docx", spec=spec)
@@ -110,6 +114,10 @@ def compile_template(spec: dict, name: str, doc_types=None,
         "uses_component_integration": False,
         "groups_test_cases": True,
         "uat_toc": False,
+        # Seberapa banyak template ini akan terisi otomatis — ikut manifest supaya
+        # pemanggil API bisa memperingatkan pengguna SEBELUM dia membayar LLM
+        # untuk dokumen yang ternyata mayoritas placeholder.
+        "mapping_health": health,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     (base / "template.json").write_text(
@@ -128,6 +136,70 @@ def compile_template_from_docx(docx_path, name: str | None = None, doc_types=Non
                             use_llm_mapping=use_llm_mapping)
 
 
+def update_mapping(template_id: str, doc_type: str, bindings: list[str]) -> dict:
+    """Ganti binding peta bab hasil TINJAUAN MANUSIA, lalu generate ulang template Jinja.
+
+    Langkah terakhir yang tak bisa diotomatiskan. Ekstraksi bisa menemukan semua
+    bab dan pemeta (heuristik maupun LLM) bisa menebak isinya, tapi tak satu pun
+    tahu bahwa bab "Setup" di template vendor itu tempat SCREENSHOT — itu
+    pengetahuan yang cuma dimiliki orang yang memberikan templatenya.
+
+    `bindings` adalah daftar PARALEL dengan peta tersimpan: satu binding per bab,
+    urutan sama. Sengaja bukan peta utuh — struktur bab (level/teks/orientasi)
+    adalah hasil PENGUKURAN dokumen sumber, bukan pendapat; membiarkannya
+    dikirim ulang cuma membuka jalan merusaknya tanpa menambah kemampuan apa pun.
+
+    ValueError untuk seluruh penolakan (dipetakan ke 4xx oleh route).
+    """
+    base = compiler_service.TEMPLATES_STORE / template_id
+    manifest_path = base / "template.json"
+    if not manifest_path.exists():
+        raise ValueError(f"Template terkompilasi tidak ditemukan: {template_id!r}")
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+
+    doc_type = doc_type.upper()
+    if doc_type not in manifest.get("doc_types", {}):
+        raise ValueError(
+            f"Template {template_id!r} tidak punya doc_type {doc_type!r} "
+            f"(punya: {sorted(manifest.get('doc_types', {}))}).")
+
+    plan = json.loads((base / f"mapping_{doc_type}.json").read_text(encoding="utf-8"))
+    if len(bindings) != len(plan):
+        raise ValueError(
+            f"Jumlah binding ({len(bindings)}) tak cocok dengan jumlah bab "
+            f"({len(plan)}). Peta harus dikirim utuh, satu binding per bab.")
+
+    unknown = sorted({b for b in bindings if b not in ALL_BINDINGS})
+    if unknown:
+        raise ValueError(f"Binding tak dikenal: {unknown}. "
+                         f"Yang tersedia: {sorted(ALL_BINDINGS)}.")
+
+    # Isi turunan-kode cuma punya SATU sumber di Contract B, jadi memakainya di
+    # dua bab menyalin paragraf/diagram yang sama dua kali. Pemeta otomatis
+    # men-dedup diam-diam (yang pertama menang), tapi di sini suntingan itu
+    # DISENGAJA — menelannya diam-diam berarti diam-diam mengabaikan perintah user.
+    duplicated = sorted({b for b in bindings
+                         if b in CONTENT_BINDINGS and bindings.count(b) > 1})
+    if duplicated:
+        raise ValueError(
+            f"Isi yang sama dipakai lebih dari satu bab: {duplicated}. "
+            f"Tiap isi turunan-kode cuma punya satu sumber, jadi bab kedua akan "
+            f"menyalin isi bab pertama — pilih salah satu.")
+
+    updated = [{**entry, "binding": binding}
+               for entry, binding in zip(plan, bindings)]
+    (base / f"mapping_{doc_type}.json").write_text(
+        json.dumps(updated, ensure_ascii=False, indent=2), encoding="utf-8")
+    (base / f"{doc_type}.md").write_text(
+        generate_jinja_template(updated), encoding="utf-8")
+
+    manifest.setdefault("mapping_health", {})[doc_type] = mapping_health(updated, doc_type)
+    manifest["mapping_reviewed_at"] = datetime.now(timezone.utc).isoformat()
+    manifest_path.write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+    return load_compiled_detail(template_id)
+
+
 def load_compiled_detail(template_id: str) -> dict:
     """Manifest + rencana peta bab per doc_type untuk template terkompilasi —
     dipakai respons upload & UI tinjauan pemetaan. `mappings` = `{DOC:
@@ -143,4 +215,10 @@ def load_compiled_detail(template_id: str) -> dict:
         mapping_path = base / f"mapping_{dt}.json"
         if mapping_path.exists():
             mappings[dt] = json.loads(mapping_path.read_text(encoding="utf-8"))
+    # Template yang dikompilasi SEBELUM `mapping_health` ada tetap harus menjawab
+    # pertanyaan "template ini akan terisi berapa?" — dihitung ulang dari peta
+    # yang tersimpan, jadi UI tak perlu tahu template ini lama atau baru.
+    if "mapping_health" not in manifest:
+        manifest["mapping_health"] = {dt: mapping_health(plan, dt)
+                                      for dt, plan in mappings.items()}
     return {"manifest": manifest, "mappings": mappings}

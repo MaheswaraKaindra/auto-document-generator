@@ -42,8 +42,11 @@ def test_maps_foreign_chapters_that_heuristic_misses(monkeypatch):
     plan = lm.llm_propose_mapping(_spec(outline), "SDD")
     assert [p["binding"] for p in plan] == \
         ["skip", "app_description", "feature_requirements", "manual"]
-    # kontrak keluaran: paralel outline, level+text terbawa
-    assert plan[1] == {"level": 2, "text": "Vision Statement", "binding": "app_description"}
+    # kontrak keluaran: paralel outline, level+text+orient terbawa. `orient` itu
+    # fakta TATA LETAK hasil pengukuran, bukan keputusan pemetaan — jadi jalur
+    # LLM pun cuma meneruskannya (default potret kalau outline tak membawanya).
+    assert plan[1] == {"level": 2, "text": "Vision Statement",
+                       "binding": "app_description", "orient": "portrait"}
 
 
 def test_title_and_empty_always_skip(monkeypatch):

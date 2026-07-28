@@ -17,6 +17,7 @@ ProgrammingError begitu job kedua jalan di thread berbeda — jenis bug yang cum
 muncul saat ada beban, bukan saat dites satu-satu.
 """
 
+import logging
 import shutil
 import sqlite3
 import uuid
@@ -26,6 +27,8 @@ from pathlib import Path
 from typing import Any, Optional
 
 from app.core import config
+
+logger = logging.getLogger(__name__)
 
 # Dibiarkan module-level (bukan konstanta beku) supaya test bisa mengarahkannya
 # ke tmp_path — pola yang sama dengan OUTPUT_DIR di compiler_service.
@@ -56,12 +59,31 @@ _STALE_ERROR = (
 )
 _STALE_STATUS = 503
 
+# Umur dokumen sebelum dibersihkan. `data/documents/` tumbuh SELAMANYA tanpa ini
+# — satu docx ~700 KB (terukur pada esteler), jadi pemakaian rutin mengisi disk
+# tanpa ada yang menyadarinya sampai server penuh. 30 hari: jauh lebih lama dari
+# umur pakai nyata sebuah unduhan (orang mengunduh dokumennya di hari yang sama),
+# tapi masih menyisakan riwayat sebulan untuk "generate ulang bulan lalu mana ya".
+DOCUMENT_TTL_SECONDS = 30 * 24 * 60 * 60
+
+# Pesan & kode untuk job yang dokumennya sudah kedaluwarsa. 410 GONE, bukan 404:
+# job-nya ADA dan dulu memang berhasil — yang hilang filenya, dan itu memang
+# disengaja. Membedakannya dari 404 ("job_id salah") penting supaya pengguna
+# tahu harus generate ulang, bukan mencari-cari id yang benar.
+_EXPIRED_ERROR = (
+    "Dokumen sudah dibersihkan otomatis karena berumur lebih dari 30 hari. "
+    "Silakan generate ulang."
+)
+_EXPIRED_STATUS = 410
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS jobs (
     id            TEXT PRIMARY KEY,
     status        TEXT NOT NULL,
     document_type TEXT NOT NULL,
     project_name  TEXT,
+    template_id   TEXT,
+    owner         TEXT,
     progress      TEXT,
     docx_path     TEXT,
     error         TEXT,
@@ -78,6 +100,8 @@ CREATE TABLE IF NOT EXISTS jobs (
 # akan pernah terlihat di CI.
 _MIGRATIONS = [
     ("progress", "ALTER TABLE jobs ADD COLUMN progress TEXT"),
+    ("template_id", "ALTER TABLE jobs ADD COLUMN template_id TEXT"),
+    ("owner", "ALTER TABLE jobs ADD COLUMN owner TEXT"),
 ]
 
 
@@ -119,14 +143,28 @@ def init_db() -> None:
                 conn.execute(statement)
 
 
-def create_job(document_type: str, project_name: Optional[str]) -> str:
+def create_job(
+    document_type: str,
+    project_name: Optional[str],
+    template_id: Optional[str] = None,
+    owner: Optional[str] = None,
+) -> str:
+    """`template_id` dicatat supaya riwayat job bisa menjawab "dokumen ini gaya
+    apa" — sebelumnya tidak bisa, dan itu jadi pertanyaan begitu ada lebih dari
+    satu gaya (default/premco/hasil-upload). Opsional supaya pemanggil lama
+    (dan job di DB lama) tetap sah.
+
+    `owner` = id pemilik (Principal.id dari auth). None = dibuat saat auth non-
+    aktif / DB lama; `auth_service.owns` memperlakukan owner None sebagai boleh-
+    diakses (tak ada pemilik untuk dilanggar)."""
     job_id = uuid.uuid4().hex
     now = _now()
     with _connect() as conn:
         conn.execute(
-            "INSERT INTO jobs (id, status, document_type, project_name, created_at, updated_at)"
-            " VALUES (?, ?, ?, ?, ?, ?)",
-            (job_id, STATUS_QUEUED, document_type, project_name, now, now),
+            "INSERT INTO jobs (id, status, document_type, project_name, template_id,"
+            " owner, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (job_id, STATUS_QUEUED, document_type, project_name, template_id,
+             owner, now, now),
         )
     return job_id
 
@@ -157,10 +195,20 @@ def mark_done(job_id: str, docx_path: str) -> None:
     Urutannya penting: kalau path dicatat duluan lalu penyalinan gagal, job
     terlihat 'done' padahal filenya tidak ada.
     """
+    from app.services.compiler_service import drawio_bundle_for
+
     documents_dir = _documents_dir()
     documents_dir.mkdir(parents=True, exist_ok=True)
     stored = documents_dir / f"{job_id}{Path(docx_path).suffix}"
     shutil.copyfile(docx_path, stored)
+    # Bundel .drawio ikut kalau ada — berkas BONUS, jadi ketiadaannya normal dan
+    # kegagalannya tak boleh menggagalkan job yang dokumennya sudah jadi.
+    bundle = drawio_bundle_for(docx_path)
+    if bundle.exists():
+        try:
+            shutil.copyfile(bundle, drawio_bundle_for(stored))
+        except OSError:
+            logger.warning("Gagal menyalin bundel .drawio job %s", job_id, exc_info=True)
     _update(job_id, status=STATUS_DONE, docx_path=str(stored))
 
 
@@ -216,6 +264,56 @@ def reap_stale_jobs(max_age_seconds: float = STALE_JOB_SECONDS) -> int:
                 )
                 reaped += 1
     return reaped
+
+
+def purge_expired_documents(max_age_seconds: float = DOCUMENT_TTL_SECONDS) -> int:
+    """Hapus docx yang lebih tua dari `max_age_seconds`, kembalikan jumlahnya.
+
+    `data/documents/` tumbuh selamanya tanpa ini — satu docx ~700 KB, jadi
+    pemakaian rutin akan mengisi disk tanpa ada yang menyadarinya.
+
+    File DAN catatannya dibereskan bersama, dan urutannya kebalikan dari
+    `mark_done`: di sana path dicatat SESUDAH file ada; di sini path dilepas
+    SESUDAH file hilang. Dua-duanya menjaga aturan yang sama — DB tidak boleh
+    menunjuk ke file yang tidak ada. Job-nya sendiri TIDAK dihapus: riwayat
+    "pernah generate ini" tetap berguna, yang kedaluwarsa cuma filenya. Status
+    jadi `failed`+410 supaya endpoint unduh punya jawaban jujur ("dulu ada,
+    sudah dibersihkan") alih-alih meledak saat mengirim path yang kosong.
+
+    Dipanggil di titik yang sama dengan `reap_stale_jobs` (startup + lazy saat
+    GET status): nol infrastruktur baru, tak ada scheduler yang harus hidup.
+    """
+    cutoff = datetime.now(timezone.utc) - timedelta(seconds=max_age_seconds)
+    purged = 0
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT id, docx_path, updated_at FROM jobs"
+            " WHERE status = ? AND docx_path IS NOT NULL",
+            (STATUS_DONE,),
+        ).fetchall()
+        for row in rows:
+            try:
+                updated = datetime.fromisoformat(row["updated_at"])
+            except ValueError:
+                # Timestamp tak terbaca: jangan hapus apa pun atas dasar tebakan
+                # — aturan yang sama dengan reap_stale_jobs.
+                continue
+            if updated >= cutoff:
+                continue
+            from app.services.compiler_service import drawio_bundle_for
+
+            Path(row["docx_path"]).unlink(missing_ok=True)
+            # Bundel .drawio lahir & mati bersama dokumennya. Membiarkannya
+            # tertinggal mengulang persis masalah yang fungsi ini ada untuk
+            # menyelesaikan: folder yang tumbuh selamanya.
+            drawio_bundle_for(row["docx_path"]).unlink(missing_ok=True)
+            conn.execute(
+                "UPDATE jobs SET status = ?, docx_path = NULL, error = ?,"
+                " error_status = ?, updated_at = ? WHERE id = ?",
+                (STATUS_FAILED, _EXPIRED_ERROR, _EXPIRED_STATUS, _now(), row["id"]),
+            )
+            purged += 1
+    return purged
 
 
 def _update(job_id: str, **fields: Any) -> None:

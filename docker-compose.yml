@@ -1,0 +1,24 @@
+# Cara termudah menjalankan image: `docker compose up --build`.
+# Backend env (ANTHROPIC_API_KEY, SUPABASE_URL, ...) dibaca dari `.env` di root —
+# file yang SAMA dengan yang dipakai `uvicorn` lokal, jadi tak ada konfigurasi
+# ganda. Config Supabase FRONTEND (compile-time Vite) diberikan sebagai build-arg.
+services:
+  app:
+    build:
+      context: .
+      args:
+        # Publik (anon key memang untuk browser). Kosong = frontend mode dev.
+        # Isi lewat shell: VITE_SUPABASE_URL=... VITE_SUPABASE_ANON_KEY=... docker compose build
+        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL:-}
+        VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY:-}
+    ports:
+      - "8000:8000"
+    # Rahasia & config backend diberikan saat RUN (bukan di-bake ke image).
+    env_file:
+      - .env
+    volumes:
+      # DB job, dokumen, template terkompilasi bertahan melewati restart container.
+      - app-data:/data
+
+volumes:
+  app-data:

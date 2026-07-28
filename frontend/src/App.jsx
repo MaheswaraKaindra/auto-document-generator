@@ -1,10 +1,14 @@
 import { useState, useEffect } from 'react'
 import './App.css'
+import { authHeader } from './supabaseClient'
 
-// Bisa dioverride tanpa menyentuh kode: taruh VITE_API_BASE_URL di
-// frontend/.env.local (atau environment saat build). Fallback-nya localhost
-// karena itu satu-satunya lingkungan yang produk ini jalani hari ini.
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
+// Base URL backend. Prioritas: VITE_API_BASE_URL (override eksplisit) → kalau
+// build PRODUKSI, string kosong = ORIGIN YANG SAMA (frontend disajikan FastAPI di
+// container, jadi /documents/... relatif ke host yang sama) → selain itu (dev)
+// localhost:8000. Pakai `??` bukan `||` supaya "" (same-origin) tidak jatuh ke
+// fallback. Dev (`npm run dev`) tetap menembak localhost:8000.
+const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL ?? (import.meta.env.PROD ? '' : 'http://localhost:8000')
 
 const emptyRepo = () => ({ repo_tag: '', repo_url: '', branch: '' })
 
@@ -42,6 +46,32 @@ const SDD_FIELD_GROUPS = [
         label: 'Application Dev System Type',
         options: ['ERP', 'NON ERP'],
       },
+    ],
+  },
+  {
+    // Halaman cover. Dulu sel-sel ini kosong permanen di template (tidak
+    // ditanyakan ke siapa pun), jadi cover selalu setengah kosong.
+    legend: 'Cover — Kodifikasi & Katalog Proses Bisnis',
+    fields: [
+      { key: 'business_relationship_no', label: 'Business Relationship', placeholder: 'No kodifikasi' },
+      { key: 'business_it_solution_no', label: 'Business IT Solution', placeholder: 'No kodifikasi' },
+      { key: 'value_chain', label: 'Proses Value Chain', placeholder: 'Kategori proses bisnis' },
+      { key: 'application_landscape', label: 'Application Landscape', placeholder: 'Kategori landscape aplikasi' },
+    ],
+  },
+  {
+    // Peran-perannya TETAP (diambil dari dokumen acuan); yang ditanyakan cuma
+    // namanya -- nama orang tidak ada di repo mana pun.
+    legend: 'Cover — Tim Project',
+    fields: [
+      { key: 'entitas', label: 'Entitas', placeholder: 'Nama perusahaan/organisasi (gaya premco)' },
+      { key: 'team_application_requestor', label: 'Application Requestor', placeholder: 'Nama' },
+      { key: 'team_business_process_owner', label: 'Business Process Owner', placeholder: 'Nama' },
+      { key: 'team_pic', label: 'PIC', placeholder: 'Nama' },
+      { key: 'team_lead_coordinator', label: 'Lead Coordinator', placeholder: 'Nama' },
+      { key: 'team_it_solution_analyst', label: 'IT Solution Analyst', placeholder: 'Nama' },
+      { key: 'team_developer', label: 'Developer', placeholder: 'Nama' },
+      { key: 'team_design_uiux', label: 'Design UI/UX', placeholder: 'Nama' },
     ],
   },
   {
@@ -145,7 +175,8 @@ const POLL_TIMEOUT_MS = 30 * 60 * 1000
 async function pollJob(jobId, onTick) {
   const startedAt = Date.now()
   while (Date.now() - startedAt < POLL_TIMEOUT_MS) {
-    const response = await fetch(`${API_BASE_URL}/documents/jobs/${jobId}`)
+    const response = await fetch(`${API_BASE_URL}/documents/jobs/${jobId}`,
+      { headers: authHeader() })
     if (!response.ok) {
       throw new Error(`Gagal menanyakan status job (${response.status})`)
     }
@@ -215,6 +246,25 @@ function summarizeMapping(mappings) {
   return content
 }
 
+// Label manusiawi untuk tiap binding di dropdown tinjauan. Daftar ID-nya sendiri
+// datang dari server (GET /templates/{id}/bindings) supaya tak basi diam-diam;
+// yang di sini cuma terjemahannya, dan ID tak dikenal jatuh ke ID mentahnya.
+const BINDING_LABELS = {
+  skip: '— tidak dimuat —',
+  heading_only: 'Judul bab saja (anaknya yang mengisi)',
+  manual: 'Placeholder (diisi manual)',
+  app_description: 'Deskripsi aplikasi',
+  user_roles: 'Peran pengguna',
+  system_requirements: 'Kebutuhan sistem',
+  feature_requirements: 'Daftar fitur',
+  use_cases: 'Use case',
+  activity_diagrams: 'Activity diagram',
+  architecture: 'Diagram arsitektur',
+  business_flow: 'Alur proses bisnis',
+  test_groups: 'Tabel test case',
+}
+const bindingLabel = (b) => BINDING_LABELS[b] || b
+
 function App() {
   const [projectName, setProjectName] = useState('')
   const [documentType, setDocumentType] = useState('SDD')
@@ -254,9 +304,38 @@ function App() {
   const [uploadMsg, setUploadMsg] = useState(null)   // { ok, text } | null
   const [uploadKey, setUploadKey] = useState(0)      // remount input file sesudah sukses
 
+  // Tinjauan peta bab (V2) — langkah terakhir yang tak bisa diotomatiskan.
+  // Ekstraksi menemukan babnya dan pemeta menebak isinya, tapi cuma pemberi
+  // template yang tahu bab bernama asing itu sebetulnya diisi apa.
+  //   review        : { manifest, mappings } dari server | null (built-in = null)
+  //   reviewDocType : peta jenis dokumen mana yang sedang disunting
+  //   reviewDraft   : { [docType]: string[] } — binding yang SEDANG disunting,
+  //                   dipisah dari `review` supaya "belum disimpan" kelihatan.
+  const [review, setReview] = useState(null)
+  const [reviewDocType, setReviewDocType] = useState(null)
+  const [reviewDraft, setReviewDraft] = useState({})
+  const [bindingOptions, setBindingOptions] = useState([])
+  const [reviewBusy, setReviewBusy] = useState(false)
+  const [reviewMsg, setReviewMsg] = useState(null)   // { ok, text } | null
+
+  const openReview = (detail) => {
+    const docTypes = Object.keys(detail?.mappings || {})
+    setReview(detail)
+    setReviewDocType(docTypes[0] || null)
+    setReviewDraft(
+      Object.fromEntries(
+        Object.entries(detail?.mappings || {}).map(([dt, rows]) => [
+          dt,
+          rows.map((r) => r.binding),
+        ]),
+      ),
+    )
+    setReviewMsg(null)
+  }
+
   const fetchTemplates = async () => {
     try {
-      const resp = await fetch(`${API_BASE_URL}/templates`)
+      const resp = await fetch(`${API_BASE_URL}/templates`, { headers: authHeader() })
       if (resp.ok) setTemplates((await resp.json()).templates || [])
     } catch {
       // gagal ambil daftar: dropdown fallback ke 'premco' (tetap valid di backend)
@@ -264,7 +343,60 @@ function App() {
   }
   useEffect(() => {
     fetchTemplates()
+    // Pilihan isi datang dari server, bukan disalin ke sini — kalau backend
+    // menambah binding baru, dropdown ini ikut tanpa perubahan frontend.
+    fetch(`${API_BASE_URL}/templates/bindings`, { headers: authHeader() })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((b) => b && setBindingOptions(b.bindings || []))
+      .catch(() => {})
   }, [])
+
+  // Peta bab cuma ada untuk template HASIL UPLOAD. Built-in ('default'/'premco')
+  // sengaja tak bisa disunting: keduanya dikompilasi tangan dan sudah terverifikasi
+  // ke dokumen acuan — membuka suntingannya cuma jalan merusak yang sudah benar.
+  useEffect(() => {
+    const chosen = templates.find((t) => t.id === templateId)
+    if (!chosen || chosen.source === 'builtin') {
+      setReview(null)
+      return
+    }
+    let stale = false
+    fetch(`${API_BASE_URL}/templates/${encodeURIComponent(templateId)}`,
+      { headers: authHeader() })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((detail) => {
+        if (!stale && detail) openReview(detail)
+      })
+      .catch(() => {})
+    return () => {
+      stale = true
+    }
+  }, [templateId, templates])
+
+  const saveReview = async () => {
+    if (!review || !reviewDocType) return
+    setReviewBusy(true)
+    setReviewMsg(null)
+    try {
+      const templateId_ = review.manifest.template_id
+      const resp = await fetch(
+        `${API_BASE_URL}/templates/${encodeURIComponent(templateId_)}/mappings/${reviewDocType}`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', ...authHeader() },
+          body: JSON.stringify({ bindings: reviewDraft[reviewDocType] || [] }),
+        },
+      )
+      const body = await resp.json().catch(() => ({}))
+      if (!resp.ok) throw new Error(body.detail || `Gagal menyimpan peta (${resp.status})`)
+      openReview(body)
+      setReviewMsg({ ok: true, text: 'Peta bab tersimpan — template diperbarui.' })
+    } catch (e) {
+      setReviewMsg({ ok: false, text: e.message })
+    } finally {
+      setReviewBusy(false)
+    }
+  }
 
   const pushStage = (message) =>
     setStages((prev) => (prev[prev.length - 1] === message ? prev : [...prev, message]))
@@ -347,7 +479,8 @@ function App() {
       const form = new FormData()
       form.append('file', uploadFile)
       if (uploadUseLlm) form.append('use_llm_mapping', 'true')
-      const resp = await fetch(`${API_BASE_URL}/templates`, { method: 'POST', body: form })
+      const resp = await fetch(`${API_BASE_URL}/templates`,
+        { method: 'POST', body: form, headers: authHeader() })
       const body = await resp.json().catch(() => ({}))
       if (!resp.ok) throw new Error(body.detail || `Gagal upload template (${resp.status})`)
 
@@ -423,7 +556,7 @@ function App() {
     try {
       const response = await fetch(`${API_BASE_URL}/documents/generate`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeader() },
         body: JSON.stringify(payload),
       })
 
@@ -449,7 +582,7 @@ function App() {
 
       pushStage('Dokumen siap — mengunduh…')
       const downloadUrl = `${API_BASE_URL}${job.download_url}`
-      const fileResponse = await fetch(downloadUrl)
+      const fileResponse = await fetch(downloadUrl, { headers: authHeader() })
       if (!fileResponse.ok) {
         throw new Error(`Gagal mengunduh dokumen (${fileResponse.status})`)
       }
@@ -639,6 +772,71 @@ function App() {
                 <em>(diisi manual)</em>. Tanpa AI, hanya bab bernama umum yang dikenali.
               </p>
             </div>
+
+            {review && reviewDocType && (
+              <div className="review-box">
+                <div className="review-head">
+                  <strong>Tinjau Peta Bab — {review.manifest.name || review.manifest.template_id}</strong>
+                  {Object.keys(review.mappings).length > 1 && (
+                    <select
+                      value={reviewDocType}
+                      onChange={(e) => setReviewDocType(e.target.value)}
+                    >
+                      {Object.keys(review.mappings).map((dt) => (
+                        <option key={dt} value={dt}>
+                          {dt}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+
+                {review.manifest.mapping_health?.[reviewDocType]?.warning && (
+                  <p className="review-warning">
+                    {review.manifest.mapping_health[reviewDocType].warning}
+                  </p>
+                )}
+
+                <ul className="review-list">
+                  {review.mappings[reviewDocType].map((row, i) => (
+                    <li key={`${row.text}-${i}`} style={{ paddingLeft: `${(row.level - 1) * 16}px` }}>
+                      <span className="review-chapter" title={row.text}>
+                        {row.text || <em>(bab tanpa judul)</em>}
+                      </span>
+                      <select
+                        value={reviewDraft[reviewDocType]?.[i] ?? row.binding}
+                        onChange={(e) =>
+                          setReviewDraft((draft) => {
+                            const next = [...(draft[reviewDocType] || [])]
+                            next[i] = e.target.value
+                            return { ...draft, [reviewDocType]: next }
+                          })
+                        }
+                      >
+                        {bindingOptions.map((b) => (
+                          <option key={b} value={b}>
+                            {bindingLabel(b)}
+                          </option>
+                        ))}
+                      </select>
+                    </li>
+                  ))}
+                </ul>
+
+                <button type="button" onClick={saveReview} disabled={reviewBusy}>
+                  {reviewBusy ? 'Menyimpan…' : 'Simpan Peta Bab'}
+                </button>
+                {reviewMsg && (
+                  <p className={`upload-msg${reviewMsg.ok ? '' : ' error'}`}>{reviewMsg.text}</p>
+                )}
+                <p className="hint">
+                  Sistem sudah menebak isi tiap bab dari namanya, tapi hanya Anda yang tahu
+                  maksud bab di template perusahaan Anda — mis. bab yang sebetulnya tempat
+                  <strong> screenshot</strong> atau <strong>tanda tangan</strong> sebaiknya
+                  dibiarkan <em>Placeholder</em>. Tiap isi hanya boleh dipakai satu bab.
+                </p>
+              </div>
+            )}
           </div>
 
           <div className="field">

@@ -101,14 +101,15 @@ def test_spec_drives_theme_fonts_heading_and_table_header(tmp_path):
 
 
 def test_premco_default_keeps_caps_and_black_header(tmp_path):
-    """Sisi sebaliknya: tanpa spec, heading DIPAKSA huruf besar + perenggangan
-    dan header tabel HITAM teks putih — identitas PREMCO tetap utuh."""
+    """Sisi sebaliknya: tanpa spec, heading BAB (Heading 1) DIPAKSA huruf besar +
+    perenggangan, dan header tabel HITAM teks putih — aturan tipografi 2026-07-21
+    (H1 besar/bold/UPPERCASE; Table Header background hitam)."""
     out = rs.build_reference(tmp_path / "ref_premco.docx", spec=None)
     doc = Document(str(out))
 
-    h2_rpr = _style_element(doc, "Heading 2").find(qn("w:rPr"))
-    assert h2_rpr.find(qn("w:caps")) is not None
-    assert h2_rpr.find(qn("w:spacing")) is not None   # perenggangan menyertai caps
+    h1_rpr = _style_element(doc, "Heading 1").find(qn("w:rPr"))
+    assert h1_rpr.find(qn("w:caps")) is not None
+    assert h1_rpr.find(qn("w:spacing")) is not None   # perenggangan menyertai caps
 
     first_row = _first_row_seg(doc)
     shd = first_row.find(qn("w:tcPr") + "/" + qn("w:shd"))

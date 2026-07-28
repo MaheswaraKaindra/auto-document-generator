@@ -14,12 +14,15 @@ from pathlib import Path
 
 from docx.opc.exceptions import PackageNotFoundError
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from pydantic import BaseModel, Field
 
 from app.services import compiler_service
 from app.services.template_compiler_service import (
     compile_template_from_docx,
     load_compiled_detail,
+    update_mapping,
 )
+from app.services.template_generator_service import ALL_BINDINGS
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/templates", tags=["templates"])
@@ -115,6 +118,16 @@ def upload_template(
     return load_compiled_detail(manifest["template_id"])
 
 
+# Dideklarasikan SEBELUM `/{template_id}` — kalau tidak, path parameter menelan
+# "bindings" dan endpoint ini tak pernah terpanggil.
+@router.get("/bindings")
+def list_bindings():
+    """Pilihan isi yang boleh dipasang ke sebuah bab — sumber kebenaran untuk
+    dropdown UI tinjauan, supaya frontend tak menyalin daftar yang bisa basi
+    diam-diam saat binding baru ditambahkan di backend."""
+    return {"bindings": sorted(ALL_BINDINGS)}
+
+
 @router.get("/{template_id}")
 def get_template(template_id: str):
     """Detail template terkompilasi: manifest + rencana peta bab (untuk UI
@@ -123,3 +136,32 @@ def get_template(template_id: str):
         return load_compiled_detail(template_id)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
+
+
+class MappingUpdate(BaseModel):
+    """Binding baru per bab, URUT sama dengan peta tersimpan.
+
+    Cuma binding — struktur bab (level/teks/orientasi) hasil pengukuran dokumen
+    sumber, bukan pendapat yang bisa disunting."""
+
+    bindings: list[str] = Field(..., min_length=1)
+
+
+@router.put("/{template_id}/mappings/{doc_type}")
+def put_mapping(template_id: str, doc_type: str, body: MappingUpdate):
+    """Simpan peta bab hasil tinjauan manusia → generate ulang template Jinja.
+
+    Langkah terakhir yang tak bisa diotomatiskan: ekstraksi menemukan babnya dan
+    pemeta menebak isinya, tapi cuma pemberi template yang tahu bab mana yang
+    sebetulnya tempat screenshot atau tanda tangan.
+
+    404 kalau template/doc_type tak ada; 422 kalau peta tak valid (jumlah tak
+    cocok, binding tak dikenal, satu isi dipakai dua bab).
+    """
+    try:
+        return update_mapping(template_id, doc_type, body.bindings)
+    except ValueError as e:
+        message = str(e)
+        not_found = "tidak ditemukan" in message or "tidak punya doc_type" in message
+        raise HTTPException(status_code=404 if not_found else 422,
+                            detail=message) from e

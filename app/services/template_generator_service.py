@@ -73,6 +73,18 @@ _CONTENT_BINDINGS = {
 # ikut terbuang. Uji sintetis (outline datar) tak pernah memunculkan ini.
 _OWNS_SUBTREE = {USE_CASES, ACTIVITY_DIAGRAMS, TEST_GROUPS}
 
+# Alias publik — dipakai validasi peta hasil SUNTINGAN MANUSIA (`update_mapping`).
+CONTENT_BINDINGS = _CONTENT_BINDINGS
+ALL_BINDINGS = _CONTENT_BINDINGS | {SKIP, HEADING_ONLY, MANUAL}
+
+# Marker orientasi yang dibaca compiler (`_apply_orientation_markers`). Ditulis
+# sebagai paragraf tersendiri; compiler mengubahnya jadi section break lalu
+# mengosongkan teksnya, jadi tak pernah terlihat di dokumen jadi.
+_ORIENTATION_MARKER = {
+    "landscape": "((LANDSCAPE))",
+    "portrait": "((PORTRAIT))",
+}
+
 # --- Aturan kata kunci bab → binding (dicek berurutan, cocok pertama menang) ---
 # Frasa spesifik didahulukan sebelum yang umum (mis. "system requirement" sebelum
 # "requirement"; frasa test-case spesifik sebelum kata "testing" yang terlalu luas
@@ -83,14 +95,15 @@ _SDD_RULES: list[tuple[tuple[str, ...], str]] = [
     (("system architecture", "arsitektur sistem", "application architecture",
       "arsitektur aplikasi", "architecture", "arsitektur"), ARCHITECTURE),
     (("flow proses bisnis", "business process flow", "proses bisnis",
-      "business process", "alur proses"), BUSINESS_FLOW),
+      "business process", "business flow", "alur proses"), BUSINESS_FLOW),
     (("system requirement", "kebutuhan sistem", "spesifikasi sistem",
       "system requirements"), SYSTEM_REQUIREMENTS),
     (("feature", "fitur", "functional requirement", "kebutuhan fungsional"), FEATURE_REQUIREMENTS),
     (("user role", "peran pengguna", "pengguna dan peran", "role", "aktor"), USER_ROLES),
     (("deskripsi aplikasi", "application description", "ringkasan aplikasi",
       "deskripsi sistem", "gambaran umum", "overview", "latar belakang",
-      "background", "pendahuluan", "introduction"), APP_DESCRIPTION),
+      "background", "pendahuluan", "introduction",
+      "executive summary", "ringkasan eksekutif"), APP_DESCRIPTION),
 ]
 _UAT_RULES: list[tuple[tuple[str, ...], str]] = [
     (("detail testing", "case pengujian", "skenario pengujian", "test case",
@@ -139,8 +152,13 @@ def assemble_plan(outline: list[dict], classify) -> list[dict]:
     for i, entry in enumerate(outline):
         level = entry.get("level", 1)
         text = (entry.get("text") or "").strip()
+        # Orientasi ikut dibawa apa adanya dari hasil pengukuran: ini fakta
+        # tentang TATA LETAK sumber, bukan keputusan pemetaan, jadi baik pemeta
+        # heuristik maupun pemeta LLM tak boleh mengubahnya.
+        orient = entry.get("orient") or "portrait"
         if not text or level == 0:            # judul dokumen: ditangani pandoc
-            plan.append({"level": level, "text": text, "binding": SKIP})
+            plan.append({"level": level, "text": text, "binding": SKIP,
+                         "orient": orient})
             continue
         has_children = (i + 1 < len(outline)
                         and outline[i + 1].get("level", 1) > level)
@@ -151,8 +169,60 @@ def assemble_plan(outline: list[dict], classify) -> list[dict]:
             binding = HEADING_ONLY if has_children else MANUAL
         elif binding in _CONTENT_BINDINGS:
             used_content.add(binding)
-        plan.append({"level": level, "text": text, "binding": binding})
+        plan.append({"level": level, "text": text, "binding": binding,
+                     "orient": orient})
     return plan
+
+
+def mapping_health(plan: list[dict], doc_type: str = "SDD") -> dict:
+    """Seberapa banyak template ini benar-benar akan TERISI dari kode.
+
+    Ada supaya sistem berhenti DIAM saat pemetaan gagal. Pengalaman yang
+    melahirkannya: sebuah template vendor terkompilasi mulus, mengembalikan 201,
+    dan menghasilkan dokumen 20 halaman yang hampir seluruhnya placeholder —
+    tak ada satu pun sinyal bahwa ada yang tidak beres. Kegagalan senyap lebih
+    mahal daripada kegagalan berisik: pengguna baru tahu setelah membaca dokumen
+    jadi, dan saat itu dia sudah membayar LLM.
+
+    Yang diukur adalah JENIS ISI yang terikat relatif terhadap yang MUNGKIN
+    diikat untuk jenis dokumen ini — bukan angka mutlak, dan bukan pula rasio
+    terhadap jumlah bab. Dua alasan, dua-duanya dari pengukuran:
+
+    - **Mutlak menyesatkan**: kosakata UAT cuma punya 2 jenis isi sementara SDD
+      punya 8, jadi ambang tetap ("minimal 3 jenis") memvonis SETIAP template UAT
+      sakit — mustahil dipenuhi. Peringatan yang selalu menyala sama tak
+      bergunanya dengan yang tak pernah menyala.
+    - **Rasio terhadap jumlah bab juga menyesatkan**: template UAT nyata mengikat
+      1 bab dari 24, dan itu SEHAT — yang satu itu tabel test case, isi utama
+      dokumen UAT. Sisanya (persetujuan, ruang lingkup, log defect) memang
+      pekerjaan manusia, dan placeholder jujur di situ justru yang benar.
+
+    Ambang 50% dikalibrasi ke 4 template multi-sumber: yang sehat mendapat 7/8
+    (SDD) dan 1/2 (UAT, test case terikat), yang gagal 3/8. `filled_ratio` tetap
+    dilaporkan sebagai konteks, cuma tidak dipakai memvonis.
+    """
+    rules = _UAT_RULES if doc_type.upper() == "UAT" else _SDD_RULES
+    possible = {binding for _, binding in rules} & _CONTENT_BINDINGS
+    body = [p for p in plan if p.get("binding") != SKIP]
+    filled = [p for p in body if p.get("binding") in _CONTENT_BINDINGS]
+    kinds = {p["binding"] for p in filled}
+    covered = len(kinds) / len(possible) if possible else 0.0
+    health = {
+        "n_headings": len(body),
+        "n_filled": len(filled),
+        "n_content_kinds": len(kinds),
+        "n_content_kinds_possible": len(possible),
+        "kinds_ratio": round(covered, 3),
+        "filled_ratio": round(len(filled) / len(body), 3) if body else 0.0,
+        "unmapped": [p["text"] for p in body if p.get("binding") == MANUAL][:20],
+    }
+    if covered < 0.5:
+        health["warning"] = (
+            f"Cuma {len(kinds)} dari {len(possible)} jenis isi yang terikat "
+            f"({len(filled)} dari {len(body)} bab). Nama bab template ini tak "
+            f"dikenali pemeta heuristik — tinjau & perbaiki peta bab, atau "
+            f"kompilasi ulang dengan use_llm_mapping=true.")
+    return health
 
 
 def propose_mapping(spec: dict, doc_type: str) -> list[dict]:
@@ -293,6 +363,7 @@ def generate_jinja_template(mapping: list[dict]) -> str:
     """
     blocks: list[str] = []
     skip_below: int | None = None
+    orient = "portrait"  # dokumen selalu mulai potret
 
     for entry in mapping:
         level = entry.get("level", 1)
@@ -306,6 +377,17 @@ def generate_jinja_template(mapping: list[dict]) -> str:
 
         if binding == SKIP or not text or level == 0:
             continue
+
+        # Orientasi bab ini (diukur `template_spec_service` dari section tempat
+        # heading-nya berada). Marker dipancarkan hanya saat BERUBAH — compiler
+        # yang menerjemahkannya jadi section break sungguhan
+        # (`_apply_orientation_markers`). Tanpa ini, `has_landscape` yang sudah
+        # diukur tak pernah sampai ke dokumen: tabel lebar milik template
+        # pengguna dipaksa muat di halaman potret.
+        entry_orient = entry.get("orient") or "portrait"
+        if entry_orient != orient:
+            blocks.append(_ORIENTATION_MARKER[entry_orient])
+            orient = entry_orient
 
         heading = "#" * min(max(level, 1), 3) + " " + text
 

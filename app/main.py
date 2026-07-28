@@ -1,10 +1,14 @@
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.api.routes_auth import router as auth_router
 from app.api.routes_document import router as document_router
 from app.api.routes_ingestion import router as ingestion_router
 from app.api.routes_template import router as template_router
+from app.core import config
 from app.services import job_store
 
 app = FastAPI(title="Auto Document Generator")
@@ -20,6 +24,11 @@ job_store.init_db()
 # alasan yang sama seperti init_db di atas: TestClient & sebagian jalur deploy
 # tak menjalankan startup hook. Idempoten; di DB tanpa job basi ini no-op.
 job_store.reap_stale_jobs()
+
+# Bersihkan docx yang kedaluwarsa (lihat DOCUMENT_TTL_SECONDS). Alasan & titik
+# panggil yang sama dengan reaper di atas: nol scheduler, cuma satu sapuan murah
+# di tempat yang memang sudah dijalankan.
+job_store.purge_expired_documents()
 
 # Kerangka frontend (frontend/) dipanggil dari origin terpisah (dibuka
 # langsung sebagai file atau lewat dev server), jadi butuh CORS.
@@ -49,3 +58,15 @@ app.include_router(template_router)
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+# Frontend hasil build (SPA) disajikan dari origin yang SAMA dengan API — satu
+# `docker run` = aplikasi utuh, tanpa CORS. Di-mount PALING AKHIR supaya semua
+# route API (/health, /documents, /templates, ...) menang lebih dulu; mount "/"
+# cuma menangkap sisanya (index.html + /assets). `html=True` menyajikan
+# index.html untuk "/". Hanya aktif kalau build ADA: dev (`npm run dev`) dan
+# test tak punya dist, jadi baris ini no-op di sana.
+_frontend_dist = Path(config.FRONTEND_DIST)
+if _frontend_dist.is_dir():
+    app.mount("/", StaticFiles(directory=str(_frontend_dist), html=True),
+              name="frontend")

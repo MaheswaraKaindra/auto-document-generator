@@ -20,6 +20,11 @@ PELAJARAN yang dikodekan di sini:
   Verdana). Ini kelas bug yang sama dengan "font tema Aptos".
 - **`caps` heading itu diukur, bukan diasumsikan** — sebagian template memaksa
   huruf besar lewat `w:caps`, sebagian tidak.
+- **Judul bab tidak selalu berupa style `Heading N`.** Template buatan manusia
+  menaruhnya di tempat yang tak terduga; kalau ekstraksi cuma percaya style, bab
+  itu lenyap DIAM-DIAM (dokumen keluar hampa tanpa ada yang tahu). Lihat
+  `_extract_outline` untuk sinyal apa saja yang dipakai dan mana yang sengaja
+  TIDAK — semuanya diputuskan dari pengukuran ke template nyata, bukan tebakan.
 """
 from __future__ import annotations
 
@@ -136,10 +141,191 @@ def _style_format(doc, name: str) -> dict | None:
     }
 
 
+# --- Penemuan judul bab -------------------------------------------------------
+#
+# Word menulis tiap shape DUA KALI demi kompatibilitas: `mc:Choice` (DrawingML
+# modern) dan `mc:Fallback` (VML lama) berisi teks yang SAMA persis. Tanpa
+# melewati yang Fallback, tiap judul di text box terbaca ganda (terukur pada
+# `Template SDD`: 7 bab jadi 14 entri).
+_MC_FALLBACK = "{http://schemas.openxmlformats.org/markup-compatibility/2006}Fallback"
+
+# Judul bertingkat yang diketik manual: "1 Executive Summary", "3.1 Vision and
+# Scope". Tiga penjaga, semuanya dari kasus nyata:
+#
+# - **Pemisah nomor-judul boleh HILANG** — Word memecah nomor dan judul ke run
+#   berbeda, jadi teks gabungannya rapat ("1Executive Summary"). Tapi menerima
+#   kerapatan begitu saja membuat "3D Modeling" terpotong jadi "D Modeling",
+#   maka tanpa pemisah nomor harus diikuti pola KATA (huruf besar lalu kecil):
+#   "1Ex…" lolos, "3D " tidak.
+# - **Wajib berakhir HURUF** supaya tanggal tak lolos: "18 March 2021" pernah
+#   tertangkap sebagai "judul" saat pola ini diuji ke sel tabel Veracity.
+_HEADING_NUMBERED = re.compile(
+    r"^(\d+(?:\.\d+)*)(?:[.)]\s*|\s+|(?=[A-Z][a-z]))([A-Za-z][^\n]{2,80}[A-Za-z])$")
+
+
+def _strip_leading_number(text: str) -> str:
+    """Buang penomoran yang diketik manual dari teks judul.
+
+    Berlaku untuk heading ber-STYLE juga, bukan cuma yang dikenali lewat pola:
+    tingkatnya sudah diwakili `level` dan template hasil generate menomori
+    sendiri lewat tingkat heading, jadi membiarkannya menghasilkan "1Contents"
+    di dokumen jadi — atau penomoran ganda ("1. 1Contents") begitu Word
+    menomori otomatis.
+    """
+    match = _HEADING_NUMBERED.match(text)
+    return match.group(2).strip() if match else text
+
+
+def _element_text(element) -> str:
+    return re.sub(r"\s+", " ",
+                  "".join(t.text or "" for t in element.iter(qn("w:t")))).strip()
+
+
+def _has_tab_char(element) -> bool:
+    """Ada karakter TAB di dalam teks paragraf. Sengaja mencari `w:tab` di dalam
+    `w:r` saja — `w:tab` di bawah `w:pPr` itu definisi tab STOP, bukan isi."""
+    return any(run.find(qn("w:tab")) is not None
+               for run in element.iter(qn("w:r")))
+
+
+def _paragraph_style_name(element, style_names: dict[str, str]) -> str:
+    p_pr = element.find(qn("w:pPr"))
+    p_style = p_pr.find(qn("w:pStyle")) if p_pr is not None else None
+    if p_style is None:
+        return ""
+    return style_names.get(p_style.get(qn("w:val")), "")
+
+
+def _text_box_paragraphs(element):
+    """Paragraf di dalam text box yang di-anchor pada `element` (tanpa kembarannya).
+
+    `doc.paragraphs` maupun `body.iterchildren(w:p)` sama-sama BUTA terhadap ini:
+    isi text box hidup di `w:txbxContent`, beberapa lapis di dalam run. Terukur
+    pada `Template SDD`: 7 bab utamanya (Executive Summary ... Infrastructure)
+    seluruhnya di sana, dan karena itu tak pernah masuk outline.
+    """
+    for box in element.iter(qn("w:txbxContent")):
+        if any(a.tag == _MC_FALLBACK for a in box.iterancestors()):
+            continue
+        yield from box.iter(qn("w:p"))
+
+
+def _paragraph_heading(element, style_names: dict[str, str], *, loose: bool):
+    """`(level, teks, sinyal, nama_style)` kalau paragraf ini judul bab; None kalau bukan.
+
+    Sinyal diurut dari yang PALING KUAT: style `Title`/`Heading N` adalah
+    deklarasi eksplisit penulis, sementara pola penomoran cuma tebakan terdidik —
+    jadi yang kedua hanya dipakai kalau `loose`.
+    """
+    name = _paragraph_style_name(element, style_names)
+    text = _element_text(element)
+    if name == "Title":
+        return (0, _strip_leading_number(text), "style", name)
+    match = re.fullmatch(r"Heading (\d)", name)
+    if match is not None:
+        # Tingkat dari STYLE (deklarasi penulis), teks tetap dibersihkan dari
+        # nomor yang diketik manual — dua hal terpisah.
+        return (int(match.group(1)), _strip_leading_number(text), "style", name)
+    if loose:
+        numbered = _HEADING_NUMBERED.match(text)
+        if numbered is not None:
+            return (numbered.group(1).count(".") + 1, numbered.group(2).strip(),
+                    "numbering", name)
+    return None
+
+
+def _extract_outline(doc, body, orientations: list[dict]) -> dict:
+    """Outline berurut + sinyal dekay, dari SELURUH wadah yang terbukti dipakai.
+
+    Tiap entri membawa ORIENTASI section tempatnya berada. Tanpa itu `orientations`
+    tak bisa dipakai apa-apa: dia daftar per-SECTION, sementara template hasil
+    generate disusun per-HEADING — tak ada yang menghubungkan "section ke-2
+    landscape" dengan "bab mana yang mulai di sana". Korelasinya dibuat di sini
+    dengan menelusuri body secara URUT: properti sebuah section disimpan di
+    `sectPr` yang MENGAKHIRInya, jadi tiap paragraf ber-`sectPr` menutup section
+    berjalan dan yang berikutnya masuk section sesudahnya.
+
+    Yang sengaja TIDAK dipindai — diukur pada 4 template nyata (`Template SDD`,
+    `04. Dokumen UAT`, `Solution_Design_Document`, `Veracity`), bukan ditebak:
+    - **sel tabel**: nol judul asli di keempatnya, dan satu-satunya yang mirip
+      judul justru false positive ("18 March 2021"). Memindainya cuma derau.
+    - **`w:outlineLvl`**: nol pemakaian di keempatnya. Sinyal sah menurut spec
+      Word, tapi tak ada satu pun template kita yang bisa membuktikannya jalan —
+      dan mengirim jalur yang tak terverifikasi itu justru yang kita hindari.
+    """
+    style_names = {s.style_id: s.name for s in doc.styles if s.style_id}
+    candidates: list[dict] = []
+    heading_usage = Counter()
+    empty_headings = 0
+    tab_in_headings = False
+    section_index = 0
+
+    def consider(element, *, where: str) -> None:
+        nonlocal empty_headings, tab_in_headings
+        found = _paragraph_heading(element, style_names, loose=True)
+        if found is None:
+            return
+        level, text, signal, style_name = found
+        if signal == "style":
+            heading_usage[style_name] += 1
+        if not text:
+            empty_headings += 1
+        if _has_tab_char(element):
+            tab_in_headings = True
+        orient = (orientations[section_index]["orient"]
+                  if section_index < len(orientations) else "portrait")
+        candidates.append({"level": level, "text": text[:90], "empty": not text,
+                           "orient": orient, "signal": signal, "where": where})
+
+    for element in body.iterchildren(qn("w:p")):
+        consider(element, where="body")
+        for nested in _text_box_paragraphs(element):
+            consider(nested, where="text_box")
+        p_pr = element.find(qn("w:pPr"))
+        if p_pr is not None and p_pr.find(qn("w:sectPr")) is not None:
+            section_index += 1
+
+    # Pakai sinyal TERKUAT yang tersedia, jangan campur aduk. Kalau template punya
+    # style heading, itu deklarasi penulis dan pola penomoran di BODY tak boleh
+    # ikut campur — daftar bernomor yang diketik manual akan terseret jadi "bab".
+    # Text box tetap ikut: dia buta terhadap style secara konstruksi, jadi di situ
+    # penomoran bukan sinyal kedua melainkan satu-satunya.
+    if any(c["signal"] == "style" for c in candidates):
+        outline = [c for c in candidates
+                   if c["signal"] == "style" or c["where"] == "text_box"]
+    else:
+        # Tak ada satu pun style heading (template yang diformat manual seluruhnya).
+        # Menawarkan tebakan yang bisa dikoreksi pengguna lebih berguna daripada
+        # mengembalikan outline kosong dan diam.
+        outline = candidates
+
+    return {"outline": outline,
+            "heading_usage": dict(heading_usage),
+            "heading_sources": dict(Counter(c["signal"] for c in outline)),
+            "empty_headings": empty_headings,
+            "tab_in_headings": tab_in_headings}
+
+
+_UAT_MARKERS = re.compile(r"acceptance|testing|uat|pengujian|test script|defect")
+_SDD_MARKERS = re.compile(r"design|architecture|deskripsi|requirement")
+
+
 def _guess_kind(heading_text: str) -> str:
-    if re.search(r"acceptance|testing|uat|pengujian|test script|defect", heading_text):
+    """Jenis dokumen dari kosakata judul bab — yang MENANG BANYAK, bukan yang
+    lebih dulu cocok.
+
+    Versi pertama memeriksa UAT lebih dulu lalu `return` pada kecocokan PERTAMA,
+    jadi satu kata "testing" di sebuah template Solution Design mengalahkan lima
+    kata SDD. Bukan cacat kosmetik: jenis dokumen menentukan seluruh kosakata
+    pemetaan, dan salah tebak memotong isi dokumen berlipat. Terukur pada
+    `Solution_Design_Document` — dipeta sebagai UAT cuma 1 dari 17 bab terisi,
+    sebagai SDD 7 dari 17.
+    """
+    uat = len(_UAT_MARKERS.findall(heading_text))
+    sdd = len(_SDD_MARKERS.findall(heading_text))
+    if uat > sdd:
         return "UAT"
-    if re.search(r"design|architecture|deskripsi|requirement", heading_text):
+    if sdd > uat:
         return "SDD"
     return "unknown"
 
@@ -196,25 +382,8 @@ def build_template_spec(docx_path: str | Path) -> dict:
         width = round(section.page_width.inches, 1) if section.page_width else None
         orientations.append({"orient": orient, "width_in": width})
 
-    # Outline heading berurut + sinyal dekay (CORETAD).
-    outline = []
-    heading_usage = Counter()
-    empty_headings = 0
-    tab_in_headings = False
-    for para in doc.paragraphs:
-        name = para.style.name if para.style else ""
-        match = re.fullmatch(r"Heading (\d)", name)
-        if name != "Title" and match is None:
-            continue
-        heading_usage[name] += 1
-        text = para.text.strip()
-        if not text:
-            empty_headings += 1
-        if "\t" in para.text:
-            tab_in_headings = True
-        level = 0 if name == "Title" else int(match.group(1))
-        outline.append({"level": level, "text": re.sub(r"\s+", " ", text)[:90],
-                        "empty": not text})
+    found = _extract_outline(doc, body, orientations)
+    outline = found["outline"]
 
     n_toc = (sum(1 for it in body.findall(".//" + qn("w:instrText"))
                  if it.text and "TOC" in it.text)
@@ -251,10 +420,11 @@ def build_template_spec(docx_path: str | Path) -> dict:
             "n_images": n_images,
             "n_sections": len(doc.sections),
             "n_toc_fields": n_toc,
-            "heading_usage": dict(heading_usage),
+            "heading_usage": found["heading_usage"],
+            "heading_sources": found["heading_sources"],
             "outline": outline,
         },
         "styles_present": [s for s in PANDOC_STYLES if s in present_styles],
-        "decay": {"empty_headings": empty_headings,
-                  "tab_in_headings": tab_in_headings},
+        "decay": {"empty_headings": found["empty_headings"],
+                  "tab_in_headings": found["tab_in_headings"]},
     }

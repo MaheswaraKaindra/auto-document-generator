@@ -45,6 +45,34 @@ class DocumentMetadata(BaseModel):
     document_classification: Optional[str] = None
     dev_system_type: Optional[str] = None
 
+    # Halaman cover: kodifikasi fungsi + katalog proses bisnis. Dulu sel-sel ini
+    # KOSONG permanen di template (tidak ditanyakan ke siapa pun), jadi cover
+    # selalu memuat dua tabel setengah kosong. Sekarang ditanyakan seperti field
+    # cover lain — kosong tetap jatuh ke penanda *(diisi manual)*, yang jujur
+    # menyatakan "belum diisi" alih-alih terlihat seperti bug render.
+    business_relationship_no: Optional[str] = None
+    business_it_solution_no: Optional[str] = None
+    value_chain: Optional[str] = None
+    application_landscape: Optional[str] = None
+
+    # Tim project (halaman cover). Peran-perannya TETAP (diambil dari dokumen
+    # acuan); yang ditanyakan cuma namanya. Tidak diturunkan dari kode: nama
+    # orang tidak ada di repo mana pun.
+    #
+    # `entitas` = kolom PERTAMA tabel Tim Project gaya PREMCO ("Entitas | Jabatan
+    # | Nama"): nama perusahaan/organisasi pemilik, satu nilai untuk seluruh tim
+    # (di dokumen PREMCO sel ini di-merge vertikal — compiler menirunya lewat
+    # marker ((CVMERGE))). Kosong = jatuh ke penanda *(diisi manual)* seperti
+    # field cover lain.
+    entitas: Optional[str] = None
+    team_application_requestor: Optional[str] = None
+    team_business_process_owner: Optional[str] = None
+    team_pic: Optional[str] = None
+    team_lead_coordinator: Optional[str] = None
+    team_it_solution_analyst: Optional[str] = None
+    team_developer: Optional[str] = None
+    team_design_uiux: Optional[str] = None
+
     # Informasi Demografi Aplikasi (bab 3 SDD)
     business_requestor: Optional[str] = None
     business_user: Optional[str] = None

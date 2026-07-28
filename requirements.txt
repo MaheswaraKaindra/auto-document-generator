@@ -28,5 +28,9 @@ pypandoc
 tree-sitter
 tree-sitter-language-pack
 
+# Verifikasi JWT Supabase (auth). PyJWT[crypto] menarik `cryptography` untuk
+# signing key asimetris (ES256/RS256) via JWKS; HS256 (JWT secret) tak butuh itu.
+PyJWT[crypto]
+
 # --- Testing ---
 pytest

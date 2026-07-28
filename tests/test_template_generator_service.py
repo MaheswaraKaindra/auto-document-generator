@@ -183,3 +183,97 @@ def test_generated_uat_template_renders_grouped_test_cases():
     assert "Case Pengujian: Halaman Login" in rendered
     assert "Case Pengujian: Halaman Produk" in rendered
     assert "Masuk dashboard" in rendered
+
+
+def test_orientation_marker_emitted_only_on_change():
+    """Marker orientasi dipancarkan saat BERUBAH saja — bukan di tiap bab.
+    Marker di tiap bab akan memecah dokumen jadi puluhan section tak berguna."""
+    mapping = [
+        {"level": 1, "text": "Pendahuluan", "binding": tg.MANUAL, "orient": "portrait"},
+        {"level": 1, "text": "Ruang Lingkup", "binding": tg.MANUAL, "orient": "portrait"},
+        {"level": 1, "text": "Matriks", "binding": tg.MANUAL, "orient": "landscape"},
+        {"level": 1, "text": "Lampiran", "binding": tg.MANUAL, "orient": "landscape"},
+        {"level": 1, "text": "Penutup", "binding": tg.MANUAL, "orient": "portrait"},
+    ]
+
+    template = tg.generate_jinja_template(mapping)
+
+    assert template.count("((LANDSCAPE))") == 1
+    assert template.count("((PORTRAIT))") == 1
+    # Urutannya harus membungkus bab landscape, bukan sekadar ada.
+    assert (template.index("((LANDSCAPE))") < template.index("# Matriks")
+            < template.index("((PORTRAIT))") < template.index("# Penutup"))
+
+
+def test_all_portrait_template_emits_no_marker():
+    """Mayoritas template potret seluruhnya — jangan menambah section break
+    (dan risiko regresi) pada dokumen yang tidak membutuhkannya."""
+    mapping = [
+        {"level": 1, "text": "Pendahuluan", "binding": tg.MANUAL, "orient": "portrait"},
+        {"level": 1, "text": "Penutup", "binding": tg.MANUAL},  # tanpa orient sama sekali
+    ]
+
+    template = tg.generate_jinja_template(mapping)
+
+    assert "((LANDSCAPE))" not in template
+    assert "((PORTRAIT))" not in template
+
+
+def test_mapping_health_berteriak_saat_peta_hampir_kosong():
+    """Kegagalan senyap lebih mahal daripada kegagalan berisik.
+
+    Kasus nyata: sebuah template vendor terkompilasi mulus, mengembalikan 201,
+    lalu menghasilkan dokumen 20 halaman yang hampir seluruhnya placeholder —
+    tanpa satu pun sinyal bahwa ada yang tidak beres. Pengguna baru tahu setelah
+    membaca dokumen jadi, dan saat itu dia sudah membayar LLM."""
+    from app.services.template_generator_service import mapping_health
+
+    plan = [{"level": 0, "text": "Judul", "binding": "skip"},
+            {"level": 1, "text": "Prospect", "binding": "manual"},
+            {"level": 1, "text": "Pool", "binding": "manual"},
+            {"level": 1, "text": "Solution Architecture", "binding": "architecture"}]
+
+    health = mapping_health(plan)
+
+    assert health["n_headings"] == 3          # bab `skip` tak ikut dihitung
+    assert health["n_filled"] == 1
+    assert health["unmapped"] == ["Prospect", "Pool"]
+    assert "warning" in health
+
+
+def test_mapping_health_diam_saat_peta_sehat():
+    """Peringatan yang selalu menyala sama tak bergunanya dengan yang tak pernah."""
+    from app.services.template_generator_service import mapping_health
+
+    plan = [{"level": 1, "text": f"Bab {i}", "binding": b} for i, b in enumerate(
+        ["app_description", "user_roles", "system_requirements",
+         "feature_requirements", "use_cases", "architecture", "manual"])]
+
+    health = mapping_health(plan)
+
+    assert health["n_content_kinds"] == 6
+    assert "warning" not in health
+
+
+def test_mapping_health_tidak_menghukum_template_uat_yang_sehat():
+    """Template UAT nyata mengikat 1 bab dari 24 — dan itu SEHAT.
+
+    Yang satu itu tabel test case, isi utama sebuah dokumen UAT; sisanya
+    (persetujuan, ruang lingkup, log defect) memang pekerjaan manusia. Ambang
+    yang menghitung angka MUTLAK memvonis setiap template UAT sakit, sebab
+    kosakata UAT cuma punya 2 jenis isi sementara SDD punya 8 — mustahil
+    dipenuhi, dan peringatan yang selalu menyala akan diabaikan orang."""
+    from app.services.template_generator_service import mapping_health
+
+    plan = [{"level": 1, "text": "Persetujuan", "binding": "manual"},
+            {"level": 1, "text": "Ruang Lingkup", "binding": "manual"},
+            {"level": 1, "text": "Detail Testing", "binding": "test_groups"},
+            {"level": 1, "text": "Log Defect", "binding": "manual"}]
+
+    health = mapping_health(plan, "UAT")
+
+    assert health["n_content_kinds_possible"] == 2
+    assert health["filled_ratio"] == 0.25      # rendah, tapi bukan penanda sakit
+    assert "warning" not in health
+    # Peta SDD dengan isi sepersis itu justru SAKIT: 1 dari 8 jenis isi.
+    assert "warning" in mapping_health(plan, "SDD")

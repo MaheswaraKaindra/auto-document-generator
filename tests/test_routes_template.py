@@ -114,3 +114,78 @@ def test_list_templates_includes_builtins_with_doc_types(client):
 
 def test_get_unknown_template_is_404(client):
     assert client.get("/templates/tidak-ada").status_code == 404
+
+
+def _upload(client, headings, name="Vendor"):
+    resp = client.post(
+        "/templates",
+        files={"file": (f"{name}.docx", _docx_bytes(headings), DOCX_MIME)},
+        data={"name": name, "doc_types": "SDD"},
+    )
+    assert resp.status_code == 201, resp.text
+    return resp.json()
+
+
+def test_tinjauan_manusia_menyimpan_peta_dan_regenerate_template(client):
+    """Langkah terakhir yang tak bisa diotomatiskan.
+
+    Ekstraksi menemukan babnya dan pemeta menebak isinya, tapi cuma pemberi
+    template yang tahu bab bernama asing itu sebetulnya deskripsi aplikasi."""
+    body = _upload(client, ["Bab Asing Yang Tak Dikenali", "Lampiran"])
+    template_id = body["manifest"]["template_id"]
+    plan = body["mappings"]["SDD"]
+    # Heuristik menyerah pada nama asing -> placeholder jujur, bukan tebakan.
+    assert all(p["binding"] != "app_description" for p in plan)
+
+    bindings = [p["binding"] for p in plan]
+    bindings[[p["text"] for p in plan].index("Bab Asing Yang Tak Dikenali")] = "app_description"
+    resp = client.put(f"/templates/{template_id}/mappings/SDD",
+                      json={"bindings": bindings})
+
+    assert resp.status_code == 200, resp.text
+    updated = resp.json()["mappings"]["SDD"]
+    assert updated[[p["text"] for p in plan].index("Bab Asing Yang Tak Dikenali")][
+        "binding"] == "app_description"
+    # Struktur bab tak boleh ikut bergeser: itu hasil PENGUKURAN dokumen sumber.
+    assert [p["text"] for p in updated] == [p["text"] for p in plan]
+    assert [p["level"] for p in updated] == [p["level"] for p in plan]
+    # Template Jinja ikut di-generate ulang — kalau tidak, suntingan cuma tersimpan
+    # di JSON dan dokumennya keluar sama saja seperti sebelum ditinjau.
+    rendered = (compiler_service.TEMPLATES_STORE / template_id / "SDD.md").read_text(
+        encoding="utf-8")
+    assert "app_description" in rendered
+
+
+def test_tinjauan_menolak_peta_yang_merusak(client):
+    body = _upload(client, ["Deskripsi Aplikasi", "Use Case"])
+    template_id = body["manifest"]["template_id"]
+    plan = body["mappings"]["SDD"]
+    bindings = [p["binding"] for p in plan]
+
+    # Jumlah tak cocok: peta harus utuh, satu binding per bab.
+    assert client.put(f"/templates/{template_id}/mappings/SDD",
+                      json={"bindings": bindings[:-1]}).status_code == 422
+    # Binding karangan.
+    assert client.put(f"/templates/{template_id}/mappings/SDD",
+                      json={"bindings": ["ngawur"] * len(bindings)}).status_code == 422
+    # Satu isi dipakai dua bab: bab kedua cuma akan menyalin bab pertama, jadi
+    # ditolak TERANG-TERANGAN daripada di-dedup diam-diam seperti pemeta otomatis.
+    duplicated = ["app_description"] * len(bindings)
+    resp = client.put(f"/templates/{template_id}/mappings/SDD",
+                      json={"bindings": duplicated})
+    assert resp.status_code == 422
+    assert "app_description" in resp.json()["detail"]
+
+    assert client.put("/templates/entah-apa/mappings/SDD",
+                      json={"bindings": ["manual"]}).status_code == 404
+    assert client.put(f"/templates/{template_id}/mappings/UAT",
+                      json={"bindings": bindings}).status_code == 404
+
+
+def test_daftar_binding_tersedia_untuk_dropdown(client):
+    """Path statis harus menang atas `/{template_id}` — kalau urutan deklarasinya
+    terbalik, parameter menelan "bindings" dan endpoint ini balas 404 diam-diam."""
+    resp = client.get("/templates/bindings")
+    assert resp.status_code == 200
+    bindings = resp.json()["bindings"]
+    assert {"skip", "manual", "heading_only", "app_description"} <= set(bindings)

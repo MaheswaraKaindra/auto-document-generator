@@ -8,8 +8,12 @@ import base64
 import logging
 from typing import Callable
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from fastapi.responses import FileResponse
+
+from app.api.deps import get_current_user
+from app.services import auth_service
+from app.services.auth_service import Principal
 
 from app.api.schemas_document import GenerateDocumentRequest, ZipFileIn
 from app.domain.exceptions import (
@@ -21,6 +25,7 @@ from app.domain.exceptions import (
 )
 from app.domain.models import GithubIngestRequest, SourceType, ZipIngestRequest
 from app.services import job_store
+from app.services import compiler_service
 from app.services.compiler_service import decode_logo, generate_docx, validate_template
 from app.services.ingestion_service import IngestionService
 from app.services.llm_service import DocumentContent, LLMService
@@ -170,7 +175,8 @@ def _run_generation(
 
 @router.post("/generate", status_code=202)
 def generate_document_full_pipeline(
-    body: GenerateDocumentRequest, background_tasks: BackgroundTasks
+    body: GenerateDocumentRequest, background_tasks: BackgroundTasks,
+    principal: Principal = Depends(get_current_user),
 ):
     """Titik masuk sistem untuk end user. ASYNC sejak 2026-07-16.
 
@@ -214,7 +220,12 @@ def generate_document_full_pipeline(
         except ValueError as e:
             raise HTTPException(status_code=422, detail=str(e)) from e
 
-    job_id = job_store.create_job(document_type=doc_type, project_name=body.project_name)
+    job_id = job_store.create_job(
+        document_type=doc_type,
+        project_name=body.project_name,
+        template_id=body.template_id,
+        owner=principal.id,
+    )
     background_tasks.add_task(_run_generation, job_id, body, logo_bytes, zip_requests)
     return {
         "job_id": job_id,
@@ -224,7 +235,7 @@ def generate_document_full_pipeline(
 
 
 @router.get("/jobs/{job_id}")
-def get_job_status(job_id: str):
+def get_job_status(job_id: str, principal: Principal = Depends(get_current_user)):
     """Status job. 200 walau job-nya gagal — pertanyaannya ("job ini bagaimana?")
     berhasil dijawab; kegagalan generation-nya ada di dalam payload, lengkap
     dengan `error_status` supaya klien tahu ini kegagalan permanen atau bukan."""
@@ -234,14 +245,21 @@ def get_job_status(job_id: str):
     # job yang ditanya di sini yang paling mungkin sedang dipoll, jadi ini titik
     # paling tepat untuk deteksi lazy pada job milik worker yang mati.
     job_store.reap_stale_jobs()
+    job_store.purge_expired_documents()
     job = job_store.get_job(job_id)
-    if job is None:
+    # 404 (bukan 403) untuk job milik orang lain: samakan dengan "tidak ada" supaya
+    # keberadaan job orang lain tak bocor lewat beda kode status.
+    if job is None or not auth_service.owns(job.get("owner"), principal):
         raise HTTPException(status_code=404, detail=f"Job {job_id} tidak ditemukan.")
 
     payload = {
         "job_id": job["id"],
         "status": job["status"],
         "document_type": job["document_type"],
+        # Gaya dokumen yang dipakai job ini. Riwayat job dulu tidak bisa menjawab
+        # "dokumen ini gaya apa" — pertanyaan yang muncul begitu ada lebih dari
+        # satu gaya. None untuk job dari DB lama (sebelum kolomnya ada).
+        "template_id": job["template_id"],
         # Tahap yang sedang dikerjakan, kalimat siap tampil. `status` cuma punya
         # empat nilai dan tidak bisa membedakan "sedang mengunduh repo" dari
         # "sedang menunggu AI dua menit" — padahal itu yang ingin diketahui orang
@@ -252,6 +270,11 @@ def get_job_status(job_id: str):
     }
     if job["status"] == job_store.STATUS_DONE:
         payload["download_url"] = f"/documents/jobs/{job_id}/download"
+        # Cuma diumumkan kalau bundelnya benar-benar ADA: UAT tak punya activity
+        # diagram, dan SDD yang seluruh diagramnya jatuh ke PlantUML juga tidak.
+        # Menawarkan tautan yang berujung 404 lebih buruk daripada tak menawarkan.
+        if compiler_service.drawio_bundle_for(job["docx_path"]).exists():
+            payload["diagrams_url"] = f"/documents/jobs/{job_id}/diagrams"
     elif job["status"] == job_store.STATUS_FAILED:
         payload["error"] = job["error"]
         payload["error_status"] = job["error_status"]
@@ -259,9 +282,9 @@ def get_job_status(job_id: str):
 
 
 @router.get("/jobs/{job_id}/download")
-def download_job_document(job_id: str):
+def download_job_document(job_id: str, principal: Principal = Depends(get_current_user)):
     job = job_store.get_job(job_id)
-    if job is None:
+    if job is None or not auth_service.owns(job.get("owner"), principal):
         raise HTTPException(status_code=404, detail=f"Job {job_id} tidak ditemukan.")
     if job["status"] != job_store.STATUS_DONE:
         # 409, bukan 404: job-nya ADA, cuma belum siap. 404 akan bikin klien
@@ -275,6 +298,37 @@ def download_job_document(job_id: str):
         media_type=_DOCX_MEDIA_TYPE,
         filename=_FILENAME_BY_TYPE[job["document_type"]],
     )
+
+
+@router.get("/jobs/{job_id}/diagrams")
+def download_job_diagrams(job_id: str, principal: Principal = Depends(get_current_user)):
+    """Bundel `.drawio` activity diagram dokumen ini — versi yang bisa DISUNTING.
+
+    Gambar di dokumen digambar dari geometri yang dihitung sendiri
+    (`app/diagram/activity_render.py`), jadi file suntingan ini lahir dari
+    koordinat yang SAMA — bentuknya mustahil berbeda dari yang tercetak. Gunanya:
+    diagram yang 90% benar bisa dirapikan tangan di draw.io tanpa menggambar
+    ulang dari nol.
+
+    404 kalau job tak ada ATAU dokumennya memang tak punya activity diagram
+    (UAT, atau SDD yang diagramnya jatuh ke jalur PlantUML).
+    """
+    job = job_store.get_job(job_id)
+    if job is None or not auth_service.owns(job.get("owner"), principal):
+        raise HTTPException(status_code=404, detail=f"Job {job_id} tidak ditemukan.")
+    if job["status"] != job_store.STATUS_DONE:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Job {job_id} belum selesai (status: {job['status']}).",
+        )
+    bundle = compiler_service.drawio_bundle_for(job["docx_path"])
+    if not bundle.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"Job {job_id} tidak punya activity diagram yang bisa disunting.",
+        )
+    return FileResponse(bundle, media_type="application/zip",
+                        filename=f"activity-diagrams-{job_id[:8]}.zip")
 
 
 def _describe_parsed(parsed_repo_context: dict) -> str:

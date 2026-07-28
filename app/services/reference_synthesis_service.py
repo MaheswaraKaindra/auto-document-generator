@@ -82,6 +82,14 @@ BODY_FONT = "Calibri"
 
 BLACK = "000000"
 WHITE = "FFFFFF"
+# 2026-07-21: header tabel dikembalikan ke HITAM atas aturan tipografi pemilik
+# ("Table Header: background hitam, teks putih"). Konstanta DARK tetap ada untuk
+# jalur sintesis template upload (fallback), tapi default PREMCO kembali BLACK.
+DARK = "3B3838"
+# "Semi bold" heading 3: Calibri tak punya varian Semibold di OOXML (w:b itu
+# biner), jadi diaproksimasi bold + abu gelap — terbaca lebih ringan dari H2
+# (hitam bold), memberi tingkat ketiga hierarki tanpa font tambahan.
+SEMIBOLD_INK = "595959"
 GRID = "BFBFBF"  # abu-abu garis tabel: kelihatan, tapi tidak berteriak
 CAPTION_INK = "44546A"  # biru-kelabu caption, meniru caption dokumen acuan
 
@@ -157,16 +165,27 @@ def _field_runs(instruction: str, placeholder: str, *, italic=False, size=None):
 
 def _restyle(style, *, size=None, bold=False, italic=False, caps=False, color=None,
              align=None, before=None, after=None, line=None, keep_next=False,
-             char_spacing=None, page_break_before=False):
+             char_spacing=None, page_break_before=False, keep_lines=False,
+             widow_control=False):
     """Timpa gaya satu style. `size` dalam POIN (dikonversi ke setengah-poin),
     `before`/`after`/`line` dalam POIN (dikonversi ke twip), `char_spacing`
-    (perenggangan antar-huruf, untuk judul huruf besar) dalam twip."""
+    (perenggangan antar-huruf, untuk judul huruf besar) dalam twip.
+
+    `keep_lines` = paragraf tidak boleh TERBELAH melintasi halaman (dipakai
+    heading & caption: heading dua baris yang patah di batas halaman, atau
+    caption yang setengahnya pindah, adalah cacat paling khas dokumen
+    hasil-generate). `widow_control` = jangan tinggalkan satu baris sendirian di
+    ujung/awal halaman. Keduanya default Word, TAPI tidak dinyatakan di kerangka
+    Pandoc — dan "default" yang tidak tertulis adalah yang berubah diam-diam
+    antar versi Word. Dinyatakan eksplisit supaya deterministik.
+    """
     rpr = style.element.get_or_add_rPr()
     ppr = style.element.get_or_add_pPr()
     for tag in ("w:b", "w:i", "w:caps", "w:sz", "w:szCs", "w:color", "w:spacing"):
         for old in rpr.findall(qn(tag)):
             rpr.remove(old)
-    for tag in ("w:jc", "w:spacing", "w:keepNext", "w:pageBreakBefore"):
+    for tag in ("w:jc", "w:spacing", "w:keepNext", "w:pageBreakBefore",
+                "w:keepLines", "w:widowControl"):
         for old in ppr.findall(qn(tag)):
             ppr.remove(old)
 
@@ -197,6 +216,10 @@ def _restyle(style, *, size=None, bold=False, italic=False, caps=False, color=No
         ppr.append(spacing)
     if keep_next:
         _sub(ppr, "w:keepNext")
+    if keep_lines:
+        _sub(ppr, "w:keepLines")
+    if widow_control:
+        _sub(ppr, "w:widowControl")
     if page_break_before:
         _sub(ppr, "w:pageBreakBefore")
 
@@ -384,6 +407,37 @@ def _contrast_text(fill_hex: str) -> str:
     return BLACK if yiq >= 128 else WHITE
 
 
+def _cover_style(document, style_id: str, name: str, *, bottom_rule: str = "", **restyle):
+    """Daftarkan satu style paragraf BARU (belum ada di kerangka Pandoc) lalu
+    beri rupanya lewat `_restyle`.
+
+    Dipakai halaman cover. Template memanggilnya lewat div Pandoc
+    `::: {custom-style="Cover Title"}` — Pandoc mencocokkan berdasarkan NAMA
+    style, jadi nama di sini adalah kontraknya dengan template (diprobe: Pandoc
+    tetap memakai nama itu walau style-nya tak ada, cuma tanpa rupa apa pun —
+    makanya style-nya harus benar-benar didefinisikan di sini).
+
+    `bottom_rule` = warna garis hairline di BAWAH paragraf (kosong = tanpa
+    garis). Itu cara membuat pemisah tipis di cover tanpa menggambar tabel:
+    satu paragraf kosong yang seluruh gunanya adalah garisnya.
+    """
+    element = OxmlElement("w:style")
+    element.set(qn("w:type"), "paragraph")
+    element.set(qn("w:styleId"), style_id)
+    _sub(element, "w:name", val=name)
+    _sub(element, "w:basedOn", val="Normal")
+    _sub(element, "w:qFormat")
+    document.styles.element.append(element)
+
+    style = document.styles[name]
+    _restyle(style, **restyle)
+    if bottom_rule:
+        borders = OxmlElement("w:pBdr")
+        _sub(borders, "w:bottom", val="single", sz=6, space=1, color=bottom_rule)
+        style.element.get_or_add_pPr().append(borders)
+    return style
+
+
 def _letterspacing(caps: bool):
     """Perenggangan antar-huruf halus MENYERTAI perlakuan huruf-besar (aksen
     titling khas dokumen resmi). Non-caps → tak ada. Aturan turunan ini menjaga
@@ -398,10 +452,16 @@ def _letterspacing(caps: bool):
 _PREMCO_STYLE = {
     "heading_font": BODY_FONT,   # tema major
     "body_font": BODY_FONT,      # tema minor
-    "title":    {"size": 22, "bold": True, "caps": False, "align": "center"},
-    "heading1": {"size": 16, "bold": True, "caps": True,  "align": "center"},
-    "heading2": {"size": 14, "bold": True, "caps": True,  "align": "center"},
-    "heading3": {"size": 12, "bold": True, "caps": False, "align": None},
+    "title":    {"size": 30, "bold": True, "caps": False, "align": "center"},
+    # Ukuran heading DIUKUR dari PDF acuan (span per baris, 2026-07-21), bukan
+    # ditebak: bab "DESKRIPSI APLIKASI"/"SYSTEM REQUIREMENT" = Calibri-Bold 14pt
+    # huruf besar di TENGAH; sub-bab "2.10. Activity Diagram ..." = Calibri-Bold
+    # 12pt rata KIRI. Aturan tipografi pemilik (bab besar+bold+UPPERCASE+tengah,
+    # sub-bab bold) tetap dipenuhi — yang berubah cuma angkanya, dari 16/13 yang
+    # ditebak jadi 14/12 yang terukur.
+    "heading1": {"size": 14, "bold": True, "caps": True,  "align": "center"},  # bab: besar+bold+UPPERCASE
+    "heading2": {"size": 12, "bold": True, "caps": False, "align": "left"},    # sub-bab: bold
+    "heading3": {"size": 11, "bold": True, "caps": False, "align": "left"},    # sub-sub: semibold (approx via SEMIBOLD_INK)
     "header_fill": BLACK,
     "header_text": WHITE,
 }
@@ -471,33 +531,67 @@ def build_reference(destination: Path = DEFAULT_REFERENCE, spec: dict | None = N
     # Judul dokumen (halaman cover). Judulnya juga muncul di kaki tiap halaman
     # lewat field TITLE — satu sumber, dua tempat, meniru acuan. Napas besar di
     # atas & bawahnya supaya cover tidak terasa mampet.
+    # `after` sengaja RAPAT (14, dulu 28): tepat di bawah judul cover kini ada
+    # baris identitas ("No. Solution Design ...") — dua baris yang saling
+    # menjelaskan harus terbaca sebagai satu blok, bukan dua. Napas besar cover
+    # pindah ke atas judul, dibawa "Cover Eyebrow" (lihat blok Cover di bawah).
     _restyle(styles["Title"], size=cfg["title"]["size"], bold=cfg["title"]["bold"],
              caps=cfg["title"]["caps"], align=cfg["title"]["align"],
-             char_spacing=_letterspacing(cfg["title"]["caps"]), before=64, after=28)
+             char_spacing=_letterspacing(cfg["title"]["caps"]), before=64, after=14)
 
-    # Section = Heading 2, karena template memakai `##` (`#` dipakai judul, yang
-    # kini datang dari metadata). Di dokumen acuan judul bab DI TENGAH, bold,
-    # huruf besar — bukan rata kiri gaya Markdown. Perenggangan antar-huruf
-    # halus (char_spacing) jadi aksen visualnya.
+    # Aturan tipografi pemilik (2026-07-21): H1 = bab (besar+bold+UPPERCASE,
+    # tengah), H2 = sub-bab (bold), H3 = sub-sub (semibold, diaproksimasi bold +
+    # SEMIBOLD_INK). Template DIGESER agar bab pakai `#` = Word Heading 1 (dulu
+    # bab `##` = Heading 2; `#` bebas karena judul datang dari metadata) — supaya
+    # style Word H1/H2/H3 cocok langsung dengan aturan & penamaan Word benar saat
+    # diedit. Perenggangan antar-huruf (char_spacing) mengiringi huruf besar H1.
+    # keep_next = heading tidak boleh jadi baris terakhir halaman (harus ikut
+    # paragraf/tabel di bawahnya); keep_lines = heading yang jatuh ke dua baris
+    # tidak boleh dipatahkan di antara keduanya.
     _restyle(styles["Heading 1"], size=cfg["heading1"]["size"], bold=cfg["heading1"]["bold"],
              caps=cfg["heading1"]["caps"], color=BLACK, align=cfg["heading1"]["align"],
-             before=28, after=12, keep_next=True,
+             before=28, after=12, keep_next=True, keep_lines=True, widow_control=True,
              char_spacing=_letterspacing(cfg["heading1"]["caps"]))
     _restyle(styles["Heading 2"], size=cfg["heading2"]["size"], bold=cfg["heading2"]["bold"],
              caps=cfg["heading2"]["caps"], color=BLACK, align=cfg["heading2"]["align"],
-             before=28, after=14, keep_next=True,
+             before=28, after=14, keep_next=True, keep_lines=True, widow_control=True,
              char_spacing=_letterspacing(cfg["heading2"]["caps"]))
     _restyle(styles["Heading 3"], size=cfg["heading3"]["size"], bold=cfg["heading3"]["bold"],
-             caps=cfg["heading3"]["caps"], color=BLACK, align=cfg["heading3"]["align"],
-             before=16, after=8, keep_next=True,
+             caps=cfg["heading3"]["caps"], color=SEMIBOLD_INK, align=cfg["heading3"]["align"],
+             before=16, after=8, keep_next=True, keep_lines=True, widow_control=True,
              char_spacing=_letterspacing(cfg["heading3"]["caps"]))
+
+    # --- Halaman cover -------------------------------------------------------
+    # Hierarki cover diukur dari halaman 1 dokumen acuan (span PDF-nya dibaca,
+    # bukan ditebak): label jenis dokumen di ATAS (18pt bold) lalu NAMA PROJECT
+    # yang lebih besar (20pt bold) sebagai puncaknya, baru identitas (versi, RFC,
+    # klasifikasi) yang mengecil di bawahnya. Kita memakai urutan yang sama
+    # dengan kontras ukuran yang lebih tegas (13 → 30), plus pemisah hairline dan
+    # label section kecil — supaya cover terbaca sebagai hierarki, bukan tumpukan
+    # tabel. Ukuran judulnya sendiri tetap dari cfg["title"] (style Title).
+    _cover_style(document, "CoverEyebrow", "Cover Eyebrow",
+                 size=13, bold=True, caps=True, color=SEMIBOLD_INK, align="center",
+                 char_spacing=80, before=58, after=4)
+    # Baris identitas di bawah judul (No. Solution Design) — menempel judul.
+    _cover_style(document, "CoverSubtitle", "Cover Subtitle",
+                 size=11.5, color=SEMIBOLD_INK, align="center", before=0, after=2)
+    # Pemisah: paragraf yang isinya cuma garis. Ukuran font sengaja kecil supaya
+    # yang memakan tinggi adalah spasi before/after-nya, bukan barisnya.
+    _cover_style(document, "CoverRule", "Cover Rule",
+                 size=6, align="center", before=12, after=12, bottom_rule=GRID)
+    # Judul blok cover ("Kodifikasi & Katalog Proses Bisnis", "Tim Project"):
+    # kecil, huruf besar, renggang — penanda kelompok, bukan heading bab (jadi
+    # sengaja BUKAN Heading, supaya tidak masuk Daftar Isi).
+    _cover_style(document, "CoverSectionLabel", "Cover Section Label",
+                 size=9.5, bold=True, caps=True, color=SEMIBOLD_INK, align="left",
+                 char_spacing=60, before=16, after=5, keep_next=True)
 
     # Judul "Daftar Isi/Gambar/Tabel": rupa mengikuti judul bab (Heading 2, level
     # bab template), plus SELALU mulai halaman baru — di acuan tiap daftar punya
     # halamannya sendiri.
-    _restyle(styles["TOC Heading"], size=cfg["heading2"]["size"], bold=cfg["heading2"]["bold"],
-             caps=cfg["heading2"]["caps"], color=BLACK, align=cfg["heading2"]["align"],
-             before=0, after=18, char_spacing=_letterspacing(cfg["heading2"]["caps"]),
+    _restyle(styles["TOC Heading"], size=cfg["heading1"]["size"], bold=cfg["heading1"]["bold"],
+             caps=cfg["heading1"]["caps"], color=BLACK, align=cfg["heading1"]["align"],
+             before=0, after=18, char_spacing=_letterspacing(cfg["heading1"]["caps"]),
              page_break_before=True)
 
     # Caption: kecil, miring, biru-kelabu, di TENGAH — persis caption acuan.
@@ -506,21 +600,37 @@ def build_reference(destination: Path = DEFAULT_REFERENCE, spec: dict | None = N
     # jadi keep_next malah mengikatnya ke paragraf sesudahnya — arah yang salah.
     # Yang menjaga caption menempel tabelnya: keepNext di baris terakhir tabel,
     # dipasang compiler saat memindahkan.
+    # keep_lines: caption dua baris tidak boleh terbelah antar halaman.
     _restyle(styles["Image Caption"], size=9, italic=True, align="center",
-             color=CAPTION_INK, before=6, after=14)
+             color=CAPTION_INK, before=6, after=14, keep_lines=True, widow_control=True)
     _restyle(styles["Table Caption"], size=9, italic=True, align="center",
-             color=CAPTION_INK, before=4, after=14)
+             color=CAPTION_INK, before=4, after=14, keep_lines=True, widow_control=True)
 
     # Body JUSTIFIED (rata kiri-kanan) dengan spasi baris longgar — dua penanda
     # dokumen resmi yang paling terlihat saat disandingkan dengan acuan.
-    _restyle(styles["Body Text"], size=11, align="both", after=8, line=16)
-    _restyle(styles["First Paragraph"], size=11, align="both", after=8, line=16)
+    _restyle(styles["Body Text"], size=11, align="both", after=10, line=17,
+             widow_control=True)
+    _restyle(styles["First Paragraph"], size=11, align="both", after=10, line=17,
+             widow_control=True)
     # Compact dipakai sel tabel DAN list rapat: sedikit lebih kecil dari body.
-    _restyle(styles["Compact"], size=10.5, after=2, line=14)
+    #
+    # align="left" WAJIB dinyatakan, bukan dibiarkan mewarisi: Compact
+    # `basedOn` Body Text yang JUSTIFIED, jadi tanpa baris ini setiap sel tabel
+    # ikut rata kiri-kanan. Di kolom selebar 2-3 inci itu menghasilkan "sungai"
+    # spasi yang melebar (terukur di probe: "Admin dapat mengelola seluruh data
+    # inventaris:  menambah item baru,  melihat"), dan justru itu penanda paling
+    # khas keluaran Markdown mentah. Tabel dokumen acuan rata KIRI.
+    _restyle(styles["Compact"], size=10.5, align="left", after=2, line=14,
+             widow_control=True)
 
     # Paragraf gambar: diagram selalu DI TENGAH halaman + napas di sekelilingnya.
-    _restyle(styles["Figure"], align="center", before=10, after=4)
-    _restyle(styles["Captioned Figure"], align="center", before=10, after=4)
+    # keep_next mengikat gambar ke CAPTION-nya (caption gambar ada di BAWAH
+    # gambar) — tanpa ini gambar bisa tertinggal di halaman sebelumnya sementara
+    # captionnya menyeberang sendirian.
+    _restyle(styles["Figure"], align="center", before=10, after=4,
+             keep_next=True, keep_lines=True)
+    _restyle(styles["Captioned Figure"], align="center", before=10, after=4,
+             keep_next=True, keep_lines=True)
 
     _style_table(styles["Table"], header_fill=cfg["header_fill"],
                  header_text=cfg["header_text"])

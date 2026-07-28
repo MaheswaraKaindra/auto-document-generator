@@ -38,67 +38,81 @@
   kolom rata tengah. Mengubah jumlah dash mengubah proporsi kolom — itu fitur,
   bukan kebetulan.
 #}
-| Field | Isi |
-|----------|--------------------|
-| Nama Project | {{ project_name }} |
-| No. Solution Design | {{ meta.solution_design_no }} |
-| RFC # | {{ meta.rfc_number }} |
-| Versi | {{ meta.version }} |
-| Document Classification | {{ meta.document_classification }} |
+{# ================= HALAMAN COVER =================
+   Urutan & hierarkinya sama persis dengan sdd_premco_template.md — penjelasan
+   lengkapnya ada di sana. Ringkasnya: judul dua tingkat (label jenis dokumen +
+   nama project) datang dari `--metadata title` dan dipecah compiler
+   (`_split_cover_title`), lalu identitas → kodifikasi → tim. Blok di bawah
+   ditulis sebagai pipe table demi kolom yang lurus, tapi rupa tabelnya dilepas
+   compiler lewat marker ((CVBAND))/((CVLIST)); baris header yang KOSONG
+   (`|  |  |`) dibaca Pandoc sebagai "tabel tanpa header".
 
-{# Tiga tabel di bawah meniru halaman cover dokumen acuan (Fungsi/Kodifikasi,
-   Katalog Proses Bisnis, tabel tim). Sel-selnya sengaja KOSONG — bukan penanda
-   "(diisi manual)" — karena nilainya tidak ditanyakan di form; konvensinya sama
-   dengan Revision History yang di dokumen acuan pun berupa baris kosong.
-   Menambahkan penanda di sini akan menggagalkan
-   test_sdd_metadata_leaves_no_manual_placeholder. #}
-| Fungsi | No Kodifikasi |
-|--------|------------|
-| Business Relationship | |
-| Business IT Solution | |
+   Tim & Peran DULU ditaruh di halaman 2 karena cover + 3 tabel identitas +
+   tabel tim tidak muat satu halaman. Sesudah tumpukan tabel itu diganti blok
+   tanpa bingkai, semuanya muat (diverifikasi visual) — jadi tim kembali ke
+   cover, tempatnya di dokumen acuan. #}
+::: {custom-style="Cover Subtitle"}
+No. Solution Design {{ meta.solution_design_no }}
+:::
 
-| Katalog Proses Bisnis | Kategori |
-|--------|------------|
-| Proses Value Chain | |
-| Application Landscape | |
+::: {custom-style="Cover Rule"}
+&nbsp;
+:::
 
-```{=openxml}
-<w:p><w:r><w:br w:type="page"/></w:r></w:p>
-```
+| ((CVBAND))Versi | RFC # | Document Classification |
+|:-------------:|:-------------:|:-------------:|
+| {{ meta.version }} | {{ meta.rfc_number }} | {{ meta.document_classification }} |
 
-{# Tim & Peran sengaja DI HALAMAN 2, bukan di cover: diukur dari probe visual,
-   cover + 3 tabel identitas + tabel tim = ~21 baris tidak muat satu halaman dan
-   tabel tim terbelah jelek melintasi halaman. Cover cukup memuat identitas
-   dokumen; tim & riwayat revisi satu halaman sesudahnya. #}
-**Tim & Peran**
+::: {custom-style="Cover Rule"}
+&nbsp;
+:::
 
-| Jabatan / Peran | Nama |
-|--------|------------|
-| Application Requestor | |
-| Business Process Owner | |
-| PIC | |
-| Lead Coordinator | |
-| IT Solution Analyst | |
-| Developer | |
-| Design UI/UX | |
+::: {custom-style="Cover Section Label"}
+Kodifikasi & Katalog Proses Bisnis
+:::
 
-## Document Revision History
+|  |  |
+|-----------------|--------------------------|
+| ((CVLIST))Business Relationship | {{ meta.business_relationship_no }} |
+| Business IT Solution | {{ meta.business_it_solution_no }} |
+| Proses Value Chain | {{ meta.value_chain }} |
+| Application Landscape | {{ meta.application_landscape }} |
 
-| No. | Version | Revision Date | Changed By | Summary of Changes |
-|:---:|------|---------|---------|------------------|
-| | | | | |
+::: {custom-style="Cover Section Label"}
+Tim Project
+:::
 
-## Application Revision History
-
-| No. | Version | Revision Date | Changed By | Summary of Changes |
-|:---:|------|---------|---------|------------------|
-| | | | | |
+|  |  |
+|-----------------|--------------------------|
+| ((CVLIST))Application Requestor | {{ meta.team_application_requestor }} |
+| Business Process Owner | {{ meta.team_business_process_owner }} |
+| PIC | {{ meta.team_pic }} |
+| Lead Coordinator | {{ meta.team_lead_coordinator }} |
+| IT Solution Analyst | {{ meta.team_it_solution_analyst }} |
+| Developer | {{ meta.team_developer }} |
+| Design UI/UX | {{ meta.team_design_uiux }} |
 
 ```{=openxml}
 <w:p><w:r><w:br w:type="page"/></w:r></w:p>
 ```
 
-## Persetujuan Dokumen
+# Document Revision History
+
+| No. | Version | Revision Date | Changed By | Summary of Changes |
+|:---:|------|---------|---------|------------------|
+| | | | | |
+
+# Application Revision History
+
+| No. | Version | Revision Date | Changed By | Summary of Changes |
+|:---:|------|---------|---------|------------------|
+| | | | | |
+
+```{=openxml}
+<w:p><w:r><w:br w:type="page"/></w:r></w:p>
+```
+
+# Persetujuan Dokumen
 
 Dokumen ini dibuat sebagai dasar pengembangan {{ project_name }}. Jika ada perubahan dari kesepakatan waktu yang telah disetujui sebelumnya, maka lingkup perubahan dan tata waktu pekerjaan tersebut akan ditinjau kembali antara tim pengembang dengan customer aplikasi.
 
@@ -145,11 +159,11 @@ Tanda tangan dibubuhkan pada dokumen cetak setelah dokumen ini disetujui — bag
    menjalankan field (bukan Word). #}
 ```{=openxml}
 <w:p><w:pPr><w:pStyle w:val="TOCHeading"/></w:pPr><w:r><w:t>Daftar Isi</w:t></w:r></w:p>
-<w:p><w:fldSimple w:instr=" TOC \o &quot;1-3&quot; \h \z \u "><w:r><w:t>Daftar ini diisi otomatis saat dokumen dibuka di Microsoft Word.</w:t></w:r></w:fldSimple></w:p>
+<w:p><w:fldSimple w:instr=" TOC \o &quot;1-3&quot; \h \z \u "><w:r><w:t>Daftar ini terisi otomatis saat field diperbarui — di Word tekan Ctrl+A lalu F9, atau klik kanan di sini &gt; Update Field.</w:t></w:r></w:fldSimple></w:p>
 <w:p><w:pPr><w:pStyle w:val="TOCHeading"/></w:pPr><w:r><w:t>Daftar Gambar</w:t></w:r></w:p>
-<w:p><w:fldSimple w:instr=" TOC \h \z \t &quot;Image Caption&quot; \c "><w:r><w:t>Daftar ini diisi otomatis saat dokumen dibuka di Microsoft Word.</w:t></w:r></w:fldSimple></w:p>
+<w:p><w:fldSimple w:instr=" TOC \h \z \t &quot;Image Caption&quot; \c "><w:r><w:t>Daftar ini terisi otomatis saat field diperbarui — di Word tekan Ctrl+A lalu F9, atau klik kanan di sini &gt; Update Field.</w:t></w:r></w:fldSimple></w:p>
 <w:p><w:pPr><w:pStyle w:val="TOCHeading"/></w:pPr><w:r><w:t>Daftar Tabel</w:t></w:r></w:p>
-<w:p><w:fldSimple w:instr=" TOC \h \z \t &quot;Table Caption&quot; \c "><w:r><w:t>Daftar ini diisi otomatis saat dokumen dibuka di Microsoft Word.</w:t></w:r></w:fldSimple></w:p>
+<w:p><w:fldSimple w:instr=" TOC \h \z \t &quot;Table Caption&quot; \c "><w:r><w:t>Daftar ini terisi otomatis saat field diperbarui — di Word tekan Ctrl+A lalu F9, atau klik kanan di sini &gt; Update Field.</w:t></w:r></w:fldSimple></w:p>
 ```
 
 {# Pemisah daftar-daftar dari isi dokumen. SATU-SATUNYA page break manual
@@ -160,7 +174,7 @@ Tanda tangan dibubuhkan pada dokumen cetak setelah dokumen ini disetujui — bag
 <w:p><w:r><w:br w:type="page"/></w:r></w:p>
 ```
 
-## 1. Deskripsi Aplikasi
+# 1. Deskripsi Aplikasi
 
 {{ app_description }}
 
@@ -174,11 +188,11 @@ Tanda tangan dibubuhkan pada dokumen cetak setelah dokumen ini disetujui — bag
 
 : Tabel 1 Informasi Role Pengguna
 
-## 2. Application Dev System Type
+# 2. Application Dev System Type
 
 {{ meta.dev_system_type }}
 
-## 3. Informasi Demografi Aplikasi
+# 3. Informasi Demografi Aplikasi
 
 | No. | Subject | Uraian | Remark |
 |:---:|----------|--------------------|-----|
@@ -192,7 +206,7 @@ Tanda tangan dibubuhkan pada dokumen cetak setelah dokumen ini disetujui — bag
 
 : Tabel 2 Informasi Demografi Aplikasi
 
-## 4. System Requirement
+# 4. System Requirement
 
 | No. | System Requirement | Uraian |
 |:---:|----------|--------------------|
@@ -202,7 +216,7 @@ Tanda tangan dibubuhkan pada dokumen cetak setelah dokumen ini disetujui — bag
 
 : Tabel 3 System Requirement
 
-## 5. How to Access
+# 5. How to Access
 
 {# Checklist 2 baris tetap — bentuk ini DIUKUR dari docx acuan (dulu satu field
    teks bebas, yang tidak pernah menyerupai tabelnya). Sama seperti checklist
@@ -214,21 +228,21 @@ Tanda tangan dibubuhkan pada dokumen cetak setelah dokumen ini disetujui — bag
 
 : Tabel 4 How to Access
 
-## 6. Infrastructure & Capacity Planning
+# 6. Infrastructure & Capacity Planning
 
 {{ meta.infrastructure_capacity }}
 
-## 7. Application Architecture
+# 7. Application Architecture
 
-### 7.1 System Architecture
+## 7.1 System Architecture
 
 ![Gambar 1 Arsitektur Sistem]({{ diagrams.system_architecture_image }}){{ diagrams.system_architecture_attr }}
 
-### 7.2 Component Integration
+## 7.2 Component Integration
 
 ![Gambar 2 Integrasi Komponen]({{ diagrams.component_integration_image }}){{ diagrams.component_integration_attr }}
 
-## 8. Application Security
+# 8. Application Security
 
 | No. | Check List | Remark |
 |:---:|------------|------------|
@@ -238,7 +252,7 @@ Tanda tangan dibubuhkan pada dokumen cetak setelah dokumen ini disetujui — bag
 
 : Tabel 5 Application Security
 
-## 9. Application Features Requirement
+# 9. Application Features Requirement
 
 | No. | Fitur Aplikasi | Deskripsi Fitur |
 |:---:|----------|----------------------|
@@ -248,7 +262,7 @@ Tanda tangan dibubuhkan pada dokumen cetak setelah dokumen ini disetujui — bag
 
 : Tabel 6 Application Features Requirement
 
-## 10. Flow Proses Bisnis
+# 10. Flow Proses Bisnis
 
 {{ business_flow_description }}
 
@@ -262,14 +276,14 @@ Tahapan alur proses bisnis:
 {# Baris kosong di bawah WAJIB — heading berikutnya harus dipisah baris kosong
    dari list (blank_before_header), kembaran aturan di blok Acceptance Criteria. #}
 
-## 11. Use Case
+# 11. Use Case
 
 {# SATU diagram use case gabungan (semua aktor dalam satu gambar), gaya UML acuan
    enterprise. Gambar 4 tetap; activity di bawah mulai Gambar 5 (loop.index + 4). #}
 ![Gambar 4 Use Case Diagram]({{ diagrams.use_case_diagram_image }}){{ diagrams.use_case_diagram_attr }}
 
 {% for uc in use_cases %}
-### 11.{{ loop.index }} Use Case {{ uc.use_case_id }} — {{ uc.actor }}
+## 11.{{ loop.index }} Use Case {{ uc.use_case_id }} — {{ uc.actor }}
 
 | Field | Isi |
 |------|--------------------|
@@ -298,10 +312,10 @@ Tahapan alur proses bisnis:
 
 {% endfor %}
 
-## 12. Activity Diagram
+# 12. Activity Diagram
 
 {% for activity in diagrams.activity_diagrams %}
-### 12.{{ loop.index }} {{ activity.activity_name }}
+## 12.{{ loop.index }} {{ activity.activity_name }}
 
 {{ activity.description }}
 
@@ -336,6 +350,6 @@ Tahapan alur proses bisnis:
    bukan dua seperti acuan: template generik tidak tahu aplikasinya punya
    platform apa saja, dan bab kosong yang tidak relevan lebih buruk daripada
    tidak ada (pelajaran yang sama dengan Daftar Gambar UAT). #}
-## 13. Mockup Antarmuka
+# 13. Mockup Antarmuka
 
 *Tampilan antarmuka (mockup UI) tidak dapat diturunkan dari source code. Bagian ini dilengkapi manual oleh tim desain — lampirkan mockup atau tangkapan layar tiap halaman aplikasi di sini.*

@@ -169,7 +169,7 @@ app/
   main.py            entrypoint FastAPI
 
 frontend/            React + Vite (satu form: pilih sumber, generate, unduh)
-tests/               pytest (296 test) — LLM/PlantUML/GitHub selalu di-mock
+tests/               pytest (312 test) — LLM/PlantUML/GitHub selalu di-mock
 dummy_data/          fixture Contract A/B untuk testing manual tanpa ingest+LLM
 scripts/             utilitas dev + validation/ (uji ke repo publik nyata)
 CLAUDE.md            pengetahuan permanen (arsitektur, kontrak, keterbatasan)
@@ -229,6 +229,19 @@ Buka frontend, pilih sumber kode (**Repo GitHub** atau **Upload ZIP**), pilih ti
 & gaya dokumen, klik Generate, tunggu ~2-3 menit, unduh. Atau pakai Swagger UI di
 `/docs` untuk memanggil API langsung.
 
+## Deploy & kesiapan SaaS
+
+Satu image Docker menyajikan aplikasi utuh (SPA + API, satu URL) dengan dependency
+canggung (Java/pandoc/plantuml) terbundel:
+
+```bash
+docker compose up --build   # -> http://localhost:8000
+```
+
+Auth per-pengguna opsional (Supabase; kosong = mode dev tanpa login). Panduan
+lengkap, konfigurasi, dan **penilaian jujur "apa yang siap / tinggal colok /
+batasnya"** ada di **[DEPLOY.md](DEPLOY.md)**.
+
 ## Endpoint utama
 
 | Method | Path | Fungsi |
@@ -246,7 +259,9 @@ Daftar lengkap + perilaku error tiap endpoint ada di [`CLAUDE.md`](CLAUDE.md).
 ## Testing
 
 ```bash
-pytest                                       # 296 test; LLM/PlantUML/GitHub di-mock, $0
+pytest                                       # 312 test; LLM/PlantUML/GitHub di-mock, $0
+python scripts/render_fixtures.py            # render Contract B tersimpan -> docx, $0
+                                             #   (regresi visual saat kuota API habis)
 python scripts/validation/run_validation.py  # ingest+parse ke repo publik nyata, gratis
 ```
 

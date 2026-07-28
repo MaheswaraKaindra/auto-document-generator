@@ -1,0 +1,605 @@
+{
+  "document_type": "UAT",
+  "app_description": "MyPertamina.id Clone adalah platform yang menyerupai aplikasi dan situs MyPertamina, terdiri dari tiga bagian: website publik untuk pengunjung mencari info produk, harga BBM/Bright Gas, lokasi outlet, promo, dan FAQ; panel admin (CMS) untuk tim internal mengelola konten, harga, FAQ, role/permission, dan data pengguna; serta layanan backend yang juga melayani aplikasi mobile agar pengguna terdaftar dapat login dan melihat saldo, poin, kendaraan, riwayat transaksi, voucher, dan notifikasi miliknya.",
+  "user_roles": [
+    {
+      "role_name": "Admin",
+      "description": "Mengelola konten website, harga BBM & Bright Gas, FAQ, role & permission, serta data user melalui panel CMS."
+    },
+    {
+      "role_name": "Mobile App User",
+      "description": "Pengguna terdaftar aplikasi yang login menggunakan token aplikasi dan dapat melihat profil, saldo, poin, kendaraan, riwayat transaksi, voucher, dan notifikasi miliknya."
+    },
+    {
+      "role_name": "Website Visitor",
+      "description": "Pengunjung publik yang dapat menjelajahi info produk, harga, lokasi outlet, promo/konten, FAQ, dan info sustainability tanpa perlu login."
+    }
+  ],
+  "system_requirements": [
+    {
+      "name": "Programming Language",
+      "detail": "JavaScript/TypeScript — backend berbasis .js, CMS dan frontend berbasis Vue/TypeScript"
+    },
+    {
+      "name": "Runtime",
+      "detail": "Node.js (terdapat package.json pada backend, cms, dan frontend)"
+    },
+    {
+      "name": "Backend Architecture",
+      "detail": "Struktur folder routes/controllers/middlewares/models mengindikasikan pola aplikasi berbasis Express.js"
+    },
+    {
+      "name": "Frontend Framework",
+      "detail": "Nuxt.js (terdapat nuxt.config.ts pada repo cms dan frontend)"
+    },
+    {
+      "name": "Authentication",
+      "detail": "JWT — util signToken dan verifyToken pada backend/src/utils/jwt.js"
+    },
+    {
+      "name": "Database",
+      "detail": "Modul koneksi database khusus (backend/src/config/db.js); teknologi database spesifik tidak teridentifikasi lebih detail di metadata"
+    }
+  ],
+  "feature_requirements": [
+    {
+      "feature_name": "Autentikasi Admin CMS",
+      "description": "Admin dapat login ke panel CMS menggunakan email dan password untuk mengakses fitur manajemen."
+    },
+    {
+      "feature_name": "Autentikasi Aplikasi Mobile",
+      "description": "Pengguna aplikasi dapat login dan mendapatkan token akses untuk menggunakan fitur aplikasi."
+    },
+    {
+      "feature_name": "Manajemen Konten",
+      "description": "Admin dapat melihat, membuat, mengubah, dan menghapus konten/promo yang ditampilkan di website publik."
+    },
+    {
+      "feature_name": "Manajemen Harga BBM",
+      "description": "Admin dapat mengelola daftar harga BBM per provinsi, sementara pengunjung dapat melihat harga terkini."
+    },
+    {
+      "feature_name": "Manajemen Harga Bright Gas",
+      "description": "Admin dapat mengelola daftar harga Bright Gas per provinsi, sementara pengunjung dapat melihat harga terkini."
+    },
+    {
+      "feature_name": "Manajemen FAQ",
+      "description": "Admin dapat mengelola daftar pertanyaan yang sering diajukan, dan pengunjung dapat membacanya di website."
+    },
+    {
+      "feature_name": "Manajemen Lokasi Outlet",
+      "description": "Pengunjung dapat mencari lokasi outlet/SPBU berdasarkan kanal atau jenis layanan."
+    },
+    {
+      "feature_name": "Informasi Produk",
+      "description": "Pengunjung dapat melihat daftar produk dan detail masing-masing produk berdasarkan kategori."
+    },
+    {
+      "feature_name": "Manajemen Role & Permission",
+      "description": "Admin dapat mengatur peran pengguna CMS beserta hak akses (permission) yang dimiliki tiap peran."
+    },
+    {
+      "feature_name": "Manajemen User CMS",
+      "description": "Admin dapat menambah, mengubah, mereset password, dan menghapus akun pengguna CMS."
+    },
+    {
+      "feature_name": "Dashboard Admin",
+      "description": "Admin dapat melihat ringkasan data operasional saat membuka panel CMS."
+    },
+    {
+      "feature_name": "Data Akun Pengguna Aplikasi",
+      "description": "Pengguna aplikasi dapat memeriksa profil, saldo, poin, kendaraan, riwayat transaksi, voucher, dan notifikasi miliknya."
+    },
+    {
+      "feature_name": "Informasi Sustainability",
+      "description": "Pengunjung dapat melihat statistik fasilitas ramah lingkungan dan lokasi program pengumpulan minyak jelantah (U-Collect)."
+    }
+  ],
+  "diagrams": {
+    "system_architecture": "@startuml\nleft to right direction\nactor \"Admin\"\nactor \"User\"\ncomponent \"CMS Admin Panel\" as CMS\ncomponent \"Frontend Website\" as Frontend\ncomponent \"Backend API\" as Backend\ndatabase \"Database\" as DB\nAdmin --> CMS\nUser --> Frontend\nCMS --> Backend\nFrontend --> Backend\nBackend --> DB\n@enduml",
+    "component_integration": "@startuml\npackage \"CMS\" {\n[login.vue] --> [POST /auth/login]\n[contents/index.vue] --> [GET /content]\n[contents/create.vue] --> [POST /content]\n[prices/index.vue] --> [GET /prices]\n[roles/index.vue] --> [GET /roles]\n[users/index.vue] --> [GET /users]\n}\npackage \"Frontend\" {\n[pages/about/product-price.vue] --> [GET /prices]\n[pages/about/bright-gas-price.vue] --> [GET /bright-gas-prices]\n[pages/spbu-location] --> [GET /locations/:channel]\n[pages/promo-event/index.vue] --> [GET /content]\n[components/FaqAccordion.vue] --> [GET /faq]\n[pages/sustainability/green-energy-station.vue] --> [GET /sustainability/facility-stats]\n[pages/sustainability/kumpulkan-minyak-jelantah.vue] --> [GET /sustainability/ucollect-locations]\n}\n@enduml",
+    "business_process_flow": "@startuml\nstart\n:Visitor membuka halaman utama website;\n:Visitor melihat info produk, harga, dan lokasi outlet;\n:Visitor membaca FAQ dan promo/konten;\n:Admin login ke CMS;\n:Admin mengelola konten, harga, FAQ, role, dan user;\n:Sistem menyimpan perubahan melalui backend API;\n:Backend API memperbarui data yang tampil di website;\n:Mobile App User login menggunakan token aplikasi;\n:Sistem memverifikasi token dan mengembalikan profil;\n:Mobile App User memeriksa saldo, poin, transaksi, voucher, dan notifikasi;\nstop\n@enduml",
+    "use_case_diagram": "@startuml\nleft to right direction\nactor Admin\nactor \"Mobile App User\" as MobileUser\nactor \"Website Visitor\" as Visitor\nrectangle \"MyPertamina.id Clone\" {\nusecase \"Login CMS\" as UC1\nusecase \"Kelola Konten\" as UC2\nusecase \"Kelola Harga BBM & Bright Gas\" as UC3\nusecase \"Kelola FAQ\" as UC4\nusecase \"Kelola Role & Permission\" as UC5\nusecase \"Kelola User\" as UC6\nusecase \"Login Aplikasi Mobile\" as UC7\nusecase \"Lihat Data Akun Pengguna\" as UC8\nusecase \"Lihat Produk & Harga\" as UC9\nusecase \"Cari Lokasi Outlet\" as UC10\nusecase \"Lihat Promo & FAQ\" as UC11\nusecase \"Lihat Info Sustainability\" as UC12\n}\nAdmin --> UC1\nAdmin --> UC2\nAdmin --> UC3\nAdmin --> UC4\nAdmin --> UC5\nAdmin --> UC6\nMobileUser --> UC7\nMobileUser --> UC8\nVisitor --> UC9\nVisitor --> UC10\nVisitor --> UC11\nVisitor --> UC12\n@enduml",
+    "activity_diagrams": [
+      {
+        "activity_name": "Login Admin CMS",
+        "description": "Admin memasukkan kredensial untuk masuk ke panel CMS sebelum dapat mengelola data.",
+        "actor": "Admin",
+        "pre_condition": "Admin sudah memiliki akun terdaftar di sistem",
+        "steps": [
+          "Admin membuka halaman login CMS.",
+          "Admin memasukkan email dan password.",
+          "Sistem memvalidasi kredensial melalui endpoint login.",
+          "Jika valid, sistem mengarahkan Admin ke dashboard CMS.",
+          "Jika tidak valid, sistem menampilkan pesan error."
+        ],
+        "diagram_script": "@startuml\nstart\n:Admin membuka halaman login CMS;\n:Admin memasukkan email dan password;\n:Sistem memvalidasi kredensial melalui endpoint login;\nif (Kredensial valid?) then (Ya)\n  :Sistem mengarahkan Admin ke dashboard CMS;\nelse (Tidak)\n  :Sistem menampilkan pesan error;\nendif\nstop\n@enduml"
+      },
+      {
+        "activity_name": "Manajemen Konten oleh Admin",
+        "description": "Admin mengelola konten/promo yang tampil di website publik melalui CMS.",
+        "actor": "Admin",
+        "pre_condition": "Admin sudah login ke CMS",
+        "steps": [
+          "Admin membuka halaman daftar konten.",
+          "Admin memilih aksi membuat, mengubah, atau menghapus konten.",
+          "Sistem menyimpan perubahan konten melalui endpoint konten.",
+          "Sistem menampilkan daftar konten yang telah diperbarui."
+        ],
+        "diagram_script": "@startuml\nstart\n:Admin membuka halaman daftar konten;\n:Admin memilih aksi kelola konten;\nif (Aksi yang dipilih?) then (Buat/Ubah)\n  :Admin mengisi form konten;\n  :Sistem menyimpan konten melalui endpoint konten;\nelse (Hapus)\n  :Sistem menghapus konten yang dipilih;\nendif\n:Sistem menampilkan daftar konten terbaru;\nstop\n@enduml"
+      },
+      {
+        "activity_name": "Login & Lihat Data Aplikasi Mobile",
+        "description": "Pengguna aplikasi login menggunakan token aplikasi lalu memeriksa data akunnya.",
+        "actor": "Mobile App User",
+        "pre_condition": "Pengguna telah terdaftar dan memiliki kredensial aplikasi",
+        "steps": [
+          "Pengguna membuka aplikasi dan memasukkan kredensial.",
+          "Sistem memvalidasi kredensial melalui endpoint login aplikasi.",
+          "Jika valid, sistem mengembalikan token aplikasi.",
+          "Pengguna mengakses data profil, saldo, poin, transaksi, voucher, dan notifikasi.",
+          "Sistem memverifikasi token pada setiap permintaan sebelum mengembalikan data."
+        ],
+        "diagram_script": "@startuml\nstart\n:Pengguna membuka aplikasi dan memasukkan kredensial;\n:Sistem memvalidasi kredensial melalui endpoint login aplikasi;\nif (Kredensial valid?) then (Ya)\n  :Sistem mengembalikan token aplikasi;\n  :Pengguna mengakses data profil, saldo, poin, transaksi, voucher, dan notifikasi;\n  :Sistem memverifikasi token pada setiap permintaan;\nelse (Tidak)\n  :Sistem menampilkan pesan error login;\nendif\nstop\n@enduml"
+      }
+    ]
+  },
+  "use_cases": [
+    {
+      "use_case_id": "UC-01",
+      "actor": "Admin",
+      "pre_condition": "Admin memiliki akun terdaftar dan berhasil login ke CMS",
+      "description": "Admin dapat mengelola konten, harga BBM & Bright Gas, FAQ, role & permission, serta data user melalui panel CMS.",
+      "acceptance_criteria": [
+        "Admin dapat login dan diarahkan ke dashboard setelah kredensial valid.",
+        "Admin dapat membuat, mengubah, dan menghapus konten.",
+        "Admin dapat membuat, mengubah, dan menghapus data harga BBM dan Bright Gas.",
+        "Admin dapat mengelola FAQ (tambah, ubah, hapus).",
+        "Admin dapat membuat role baru dengan daftar permission tertentu.",
+        "Admin dapat menambah user, mereset password user, dan menghapus user."
+      ]
+    },
+    {
+      "use_case_id": "UC-02",
+      "actor": "Mobile App User",
+      "pre_condition": "Pengguna telah terdaftar dan memiliki kredensial aplikasi yang valid",
+      "description": "Pengguna aplikasi dapat login dan melihat data akun pribadinya seperti saldo, poin, kendaraan, transaksi, voucher, dan notifikasi.",
+      "acceptance_criteria": [
+        "Pengguna dapat login dan menerima token aplikasi jika kredensial valid.",
+        "Permintaan data pengguna tanpa token yang valid ditolak sistem.",
+        "Pengguna dapat melihat profil, saldo, dan poin miliknya.",
+        "Pengguna dapat melihat daftar kendaraan dan riwayat transaksi.",
+        "Pengguna dapat melihat daftar voucher dan notifikasi miliknya."
+      ]
+    },
+    {
+      "use_case_id": "UC-03",
+      "actor": "Website Visitor",
+      "pre_condition": "Tidak memerlukan login",
+      "description": "Pengunjung dapat menjelajahi informasi produk, harga, lokasi outlet, promo/konten, FAQ, dan info sustainability di website publik.",
+      "acceptance_criteria": [
+        "Pengunjung dapat melihat daftar produk dan detail produk berdasarkan kategori & slug.",
+        "Pengunjung dapat melihat harga BBM dan Bright Gas terkini.",
+        "Pengunjung dapat mencari lokasi outlet berdasarkan kanal.",
+        "Pengunjung dapat melihat daftar promo/konten dan detailnya.",
+        "Pengunjung dapat membaca FAQ yang aktif.",
+        "Pengunjung dapat melihat statistik fasilitas green energy dan lokasi U-Collect."
+      ]
+    }
+  ],
+  "business_flow_description": "Alur bisnis platform ini dimulai dari pengunjung website publik yang mencari informasi produk, harga, dan lokasi, dilanjutkan dengan tim Admin yang mengelola konten dan data operasional melalui CMS, hingga pengguna aplikasi mobile yang login dan memantau akun serta transaksinya — semuanya terhubung melalui satu backend API yang sama.",
+  "business_flow_steps": [
+    "Website Visitor membuka halaman utama website MyPertamina.id Clone.",
+    "Visitor menjelajahi info produk, harga BBM/Bright Gas, dan lokasi outlet terdekat.",
+    "Visitor membaca FAQ dan info promo/konten yang dipublikasikan Admin.",
+    "Admin login ke CMS untuk mengelola konten, harga, FAQ, role, dan data user.",
+    "Sistem CMS menyimpan perubahan data melalui backend API ke database.",
+    "Backend API menyediakan data terbaru yang ditampilkan kembali di website publik.",
+    "Mobile App User melakukan login menggunakan token aplikasi melalui endpoint autentikasi aplikasi.",
+    "Sistem memverifikasi token dan mengembalikan data profil pengguna.",
+    "Mobile App User memeriksa saldo, poin, kendaraan, riwayat transaksi, voucher, dan notifikasi miliknya.",
+    "Sistem mencatat setiap permintaan data pengguna melalui backend API yang sama."
+  ],
+  "uat_test_cases": [
+    {
+      "test_id": "UAT-01",
+      "role": "Admin",
+      "module": "Halaman Login CMS",
+      "activity": "Login ke panel CMS dengan kredensial valid",
+      "steps": "1. Buka halaman login CMS.\n2. Masukkan email dan password yang valid.\n3. Klik tombol login.",
+      "expected_result": "Sistem berhasil memvalidasi kredensial dan mengarahkan Admin ke halaman dashboard."
+    },
+    {
+      "test_id": "UAT-02",
+      "role": "Admin",
+      "module": "Halaman Login CMS",
+      "activity": "Login ke panel CMS dengan kredensial tidak valid",
+      "steps": "1. Buka halaman login CMS.\n2. Masukkan email atau password yang salah.\n3. Klik tombol login.",
+      "expected_result": "Sistem menampilkan pesan error dan tidak mengizinkan Admin masuk."
+    },
+    {
+      "test_id": "UAT-03",
+      "role": "Admin",
+      "module": "Halaman Dashboard CMS",
+      "activity": "Melihat ringkasan data di dashboard",
+      "steps": "1. Login sebagai Admin.\n2. Buka halaman dashboard.",
+      "expected_result": "Sistem menampilkan ringkasan data operasional pada dashboard."
+    },
+    {
+      "test_id": "UAT-04",
+      "role": "Admin",
+      "module": "Manajemen Konten CMS",
+      "activity": "Melihat daftar konten",
+      "steps": "1. Login sebagai Admin.\n2. Buka menu Konten.",
+      "expected_result": "Sistem menampilkan daftar konten yang tersimpan."
+    },
+    {
+      "test_id": "UAT-05",
+      "role": "Admin",
+      "module": "Manajemen Konten CMS",
+      "activity": "Membuat konten baru",
+      "steps": "1. Buka menu Konten.\n2. Klik tombol Tambah Konten.\n3. Isi judul, deskripsi, dan detail konten.\n4. Klik Simpan.",
+      "expected_result": "Konten baru tersimpan dan muncul di daftar konten."
+    },
+    {
+      "test_id": "UAT-06",
+      "role": "Admin",
+      "module": "Manajemen Konten CMS",
+      "activity": "Mengubah konten yang ada",
+      "steps": "1. Buka menu Konten.\n2. Pilih salah satu konten.\n3. Ubah data konten.\n4. Klik Simpan.",
+      "expected_result": "Perubahan data konten berhasil disimpan dan tampil di daftar."
+    },
+    {
+      "test_id": "UAT-07",
+      "role": "Admin",
+      "module": "Manajemen Konten CMS",
+      "activity": "Menghapus konten",
+      "steps": "1. Buka menu Konten.\n2. Pilih konten yang akan dihapus.\n3. Klik Hapus dan konfirmasi.",
+      "expected_result": "Konten terhapus dan tidak lagi muncul di daftar."
+    },
+    {
+      "test_id": "UAT-08",
+      "role": "Admin",
+      "module": "Manajemen Harga BBM CMS",
+      "activity": "Melihat daftar harga BBM",
+      "steps": "1. Login sebagai Admin.\n2. Buka menu Harga BBM.",
+      "expected_result": "Sistem menampilkan daftar harga BBM per provinsi."
+    },
+    {
+      "test_id": "UAT-09",
+      "role": "Admin",
+      "module": "Manajemen Harga BBM CMS",
+      "activity": "Menambahkan harga BBM baru",
+      "steps": "1. Buka menu Harga BBM.\n2. Klik Tambah Harga.\n3. Isi provinsi, jenis BBM, harga, dan satuan.\n4. Klik Simpan.",
+      "expected_result": "Data harga BBM baru tersimpan dan tampil di daftar."
+    },
+    {
+      "test_id": "UAT-10",
+      "role": "Admin",
+      "module": "Manajemen Harga BBM CMS",
+      "activity": "Mengubah harga BBM",
+      "steps": "1. Pilih data harga BBM.\n2. Ubah nilai harga.\n3. Klik Simpan.",
+      "expected_result": "Harga BBM terbaru tersimpan dan tampil di daftar."
+    },
+    {
+      "test_id": "UAT-11",
+      "role": "Admin",
+      "module": "Manajemen Harga BBM CMS",
+      "activity": "Menghapus harga BBM",
+      "steps": "1. Pilih data harga BBM.\n2. Klik Hapus dan konfirmasi.",
+      "expected_result": "Data harga BBM terhapus dari daftar."
+    },
+    {
+      "test_id": "UAT-12",
+      "role": "Admin",
+      "module": "Manajemen Harga Bright Gas CMS",
+      "activity": "Melihat daftar harga Bright Gas",
+      "steps": "1. Login sebagai Admin.\n2. Buka menu Harga Bright Gas.",
+      "expected_result": "Sistem menampilkan daftar harga Bright Gas per provinsi."
+    },
+    {
+      "test_id": "UAT-13",
+      "role": "Admin",
+      "module": "Manajemen Harga Bright Gas CMS",
+      "activity": "Menambahkan harga Bright Gas baru",
+      "steps": "1. Buka menu Harga Bright Gas.\n2. Klik Tambah Harga.\n3. Isi provinsi, harga 5.5kg, dan harga 12kg.\n4. Klik Simpan.",
+      "expected_result": "Data harga Bright Gas baru tersimpan dan tampil di daftar."
+    },
+    {
+      "test_id": "UAT-14",
+      "role": "Admin",
+      "module": "Manajemen Harga Bright Gas CMS",
+      "activity": "Mengubah harga Bright Gas",
+      "steps": "1. Pilih data harga Bright Gas.\n2. Ubah nilai harga.\n3. Klik Simpan.",
+      "expected_result": "Harga Bright Gas terbaru tersimpan dan tampil di daftar."
+    },
+    {
+      "test_id": "UAT-15",
+      "role": "Admin",
+      "module": "Manajemen Harga Bright Gas CMS",
+      "activity": "Menghapus harga Bright Gas",
+      "steps": "1. Pilih data harga Bright Gas.\n2. Klik Hapus dan konfirmasi.",
+      "expected_result": "Data harga Bright Gas terhapus dari daftar."
+    },
+    {
+      "test_id": "UAT-16",
+      "role": "Admin",
+      "module": "Manajemen FAQ CMS",
+      "activity": "Melihat daftar FAQ",
+      "steps": "1. Login sebagai Admin.\n2. Buka menu FAQ.",
+      "expected_result": "Sistem menampilkan daftar pertanyaan dan jawaban FAQ."
+    },
+    {
+      "test_id": "UAT-17",
+      "role": "Admin",
+      "module": "Manajemen FAQ CMS",
+      "activity": "Menambahkan FAQ baru",
+      "steps": "1. Buka menu FAQ.\n2. Klik Tambah FAQ.\n3. Isi pertanyaan dan jawaban.\n4. Klik Simpan.",
+      "expected_result": "FAQ baru tersimpan dan tampil di daftar."
+    },
+    {
+      "test_id": "UAT-18",
+      "role": "Admin",
+      "module": "Manajemen FAQ CMS",
+      "activity": "Mengubah FAQ",
+      "steps": "1. Pilih salah satu FAQ.\n2. Ubah pertanyaan/jawaban.\n3. Klik Simpan.",
+      "expected_result": "Perubahan FAQ tersimpan dan tampil di daftar."
+    },
+    {
+      "test_id": "UAT-19",
+      "role": "Admin",
+      "module": "Manajemen FAQ CMS",
+      "activity": "Menghapus FAQ",
+      "steps": "1. Pilih salah satu FAQ.\n2. Klik Hapus dan konfirmasi.",
+      "expected_result": "FAQ terhapus dari daftar."
+    },
+    {
+      "test_id": "UAT-20",
+      "role": "Admin",
+      "module": "Manajemen Role & Permission CMS",
+      "activity": "Melihat daftar role",
+      "steps": "1. Login sebagai Admin.\n2. Buka menu Role.",
+      "expected_result": "Sistem menampilkan daftar role yang tersedia."
+    },
+    {
+      "test_id": "UAT-21",
+      "role": "Admin",
+      "module": "Manajemen Role & Permission CMS",
+      "activity": "Melihat daftar permission",
+      "steps": "1. Buka menu Role.\n2. Klik tampilkan daftar permission.",
+      "expected_result": "Sistem menampilkan daftar permission yang tersedia."
+    },
+    {
+      "test_id": "UAT-22",
+      "role": "Admin",
+      "module": "Manajemen Role & Permission CMS",
+      "activity": "Membuat role baru dengan permission tertentu",
+      "steps": "1. Buka menu Role.\n2. Klik Tambah Role.\n3. Isi nama, deskripsi, dan pilih permission.\n4. Klik Simpan.",
+      "expected_result": "Role baru tersimpan dengan permission yang dipilih."
+    },
+    {
+      "test_id": "UAT-23",
+      "role": "Admin",
+      "module": "Manajemen Role & Permission CMS",
+      "activity": "Mengubah role",
+      "steps": "1. Pilih salah satu role.\n2. Ubah nama/permission.\n3. Klik Simpan.",
+      "expected_result": "Perubahan role tersimpan dan tampil di daftar."
+    },
+    {
+      "test_id": "UAT-24",
+      "role": "Admin",
+      "module": "Manajemen Role & Permission CMS",
+      "activity": "Menghapus role",
+      "steps": "1. Pilih role yang tidak digunakan user.\n2. Klik Hapus dan konfirmasi.",
+      "expected_result": "Role terhapus dari daftar."
+    },
+    {
+      "test_id": "UAT-25",
+      "role": "Admin",
+      "module": "Manajemen User CMS",
+      "activity": "Melihat daftar user",
+      "steps": "1. Login sebagai Admin.\n2. Buka menu User.",
+      "expected_result": "Sistem menampilkan daftar user CMS."
+    },
+    {
+      "test_id": "UAT-26",
+      "role": "Admin",
+      "module": "Manajemen User CMS",
+      "activity": "Menambahkan user baru",
+      "steps": "1. Buka menu User.\n2. Klik Tambah User.\n3. Isi nama, email, password, dan role.\n4. Klik Simpan.",
+      "expected_result": "User baru tersimpan dan tampil di daftar."
+    },
+    {
+      "test_id": "UAT-27",
+      "role": "Admin",
+      "module": "Manajemen User CMS",
+      "activity": "Mengubah data user",
+      "steps": "1. Pilih salah satu user.\n2. Ubah nama/email/role/status aktif.\n3. Klik Simpan.",
+      "expected_result": "Perubahan data user tersimpan."
+    },
+    {
+      "test_id": "UAT-28",
+      "role": "Admin",
+      "module": "Manajemen User CMS",
+      "activity": "Mereset password user",
+      "steps": "1. Pilih salah satu user.\n2. Klik Reset Password.\n3. Konfirmasi aksi.",
+      "expected_result": "Password user berhasil direset."
+    },
+    {
+      "test_id": "UAT-29",
+      "role": "Admin",
+      "module": "Manajemen User CMS",
+      "activity": "Menghapus user",
+      "steps": "1. Pilih user yang akan dihapus.\n2. Klik Hapus dan konfirmasi.",
+      "expected_result": "User terhapus dari daftar."
+    },
+    {
+      "test_id": "UAT-30",
+      "role": "Mobile App User",
+      "module": "Autentikasi Aplikasi Mobile",
+      "activity": "Login aplikasi dengan kredensial valid",
+      "steps": "1. Buka aplikasi.\n2. Masukkan email/username dan password yang valid.\n3. Kirim permintaan login.",
+      "expected_result": "Sistem mengembalikan token aplikasi yang valid."
+    },
+    {
+      "test_id": "UAT-31",
+      "role": "Mobile App User",
+      "module": "Autentikasi Aplikasi Mobile",
+      "activity": "Login aplikasi dengan kredensial tidak valid",
+      "steps": "1. Buka aplikasi.\n2. Masukkan kredensial yang salah.\n3. Kirim permintaan login.",
+      "expected_result": "Sistem menolak login dan menampilkan pesan error."
+    },
+    {
+      "test_id": "UAT-32",
+      "role": "Mobile App User",
+      "module": "Autentikasi Aplikasi Mobile",
+      "activity": "Mengakses data pengguna tanpa token aplikasi",
+      "steps": "1. Kirim permintaan ke endpoint data pengguna tanpa header token.",
+      "expected_result": "Sistem menolak permintaan dengan status unauthorized."
+    },
+    {
+      "test_id": "UAT-33",
+      "role": "Mobile App User",
+      "module": "Data Pengguna Aplikasi Mobile",
+      "activity": "Melihat profil pengguna",
+      "steps": "1. Login ke aplikasi.\n2. Buka menu profil (me).",
+      "expected_result": "Sistem menampilkan data profil pengguna yang sesuai."
+    },
+    {
+      "test_id": "UAT-34",
+      "role": "Mobile App User",
+      "module": "Data Pengguna Aplikasi Mobile",
+      "activity": "Melihat saldo",
+      "steps": "1. Login ke aplikasi.\n2. Buka menu saldo.",
+      "expected_result": "Sistem menampilkan saldo terkini milik pengguna."
+    },
+    {
+      "test_id": "UAT-35",
+      "role": "Mobile App User",
+      "module": "Data Pengguna Aplikasi Mobile",
+      "activity": "Melihat poin",
+      "steps": "1. Login ke aplikasi.\n2. Buka menu poin.",
+      "expected_result": "Sistem menampilkan jumlah poin milik pengguna."
+    },
+    {
+      "test_id": "UAT-36",
+      "role": "Mobile App User",
+      "module": "Data Pengguna Aplikasi Mobile",
+      "activity": "Melihat daftar kendaraan",
+      "steps": "1. Login ke aplikasi.\n2. Buka menu kendaraan.",
+      "expected_result": "Sistem menampilkan daftar kendaraan terdaftar milik pengguna."
+    },
+    {
+      "test_id": "UAT-37",
+      "role": "Mobile App User",
+      "module": "Data Pengguna Aplikasi Mobile",
+      "activity": "Melihat riwayat transaksi",
+      "steps": "1. Login ke aplikasi.\n2. Buka menu transaksi.",
+      "expected_result": "Sistem menampilkan riwayat transaksi pengguna."
+    },
+    {
+      "test_id": "UAT-38",
+      "role": "Mobile App User",
+      "module": "Data Pengguna Aplikasi Mobile",
+      "activity": "Melihat daftar voucher",
+      "steps": "1. Login ke aplikasi.\n2. Buka menu voucher.",
+      "expected_result": "Sistem menampilkan daftar voucher milik pengguna."
+    },
+    {
+      "test_id": "UAT-39",
+      "role": "Mobile App User",
+      "module": "Data Pengguna Aplikasi Mobile",
+      "activity": "Melihat notifikasi",
+      "steps": "1. Login ke aplikasi.\n2. Buka menu notifikasi.",
+      "expected_result": "Sistem menampilkan daftar notifikasi milik pengguna."
+    },
+    {
+      "test_id": "UAT-40",
+      "role": "Website Visitor",
+      "module": "Halaman Utama Website",
+      "activity": "Mengakses halaman utama website",
+      "steps": "1. Buka alamat website di browser.",
+      "expected_result": "Halaman utama website tampil dengan benar berisi info umum dan navigasi."
+    },
+    {
+      "test_id": "UAT-41",
+      "role": "Website Visitor",
+      "module": "Halaman Produk",
+      "activity": "Melihat daftar produk",
+      "steps": "1. Buka halaman produk (misal e-voucher atau bright gas).",
+      "expected_result": "Sistem menampilkan daftar produk yang dipublikasikan."
+    },
+    {
+      "test_id": "UAT-42",
+      "role": "Website Visitor",
+      "module": "Halaman Produk",
+      "activity": "Melihat detail produk berdasarkan kategori dan slug",
+      "steps": "1. Buka halaman produk.\n2. Klik salah satu produk.",
+      "expected_result": "Sistem menampilkan detail produk sesuai kategori dan slug yang dipilih."
+    },
+    {
+      "test_id": "UAT-43",
+      "role": "Website Visitor",
+      "module": "Halaman Cek Harga BBM & Bright Gas",
+      "activity": "Melihat daftar harga BBM per provinsi",
+      "steps": "1. Buka halaman cek harga BBM.\n2. Pilih provinsi.",
+      "expected_result": "Sistem menampilkan daftar harga BBM sesuai provinsi yang dipilih."
+    },
+    {
+      "test_id": "UAT-44",
+      "role": "Website Visitor",
+      "module": "Halaman Cek Harga BBM & Bright Gas",
+      "activity": "Melihat daftar harga Bright Gas per provinsi",
+      "steps": "1. Buka halaman cek harga Bright Gas.\n2. Pilih provinsi.",
+      "expected_result": "Sistem menampilkan daftar harga Bright Gas sesuai provinsi yang dipilih."
+    },
+    {
+      "test_id": "UAT-45",
+      "role": "Website Visitor",
+      "module": "Halaman Lokasi Outlet",
+      "activity": "Mencari lokasi outlet berdasarkan channel",
+      "steps": "1. Buka halaman lokasi outlet (misal SPBU, Bright Store, atau LPG).\n2. Masukkan kata kunci pencarian jika diperlukan.",
+      "expected_result": "Sistem menampilkan daftar lokasi outlet sesuai channel yang dipilih."
+    },
+    {
+      "test_id": "UAT-46",
+      "role": "Website Visitor",
+      "module": "Halaman Promo & Konten",
+      "activity": "Melihat daftar promo/konten",
+      "steps": "1. Buka halaman promo-event.",
+      "expected_result": "Sistem menampilkan daftar promo/konten yang aktif."
+    },
+    {
+      "test_id": "UAT-47",
+      "role": "Website Visitor",
+      "module": "Halaman Promo & Konten",
+      "activity": "Melihat detail konten berdasarkan slug",
+      "steps": "1. Buka halaman promo-event.\n2. Klik salah satu promo.",
+      "expected_result": "Sistem menampilkan detail konten sesuai slug yang dipilih."
+    },
+    {
+      "test_id": "UAT-48",
+      "role": "Website Visitor",
+      "module": "Halaman FAQ",
+      "activity": "Melihat daftar FAQ aktif",
+      "steps": "1. Buka bagian FAQ pada website.",
+      "expected_result": "Sistem menampilkan daftar FAQ yang berstatus aktif."
+    },
+    {
+      "test_id": "UAT-49",
+      "role": "Website Visitor",
+      "module": "Halaman Sustainability",
+      "activity": "Melihat statistik fasilitas green energy station",
+      "steps": "1. Buka halaman sustainability/green-energy-station.",
+      "expected_result": "Sistem menampilkan statistik fasilitas green energy station."
+    },
+    {
+      "test_id": "UAT-50",
+      "role": "Website Visitor",
+      "module": "Halaman Sustainability",
+      "activity": "Melihat daftar lokasi U-Collect",
+      "steps": "1. Buka halaman sustainability/kumpulkan-minyak-jelantah.",
+      "expected_result": "Sistem menampilkan daftar lokasi program U-Collect."
+    }
+  ]
+}

@@ -11,9 +11,12 @@ from pathlib import Path
 from subprocess import CompletedProcess
 from unittest.mock import Mock, patch
 
+import pypandoc
 import pytest
 from docx import Document
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
+from docx.shared import Inches
 
 from app.domain.exceptions import DiagramRenderError
 from app.services import compiler_service
@@ -72,6 +75,25 @@ def _docx_text(path: str) -> str:
 # format, jadi yang tersisa di docx cuma teksnya.
 _PLACEHOLDER_IN_DOCX = "(diisi manual)"
 
+
+def _cover_block_tables(document):
+    """Tabel halaman cover yang rupa tabelnya sudah dilepas `_style_cover_blocks`.
+
+    Dikenali dari HASILNYA (seluruh tblBorders bernilai "none"), bukan dari
+    marker: marker sudah dibuang saat post-process, dan mengenali dari hasil
+    berarti test ini ikut menjaga pelepasan garisnya benar-benar terjadi.
+    """
+    from docx.oxml.ns import qn
+
+    blocks = []
+    for table in document.tables:
+        borders = table._tbl.tblPr.find(qn("w:tblBorders"))
+        if borders is None or not len(borders):
+            continue
+        if all(edge.get(qn("w:val")) == "none" for edge in borders):
+            blocks.append(table)
+    return blocks
+
 # Semua field metadata yang dipakai template SDD (17) dan UAT (8). Sengaja ditulis
 # lengkap: test "tidak ada lubang tersisa" di bawah cuma bermakna kalau daftar ini
 # memang utuh.
@@ -96,7 +118,24 @@ _FULL_SDD_METADATA = {
     "security_penetration_test": "Sudah, 2026-06-30",
     "security_secure_coding": "Mengikuti OWASP ASVS L2",
     "security_reverse_proxy": "Nginx",
+    # Halaman cover: kodifikasi/katalog + tim project.
+    "business_relationship_no": "BR-2026-001",
+    "business_it_solution_no": "BIS-2026-002",
+    "value_chain": "Mengelola Operasional Gudang",
+    "application_landscape": "Supply Chain Management",
+    "team_application_requestor": "Rina Kartika",
+    "team_business_process_owner": "Dimas Prasetyo",
+    "team_pic": "Yoga Mahendra",
+    "team_lead_coordinator": "Sarah Amelia",
+    "team_it_solution_analyst": "Bagas Nugroho",
+    "team_developer": "Fajar Ramadhan",
+    "team_design_uiux": "Nadia Puspita",
 }
+
+# `entitas` HANYA dipakai template premco (kolom pertama tabel Tim Project cover);
+# sengaja tak masuk _FULL_SDD_METADATA supaya test "semua nilai muncul" pada
+# template default tidak menuntutnya. Digabung inline di test premco yang butuh.
+_PREMCO_ONLY_METADATA = {"entitas": "PT Contoh Nusantara"}
 
 _FULL_UAT_METADATA = {
     "related_rfc_number": "RFC-2026-088",
@@ -227,6 +266,213 @@ def test_bare_script_gets_wrapped(mock_plantuml_ok):
     source = mock_plantuml_ok.call_args_list[0].args[0]
     assert source.startswith("@startuml")
     assert source.rstrip().endswith("@enduml")
+
+
+# --- Swimlane activity (Opsi B: lane ditebak compiler, prompt TIDAK diubah) ----
+#
+# Dokumen acuan (dibuat draw.io) memakai swimlane User|Sistem, dan itu ciri utama
+# "activity diagram yang baik" menurut pemilik. PlantUML mendukungnya native; yang
+# kurang cuma informasi siapa mengerjakan apa — dan itu SUDAH ada di Contract B,
+# karena prompt mewajibkan langkah difrasakan "Aktor melakukan X"/"Sistem ...".
+
+_ACTIVITY_SCRIPT = (
+    "@startuml\nstart\n:Admin membuka halaman login;\n"
+    ":Sistem memverifikasi kredensial;\n:Admin melihat dashboard;\nstop\n@enduml"
+)
+
+
+def test_swimlanes_split_actor_and_system_steps():
+    """Langkah ber-subjek aktor masuk lane aktor, ber-subjek sistem masuk lane
+    Sistem, dan lane hanya ditulis saat BERUBAH (PlantUML mewariskan lane)."""
+    out = compiler_service._add_swimlanes(_ACTIVITY_SCRIPT, "Admin")
+
+    lanes = [ln.strip() for ln in out.splitlines() if ln.strip().startswith("|")]
+    assert lanes == ["|Admin|", "|Sistem|", "|Admin|"]
+    # urutan tetap: lane mendahului langkah yang dimaksud
+    assert out.index("|Sistem|") < out.index(":Sistem memverifikasi kredensial;")
+
+
+def test_swimlanes_skip_non_activity_diagrams():
+    """Diagram arsitektur/komponen/use case TIDAK boleh tersentuh — tak ada baris
+    `:Langkah;` di sana, jadi transform mengembalikannya apa adanya."""
+    component = ('@startuml\ncomponent "App" as A\ndatabase "DB" as D\n'
+                 "A --> D\n@enduml")
+
+    assert compiler_service._add_swimlanes(component, "Admin") == component
+
+
+def test_swimlanes_leave_scripts_that_already_have_lanes():
+    """Kalau LLM sudah menulis lane sendiri, jangan ditimpa."""
+    already = ("@startuml\n|User|\nstart\n:User klik simpan;\n"
+               "|Sistem|\n:Sistem menyimpan data;\nstop\n@enduml")
+
+    assert compiler_service._add_swimlanes(already, "User") == already
+
+
+def test_swimlane_ambiguous_step_inherits_current_lane():
+    """Langkah tanpa subjek jelas TIDAK ditebak — dia mewarisi lane berjalan.
+    Menaruhnya di lane yang salah = menyatakan tanggung jawab yang salah, dan itu
+    kesalahan ISI, bukan sekadar rupa."""
+    script = ("@startuml\nstart\n:Admin membuka form;\n:Validasi data;\n"
+              ":Sistem menyimpan data;\nstop\n@enduml")
+
+    out = compiler_service._add_swimlanes(script, "Admin")
+
+    lanes = [ln.strip() for ln in out.splitlines() if ln.strip().startswith("|")]
+    assert lanes == ["|Admin|", "|Sistem|"], "langkah ambigu tak boleh bikin lane baru"
+    # ":Validasi data;" tetap berada SESUDAH |Admin| dan SEBELUM |Sistem|
+    assert out.index(":Validasi data;") < out.index("|Sistem|")
+
+
+def test_activity_uses_drawio_renderer_not_plantuml(mock_plantuml_ok):
+    """Activity diagram dirender jalur draw.io (tata letak dihitung sendiri lalu
+    digambar jadi PNG), BUKAN plantuml — itu yang membuatnya berbentuk tabel
+    berlajur seperti dokumen acuan."""
+    path = compiler_service._render_activity_diagram(
+        _ACTIVITY_SCRIPT, compiler_service.IMAGES_DIR, "Admin", "Login Admin"
+    )
+
+    assert Path(path).exists()
+    mock_plantuml_ok.assert_not_called()
+    from PIL import Image
+    with Image.open(path) as im:
+        assert im.width > 200 and im.height > 200, "PNG diagram tidak wajar kecil"
+
+
+def test_activity_falls_back_to_plantuml_for_unsupported_syntax(mock_plantuml_ok):
+    """Parser jalur draw.io sengaja cuma memahami subset yang prompt kita
+    wajibkan. Script di luar itu (mis. `repeat`) HARUS jatuh ke plantuml — lebih
+    baik gaya lama daripada diagram yang isinya hilang diam-diam."""
+    looping = ("@startuml\nstart\nrepeat\n:Admin memeriksa antrian;\n"
+               "repeat while (Masih ada?) is (Ya)\nstop\n@enduml")
+    assert not compiler_service.activity_render.supports(looping)
+
+    path = compiler_service._render_activity_diagram(
+        looping, compiler_service.IMAGES_DIR, "Admin", "Antrian"
+    )
+
+    assert Path(path).exists()
+    mock_plantuml_ok.assert_called_once()
+
+
+def test_plain_style_for_uml_diagrams_theme_for_architecture(mock_plantuml_ok):
+    """Keputusan pemilik 2026-07-22: use case, activity, & flow proses bisnis
+    HITAM-PUTIH (tanpa tema warna) supaya mirip acuan draw.io; arsitektur &
+    integrasi komponen TETAP ber-tema warna. Dicek dari source yang sampai ke
+    plantuml, per-diagram — bukan dari urutan panggilan (yang bisa berubah)."""
+    data = _load_fixture("document_content_sdd.json")
+
+    compiler_service.generate_docx("SDD", data, template_id="default")
+
+    sources = [c.args[0] for c in mock_plantuml_ok.call_args_list]
+    themed = [s for s in sources if "componentBackgroundColor" in s]
+    plain = [s for s in sources if "componentBackgroundColor" not in s]
+    # arsitektur + integrasi komponen = ber-tema
+    assert len(themed) == 2, "arsitektur & integrasi komponen harus ber-tema warna"
+    assert all("component " in s or "package " in s for s in themed)
+    # use case + business flow = polos. Activity TIDAK ada di sini: sejak jalur
+    # draw.io, dia dirender sendiri (app/diagram/activity_render.py), tak lewat
+    # plantuml sama sekali.
+    assert len(plain) == 2, "use case & business flow harus polos"
+    assert all("!theme plain" in s for s in plain)
+
+
+def test_plantuml_diagrams_never_get_swimlanes(mock_plantuml_ok):
+    """Swimlane milik activity, dan activity kini dirender jalur draw.io — jadi
+    TIDAK boleh ada satu pun source yang sampai ke plantuml membawa `|Lane|`.
+    Khususnya flow proses bisnis: di acuan ia flowchart bercabang, bukan berlajur."""
+    data = _load_fixture("document_content_sdd.json")
+
+    compiler_service.generate_docx("SDD", data, template_id="default")
+
+    sources = [c.args[0] for c in mock_plantuml_ok.call_args_list]
+    assert not any(re.search(r"^\s*\|[^|]+\|\s*$", s, re.M) for s in sources),         "tak ada diagram plantuml yang boleh ber-swimlane"
+
+
+def test_swimlane_diagram_gets_closing_border(tmp_path):
+    """PlantUML menggambar swimlane hanya sebagai garis vertikal — kotaknya
+    menganga (keluhan pemilik). Bingkai penutup digambar sesudah PNG jadi."""
+    image = tmp_path / "diagram.png"
+    image.write_bytes(_white_png(400, 300))
+    # Tiruan swimlane PlantUML: garis VERTIKAL saja (kiri, pemisah, kanan) —
+    # tanpa garis atas/bawah. Itu persis bentuk yang dikeluhkan "tidak tertutup".
+    from PIL import Image as _Image, ImageDraw as _Draw
+    with _Image.open(image) as im:
+        canvas = im.convert("RGB")
+        pen = _Draw.Draw(canvas)
+        for x in (30, 200, 370):
+            pen.line([x, 30, x, 270], fill=(0, 0, 0), width=2)
+        canvas.save(image)
+    before = _Image.open(image).size
+
+    compiler_service._close_swimlane_border(str(image))
+
+    with _Image.open(image) as after:
+        assert after.size[0] > before[0] and after.size[1] > before[1], \
+            "kanvas harus diberi napas untuk bingkai"
+        pixels = after.convert("RGB")
+        width, height = after.size
+        # bingkai = baris yang HAMPIR SELURUHNYA hitam (garis atas & bawah kotak)
+        full_rows = [
+            y for y in range(height)
+            if sum(pixels.getpixel((x, y)) == (0, 0, 0) for x in range(width))
+            > width * 0.5
+        ]
+    assert len(full_rows) >= 2, (
+        f"bingkai atas & bawah tidak tergambar (baris penuh: {full_rows})"
+    )
+
+
+def test_swimlane_gets_header_separator_line(tmp_path):
+    """Baris judul lane harus dipisah GARIS dari badan diagram, supaya swimlane
+    terbaca sebagai TABEL (header row + body) seperti acuan draw.io — permintaan
+    pemilik: "tabel sebagai background, activity-nya menyesuaikan lajur"."""
+    from PIL import Image as _Image, ImageDraw as _Draw
+
+    image = tmp_path / "swim.png"
+    image.write_bytes(_white_png(600, 400))
+    with _Image.open(image) as im:
+        canvas = im.convert("RGB")
+        pen = _Draw.Draw(canvas)
+        for x in (40, 300, 560):                       # garis lane vertikal
+            pen.line([x, 20, x, 380], fill=(0, 0, 0), width=2)
+        pen.text((150, 24), "Admin", fill=(0, 0, 0))   # pita JUDUL lane
+        pen.text((400, 24), "Sistem", fill=(0, 0, 0))
+        pen.rectangle([120, 120, 260, 160], outline=(0, 0, 0))  # badan diagram
+        canvas.save(image)
+
+    compiler_service._close_swimlane_border(str(image))
+
+    with _Image.open(image) as after:
+        pixels = after.convert("RGB")
+        width, height = after.size
+        full_rows = [
+            y for y in range(height)
+            if sum(pixels.getpixel((x, y)) == (0, 0, 0) for x in range(width))
+            > width * 0.5
+        ]
+    # bingkai atas + GARIS HEADER + bingkai bawah
+    assert len(full_rows) >= 3, f"garis header tidak tergambar (baris penuh: {full_rows})"
+    # garis header harus di pita atas, bukan di tengah diagram
+    assert any(0 < y < height * 0.4 for y in full_rows[1:]), \
+        "garis header terlalu jauh ke bawah"
+
+
+def test_enterprise_theme_skinparams_are_injected(mock_plantuml_ok):
+    """Tema enterprise (Fase 1, 2026-07-22): rounded + shadow + palet warna
+    disuntik terpusat, menggantikan tampilan hitam-putih polos. Penjaga ini
+    mengunci tema supaya tak diam-diam balik ke default PlantUML (`!theme plain`
+    saja) — sebab kalau balik, tidak ada error, cuma diagram jadi polos lagi."""
+    compiler_service._render_diagram_to_image(
+        "@startuml\nA --> B\n@enduml", compiler_service.IMAGES_DIR
+    )
+
+    source = mock_plantuml_ok.call_args_list[0].args[0]
+    assert "!theme plain" in source            # basis tetap dipertahankan
+    assert "skinparam shadowing true" in source
+    assert "skinparam roundcorner 12" in source
+    assert "skinparam componentBackgroundColor #EEF4FB" in source
+    assert "skinparam activityDiamondBackgroundColor #FBEFE0" in source
     assert "A --> B" in source
 
 
@@ -612,12 +858,66 @@ def test_table_headers_are_centered(mock_plantuml_ok):
     document = Document(compiler_service.generate_docx("SDD", data))
 
     assert document.tables, "tidak ada tabel di dokumen"
-    for table in document.tables:
+    # Blok cover DIKECUALIKAN: dia ditulis sebagai tabel semata demi kolom yang
+    # lurus, lalu rupa tabelnya dilepas (_style_cover_blocks) — daftar
+    # label→nilai di cover memang rata KIRI, dan itu perataan yang disengaja,
+    # bukan header yang lupa dirata-tengahkan.
+    cover_blocks = {id(t._tbl) for t in _cover_block_tables(document)}
+    body_tables = [t for t in document.tables if id(t._tbl) not in cover_blocks]
+    assert body_tables, "semua tabel dianggap blok cover — pengecualiannya terlalu lebar"
+    for table in body_tables:
         for cell in table.rows[0].cells:
             for paragraph in cell.paragraphs:
                 assert paragraph.alignment == WD_ALIGN_PARAGRAPH.CENTER, (
                     f"header {paragraph.text!r} tidak rata tengah"
                 )
+
+
+def test_cover_blocks_lose_their_table_look(mock_plantuml_ok):
+    """Blok identitas/kodifikasi/tim di cover ditulis sebagai pipe table (demi
+    kolom yang lurus) tapi TIDAK boleh terlihat sebagai tabel: marker dibuang,
+    garis dilepas, dan header hitam kondisional dimatikan.
+
+    Yang dijaga terutama MARKERNYA: marker yang lolos ke dokumen jadi "((CVLIST))"
+    telanjang di halaman pertama — cacat paling terlihat yang bisa dihasilkan
+    fitur ini."""
+    from docx import Document
+    from docx.oxml.ns import qn
+
+    data = _load_fixture("document_content_sdd.json")
+
+    output_path = compiler_service.generate_docx(
+        "SDD", data, document_metadata=_FULL_SDD_METADATA
+    )
+    document = Document(output_path)
+
+    text = _docx_text(output_path)
+    assert compiler_service._COVER_BAND_MARKER not in text
+    assert compiler_service._COVER_LIST_MARKER not in text
+
+    blocks = _cover_block_tables(document)
+    assert len(blocks) == 3, "cover harus punya 3 blok: pita identitas, kodifikasi, tim"
+    for table in blocks:
+        tbl_look = table._tbl.tblPr.find(qn("w:tblLook"))
+        assert tbl_look.get(qn("w:firstRow")) == "0", "header hitam masih menyala di cover"
+
+    # Isian form benar-benar mendarat di blok cover, bukan cuma menghapus marker.
+    assert "Fajar Ramadhan" in text  # tim project
+    assert "BR-2026-001" in text  # kodifikasi
+
+
+def test_cover_blocks_do_not_bleed_into_body_tables(mock_plantuml_ok):
+    """Pelepasan garis harus berhenti di cover. Tabel isi (Revision History,
+    Features, use case) tetap bergaris — kalau `_style_cover_blocks` terlalu
+    rakus, seluruh dokumen kehilangan bingkai tabelnya tanpa satu pun test lain
+    merah."""
+    from docx import Document
+
+    data = _load_fixture("document_content_sdd.json")
+
+    document = Document(compiler_service.generate_docx("SDD", data))
+
+    assert len(document.tables) > len(_cover_block_tables(document))
 
 
 def test_reference_docx_carries_dot_leader_toc_styles():
@@ -686,9 +986,14 @@ def test_generated_docx_has_numbered_pages(mock_plantuml_ok):
 
 
 def test_document_title_lands_in_both_places(mock_plantuml_ok):
-    """Judul dipakai DUA kali: sebagai judul besar halaman pertama (style Title)
-    dan sebagai teks kaki tiap halaman (field TITLE membacanya dari docProps).
-    Satu sumber, dua tempat — kalau docProps kosong, kaki halaman ikut kosong."""
+    """Judul dipakai DUA kali: sebagai judul halaman cover dan sebagai teks kaki
+    tiap halaman (field TITLE membacanya dari docProps). Satu sumber, dua tempat
+    — kalau docProps kosong, kaki halaman ikut kosong.
+
+    Di cover judul itu dipecah jadi DUA tingkat (`_split_cover_title`): label
+    jenis dokumen sebagai eyebrow, nama project sebagai judul besar. Yang dipecah
+    cuma tampilannya — docProps tetap memuat judul UTUH, jadi kaki halaman tidak
+    ikut kehilangan labelnya."""
     import re
     import zipfile
 
@@ -700,8 +1005,28 @@ def test_document_title_lands_in_both_places(mock_plantuml_ok):
 
     core = zipfile.ZipFile(output_path).read("docProps/core.xml").decode("utf-8", "ignore")
     assert re.search(r"<dc:title>Solution Design Document — Esteler App</dc:title>", core)
-    titles = [p.text for p in Document(output_path).paragraphs if p.style.name == "Title"]
-    assert titles == ["Solution Design Document — Esteler App"]
+    paragraphs = Document(output_path).paragraphs
+    assert [p.text for p in paragraphs if p.style.name == "Title"] == ["Esteler App"]
+    assert [p.text for p in paragraphs if p.style.name == "Cover Eyebrow"] == [
+        "Solution Design Document"
+    ]
+
+
+def test_cover_title_survives_missing_project_name(mock_plantuml_ok):
+    """Tanpa nama project, judul tak punya em dash untuk dipecah — cover harus
+    jatuh ke satu paragraf Title berisi label saja, bukan error atau eyebrow
+    kosong."""
+    from docx import Document
+
+    data = _load_fixture("document_content_sdd.json")
+
+    output_path = compiler_service.generate_docx("SDD", data, project_name="")
+
+    paragraphs = Document(output_path).paragraphs
+    assert [p.text for p in paragraphs if p.style.name == "Title"] == [
+        "Solution Design Document"
+    ]
+    assert not [p for p in paragraphs if p.style.name == "Cover Eyebrow"]
 
 
 def test_uat_gets_its_own_title(mock_plantuml_ok):
@@ -711,8 +1036,11 @@ def test_uat_gets_its_own_title(mock_plantuml_ok):
 
     from docx import Document
 
-    titles = [p.text for p in Document(output_path).paragraphs if p.style.name == "Title"]
-    assert titles == ["Dokumen User Acceptance Testing (UAT) — Esteler App"]
+    paragraphs = Document(output_path).paragraphs
+    assert [p.text for p in paragraphs if p.style.name == "Title"] == ["Esteler App"]
+    assert [p.text for p in paragraphs if p.style.name == "Cover Eyebrow"] == [
+        "Dokumen User Acceptance Testing (UAT)"
+    ]
 
 
 def test_title_without_project_name_stays_clean():
@@ -1055,6 +1383,166 @@ def test_how_to_access_is_a_two_row_checklist_table(mock_plantuml_ok):
         assert _FULL_SDD_METADATA["access_published_internet_remark"] in text, template_id
 
 
+# --- Cover, tanda tangan, & hierarki premco (request pemilik 2026-07-21) --------
+#
+# Pemilik project minta cover & blok tanda tangan premco PERSIS docx PREMCO asli
+# (bukan lagi gaya minimalis template default): tabel berbingkai header gelap,
+# kolom Entitas di-merge vertikal, bar tanda tangan HITAM 2×2, dan Use Case/
+# Activity/Mockup jadi sub-bab bernomor. Diukur langsung dari docx benchmark.
+
+
+def test_premco_cover_uses_boxed_dark_header_tables(mock_plantuml_ok):
+    """Cover premco = TIGA tabel berbingkai header gelap (Fungsi/Kodifikasi,
+    Katalog Proses Bisnis, Entitas/Jabatan/Nama), BUKAN cover minimalis tanpa
+    kotak (CVBAND/CVLIST) seperti default. Marker tak boleh bocor ke teks."""
+    data = _load_fixture("document_content_sdd.json")
+
+    output_path = compiler_service.generate_docx(
+        "SDD", data, document_metadata={**_FULL_SDD_METADATA, **_PREMCO_ONLY_METADATA},
+        template_id="premco",
+    )
+
+    document = Document(output_path)
+    heads = {t.rows[0].cells[0].text.strip() for t in document.tables if t.rows}
+    assert {"Fungsi", "Katalog Proses Bisnis", "Entitas"} <= heads
+    # Premco tak memakai cover borderless: TIDAK ada tabel yang garisnya dilepas.
+    assert not _cover_block_tables(document), "cover premco tak boleh borderless"
+    text = _docx_text(output_path)
+    assert _PREMCO_ONLY_METADATA["entitas"] in text
+    for marker in ("((CVMERGE))", "((CVBAND))", "((CVLIST))"):
+        assert marker not in text, f"marker {marker} bocor ke dokumen"
+
+
+def test_premco_cover_entity_column_is_vertically_merged(mock_plantuml_ok):
+    """Kolom Entitas tabel Tim Project di-merge VERTIKAL — satu perusahaan
+    memayungi seluruh baris tim, meniru sel Entitas yang di-merge di docx asli.
+    Semua sel data kolom 0 harus menunjuk ke satu <w:tc> yang sama."""
+    data = _load_fixture("document_content_sdd.json")
+
+    output_path = compiler_service.generate_docx(
+        "SDD", data, document_metadata={**_FULL_SDD_METADATA, **_PREMCO_ONLY_METADATA},
+        template_id="premco",
+    )
+
+    document = Document(output_path)
+    entity = next(t for t in document.tables
+                  if t.rows and t.rows[0].cells[0].text.strip() == "Entitas")
+    body_cells = [entity.rows[r].cells[0]._tc for r in range(1, len(entity.rows))]
+    assert len({id(c) for c in body_cells}) == 1, "kolom Entitas tidak lebur jadi satu sel"
+
+
+def test_premco_signature_blocks_are_black_bar_two_by_two(mock_plantuml_ok):
+    """Perwakilan User & Pengembang = bar judul HITAM (000000) selebar tabel +
+    2 kolom × 2 baris ruang tanda tangan — diukur dari docx PREMCO asli, bukan
+    tabel 3-kolom Nama/Jabatan/Tanda Tangan template default."""
+    data = _load_fixture("document_content_sdd.json")
+
+    output_path = compiler_service.generate_docx("SDD", data, template_id="premco")
+
+    document = Document(output_path)
+    sig = [t for t in document.tables
+           if t.rows and t.rows[0].cells[0].text.strip()
+           in ("Perwakilan User", "Perwakilan Pengembang")]
+    assert len(sig) == 2, "tabel Perwakilan User & Pengembang tidak ketemu"
+    for table in sig:
+        assert len(table.columns) == 2, "blok tanda tangan harus 2 kolom"
+        assert len(table.rows) == 3, "bar + 2 baris badan (ruang tanda tangan)"
+        bar = table.rows[0].cells[0]
+        shd = bar._tc.find(qn("w:tcPr")).find(qn("w:shd"))
+        assert shd is not None and shd.get(qn("w:fill")) == "000000", "bar tidak hitam"
+        assert table.rows[1].height is not None and table.rows[1].height >= Inches(1), \
+            "ruang tanda tangan kurang tinggi"
+    # tabel 3-kolom lama tidak boleh ada lagi di premco
+    assert "Tanda Tangan" not in _docx_text(output_path)
+
+
+def test_premco_use_case_and_activity_are_numbered_subsections(mock_plantuml_ok):
+    """Sesuai Daftar Isi docx PREMCO: Use Case, Activity Diagram, dan dua Mockup
+    adalah SUB-BAB (Heading 2) bernomor 1-4 di bawah Flow Proses Bisnis — bukan
+    bab Heading 1 tersendiri. Word menampilkannya terindentasi & bernomor di
+    Daftar Isi."""
+    data = _load_fixture("document_content_sdd.json")
+
+    output_path = compiler_service.generate_docx("SDD", data, template_id="premco")
+
+    document = Document(output_path)
+    h2 = [p.text.strip() for p in document.paragraphs if p.style.name == "Heading 2"]
+    assert h2 == ["1. Use Case", "2. Activity Diagram",
+                  "3. Mockup Website", "4. Mockup Aplikasi"]
+    h1 = [p.text.strip() for p in document.paragraphs if p.style.name == "Heading 1"]
+    assert "Flow Proses Bisnis" in h1
+    assert "Use Case" not in h1, "Use Case tak boleh lagi bab Heading 1 tersendiri"
+
+
+_COVER_HEADER_STYLES = ("Cover Eyebrow", "Title", "Cover Subtitle")
+
+
+def test_premco_cover_header_is_right_aligned(mock_plantuml_ok):
+    """Permintaan pemilik: blok judul cover premco (eyebrow, judul, baris
+    identitas) di-align KANAN, meniru cover PREMCO. Tabel kodifikasi/tim di
+    bawahnya tetap penuh (tak ikut)."""
+    data = _load_fixture("document_content_sdd.json")
+
+    output_path = compiler_service.generate_docx(
+        "SDD", data, project_name="Contoh App",
+        document_metadata={**_FULL_SDD_METADATA, **_PREMCO_ONLY_METADATA},
+        template_id="premco",
+    )
+
+    document = Document(output_path)
+    header = [p for p in document.paragraphs if p.style.name in _COVER_HEADER_STYLES]
+    assert header, "paragraf blok judul cover tidak ketemu"
+    for paragraph in header:
+        assert paragraph.alignment == WD_ALIGN_PARAGRAPH.RIGHT, \
+            f"paragraf cover {paragraph.style.name!r} tidak rata kanan"
+
+
+def test_default_cover_header_is_not_right_aligned(mock_plantuml_ok):
+    """Align-kanan cover HANYA milik premco; template default mempertahankan
+    cover tengah yang sudah disetujui pemilik."""
+    data = _load_fixture("document_content_sdd.json")
+
+    output_path = compiler_service.generate_docx(
+        "SDD", data, project_name="Contoh App",
+        document_metadata=_FULL_SDD_METADATA, template_id="default",
+    )
+
+    document = Document(output_path)
+    header = [p for p in document.paragraphs if p.style.name in _COVER_HEADER_STYLES]
+    assert header, "paragraf blok judul cover tidak ketemu"
+    assert all(p.alignment != WD_ALIGN_PARAGRAPH.RIGHT for p in header), \
+        "cover default tidak boleh ikut rata kanan"
+
+
+def test_premco_infra_merges_empty_subenv_and_remark(mock_plantuml_ok):
+    """Di tabel Infrastructure premco, baris tanpa sub-environment (Infrastructure
+    Tech Req, Network, Data Center) menggabung sel kolom sub-env + Remark yang
+    keduanya kosong jadi satu sel lebar — persis docx PREMCO. Baris ber-sub-env
+    (Akses URL → Development) TETAP terpisah."""
+    data = _load_fixture("document_content_sdd.json")
+
+    output_path = compiler_service.generate_docx(
+        "SDD", data, document_metadata=_FULL_SDD_METADATA, template_id="premco"
+    )
+
+    document = Document(output_path)
+    infra = next(t for t in document.tables if compiler_service._is_infra_table(t))
+    by_resource = {}
+    for row in infra.rows[1:]:
+        key = row.cells[1].text.strip()
+        if key:
+            by_resource[key] = row
+    # baris tanpa sub-env: sel idx 2 & 3 harus satu <w:tc> (ter-merge)
+    merged_row = by_resource["Infrastructure Technology Requirement"]
+    assert merged_row.cells[2]._tc is merged_row.cells[3]._tc, \
+        "sel sub-env + Remark kosong tidak digabung"
+    # baris ber-sub-env (Akses URL) TIDAK boleh ter-merge
+    akses = by_resource["Akses URL"]
+    assert akses.cells[2].text.strip() == "Development"
+    assert akses.cells[2]._tc is not akses.cells[3]._tc, \
+        "baris ber-sub-env tidak boleh ikut ter-merge"
+
+
 def test_document_font_is_calibri_not_pandoc_default(mock_plantuml_ok):
     """Font dokumen datang dari TEMA (word/theme/theme1.xml), bukan dari style —
     style Pandoc menunjuk ke sana lewat asciiTheme="minorHAnsi"/"majorHAnsi".
@@ -1258,7 +1746,25 @@ def test_tall_diagram_is_capped_by_height_not_width(tmp_path):
     tall = tmp_path / "tall.png"
     tall.write_bytes(_white_png(4000, 20000))
 
-    assert compiler_service._image_attr(str(tall)) == "{height=8.0in}"
+    assert compiler_service._image_attr(str(tall)) == (
+        f"{{height={compiler_service._PAGE_HEIGHT_IN}in}}"
+    )
+
+
+def test_tallest_diagram_still_fits_with_its_group(tmp_path):
+    """Gambar tidak pernah berjalan sendirian: judul sub-bab, pengantar, dan
+    caption terikat padanya. Batas tinggi harus menyisakan ruang untuk rombongan
+    itu — kalau tidak, kelompoknya tak akan pernah muat sehalaman dan Word
+    memindahkan SEMUANYA, meninggalkan halaman berisi 4 baris lalu 8 inci putih
+    (terjadi betulan di render esteler halaman 13 sebelum batas ini dikoreksi)."""
+    tall = tmp_path / "tall.png"
+    tall.write_bytes(_white_png(4000, 20000))
+
+    height_in = float(
+        re.search(r"height=([\d.]+)in", compiler_service._image_attr(str(tall))).group(1)
+    )
+
+    assert height_in + compiler_service._FIGURE_GROUP_RESERVE_IN <= compiler_service._TEXT_HEIGHT_IN
 
 
 def test_wide_diagram_is_capped_by_width(tmp_path):
@@ -1268,15 +1774,69 @@ def test_wide_diagram_is_capped_by_width(tmp_path):
     assert compiler_service._image_attr(str(wide)) == "{width=6.5in}"
 
 
-def test_small_diagram_is_never_upscaled(tmp_path):
-    """Diagram kecil yang DIRENTANGKAN selebar halaman jadi buram dengan huruf
-    raksasa — dan ukuran teks antar diagram jadi tidak konsisten. Kalau muat,
-    pakai ukuran tampil alami (piksel / _DIAGRAM_DISPLAY_DPI), jangan upscale."""
-    small = tmp_path / "small.png"
+def _attr_width_in(attr: str) -> float:
+    """Ambil angka inci dari atribut Pandoc "{width=5.20in}"."""
+    import re
+
+    return float(re.search(r"width=([\d.]+)in", attr).group(1))
+
+
+def test_small_diagram_is_enlarged_toward_target(tmp_path):
+    """Diagram yang lebih kecil dari target dibesarkan sampai menyentuhnya.
+
+    Aturan lama "jangan pernah upscale" menghasilkan diagram mungil dengan
+    lautan putih di kiri-kanannya — terukur 42% lebar area teks pada use case
+    diagram, sementara diagram dokumen acuan tak pernah sekecil itu."""
+    small = tmp_path / "small.png"  # 5,0 x 2,5 inci pada display dpi
     small.write_bytes(_white_png(1800, 900))
 
-    expected_in = 1800 / compiler_service._DIAGRAM_DISPLAY_DPI
-    assert compiler_service._image_attr(str(small)) == f"{{width={expected_in:.2f}in}}"
+    target_in = compiler_service._PAGE_WIDTH_IN * compiler_service._DIAGRAM_TARGET_WIDTH_FRAC
+    assert _attr_width_in(compiler_service._image_attr(str(small))) == pytest.approx(
+        target_in, abs=0.01
+    )
+
+
+def test_tiny_diagram_stops_at_the_legibility_cap(tmp_path):
+    """Pembesaran DIBATASI, dan batasnya mengikat untuk diagram yang sangat kecil.
+
+    Memperbesar gambar ikut memperbesar huruf di dalamnya; membiarkannya
+    mengejar target lebar akan menghasilkan diagram berhuruf ~17pt (teks badan
+    11pt) yang terbaca seperti poster. Jadi diagram mungil memang TIDAK sampai
+    ke target — itu keputusan sadar, dan test ini yang menjaganya tetap begitu."""
+    tiny = tmp_path / "tiny.png"  # 1,0 x 0,5 inci pada display dpi
+    tiny.write_bytes(_white_png(360, 180))
+
+    natural_in = 360 / compiler_service._DIAGRAM_DISPLAY_DPI
+    width_in = _attr_width_in(compiler_service._image_attr(str(tiny)))
+    scale = width_in / natural_in
+
+    assert scale == pytest.approx(compiler_service._DIAGRAM_MAX_UPSCALE, abs=0.01)
+    assert width_in < compiler_service._PAGE_WIDTH_IN * compiler_service._DIAGRAM_TARGET_WIDTH_FRAC
+    # Dua ambang yang menurunkan batas itu harus benar-benar terpenuhi. Toleransi
+    # kecil karena atribut Pandoc dibulatkan ke 2 desimal inci — pada diagram
+    # 1 inci itu menggeser skala sampai 0,005, jadi ambangnya bisa terlampaui
+    # sepersekian poin. Yang dijaga di sini besarannya, bukan digit terakhirnya.
+    assert (
+        compiler_service._DIAGRAM_NATURAL_TEXT_PT * scale
+        <= compiler_service._DIAGRAM_MAX_TEXT_PT + 0.1
+    )
+    assert (
+        compiler_service._PLANTUML_DPI / scale
+        >= compiler_service._DIAGRAM_MIN_EFFECTIVE_DPI - 1
+    )
+
+
+def test_diagram_already_past_target_keeps_natural_size(tmp_path):
+    """Yang dinaikkan cuma LANTAInya. Diagram yang ukuran alaminya sudah melewati
+    target dibiarkan apa adanya — tidak diciutkan balik ke target, dan tidak
+    disamaratakan selebar halaman."""
+    big = tmp_path / "big.png"  # 6,0 x 3,0 inci: di atas target 5,2, di bawah 6,5
+    big.write_bytes(_white_png(2160, 1080))
+
+    natural_in = 2160 / compiler_service._DIAGRAM_DISPLAY_DPI
+    assert _attr_width_in(compiler_service._image_attr(str(big))) == pytest.approx(
+        natural_in, abs=0.01
+    )
 
 
 def test_every_diagram_fits_on_the_page(mock_plantuml_ok):
@@ -1452,7 +2012,146 @@ def test_typography_reaches_the_generated_document(mock_plantuml_ok):
 
     document = Document(compiler_service.generate_docx("SDD", data))
 
-    section = document.styles["Heading 2"].font
-    assert section.bold and section.all_caps, "judul bab harus tebal & huruf besar"
+    section = document.styles["Heading 1"].font
+    assert section.bold and section.all_caps, "judul bab (Heading 1) harus tebal & huruf besar"
     caption = document.styles["Image Caption"].font
     assert caption.italic and caption.size.pt <= 10, "caption harus kecil & miring"
+
+
+def test_orientation_returns_to_portrait_after_closing_marker(tmp_path, mock_plantuml_ok):
+    """Template hasil-upload bisa punya bab landscape di TENGAH lalu kembali
+    potret. Mekanisme lama cuma menangani satu marker (potret → landscape sampai
+    AKHIR dokumen), jadi sisa dokumen ikut terputar — cacat yang tak pernah
+    terlihat di premco UAT karena di sana landscape memang sampai akhir."""
+    from docx.enum.section import WD_ORIENT
+
+    markdown = (
+        "# Pendahuluan\n\nPotret.\n\n"
+        "((LANDSCAPE))\n\n# Matriks\n\nLandscape.\n\n"
+        "((PORTRAIT))\n\n# Penutup\n\nPotret lagi.\n"
+    )
+    output = tmp_path / "orient.docx"
+    pypandoc.convert_text(
+        markdown, to="docx", format="md", outputfile=str(output),
+        extra_args=compiler_service._pandoc_args("SDD", "Uji Orientasi"),
+    )
+    compiler_service._postprocess_docx(str(output))
+
+    doc = Document(str(output))
+    orientations = [
+        "landscape" if s.orientation == WD_ORIENT.LANDSCAPE else "portrait"
+        for s in doc.sections
+    ]
+    assert orientations == ["portrait", "landscape", "portrait"]
+    text = "\n".join(p.text for p in doc.paragraphs)
+    assert "((LANDSCAPE))" not in text and "((PORTRAIT))" not in text
+
+
+def test_premco_index_titles_are_heading1_so_they_self_list(mock_plantuml_ok):
+    """Daftar Isi/Gambar/Tabel premco memakai `Heading 1`, bukan `TOC Heading`.
+
+    Diukur dari acuan, bukan selera: Daftar Isi PDF PREMCO halaman 5 memuat
+    baris "DAFTAR ISI…", "DAFTAR GAMBAR…", "DAFTAR TABEL…" di antara PERSETUJUAN
+    DOKUMEN dan DESKRIPSI APLIKASI — artinya di dokumen aslinya ketiganya
+    Heading 1 dan IKUT TERDAFTAR. Dengan `TOC Heading` (gaya Word standar, yang
+    memang sengaja tak masuk daftar) ketiganya hilang dan urutan bab kita
+    menyimpang dari acuan. `default` bukan tiruan PREMCO, jadi tetap TOC Heading.
+    """
+    data = _load_fixture("document_content_sdd.json")
+    judul = {"Daftar Isi", "Daftar Gambar", "Daftar Tabel"}
+
+    premco = Document(compiler_service.generate_docx("SDD", data, template_id="premco"))
+    gaya_premco = {p.text.strip(): p.style.name
+                   for p in premco.paragraphs if p.text.strip() in judul}
+    assert gaya_premco == {j: "Heading 1" for j in judul}
+
+    bawaan = Document(compiler_service.generate_docx("SDD", data, template_id="default"))
+    gaya_bawaan = {p.text.strip(): p.style.name
+                   for p in bawaan.paragraphs if p.text.strip() in judul}
+    assert gaya_bawaan == {j: "TOC Heading" for j in judul}
+
+
+def test_sdd_menghasilkan_bundel_drawio_yang_bisa_disunting(mock_plantuml_ok):
+    """Activity diagram digambar dari geometri yang kita hitung SENDIRI, jadi
+    versi yang bisa disunting praktis gratis — dan bentuknya mustahil berbeda
+    dari yang tercetak karena lahir dari koordinat yang sama."""
+    import zipfile
+
+    data = _load_fixture("document_content_sdd.json")
+
+    output_path = compiler_service.generate_docx("SDD", data, template_id="premco")
+
+    bundle = compiler_service.drawio_bundle_for(output_path)
+    assert bundle.exists()
+    with zipfile.ZipFile(bundle) as isi:
+        nama = isi.namelist()
+        assert nama and all(n.endswith(".drawio") for n in nama)
+        assert "<mxGraphModel" in isi.read(nama[0]).decode("utf-8")
+
+
+def test_uat_tidak_menghasilkan_bundel_drawio(mock_plantuml_ok):
+    """UAT tak punya activity diagram sama sekali. Bundel kosong yang tetap
+    dibuat akan membuat status job menawarkan tautan yang berujung 404."""
+    output_path = compiler_service.generate_docx(
+        "UAT", _load_fixture("document_content_uat.json"), template_id="premco")
+
+    assert not compiler_service.drawio_bundle_for(output_path).exists()
+
+
+def test_premco_activity_diagrams_are_numbered_subchapters(mock_plantuml_ok):
+    """Tiap activity diagram jadi sub-bab Heading 3 bernomor "2.N" — meniru
+    dokumen PREMCO asli yang memecah "Activity Diagram Login – Website", "…
+    Mobile", dst. jadi bagian terpisah. Keputusan pemilik: sub-bab ini MASUK
+    Daftar Isi (Heading 3, di dalam jangkauan field TOC level 1-3)."""
+    data = _load_fixture("contract_b_rich_sdd.json")
+    n = len(data["diagrams"]["activity_diagrams"])
+    assert n >= 2  # butuh >=2 untuk melihat penomoran berjalan (2.1, 2.2, ...)
+
+    document = Document(compiler_service.generate_docx("SDD", data, template_id="premco"))
+    subchapters = [p.text.strip() for p in document.paragraphs
+                   if p.style and p.style.name == "Heading 3"
+                   and "Activity Diagram" in p.text]
+
+    assert len(subchapters) == n
+    assert subchapters[0].startswith("2.1 Activity Diagram")
+    assert subchapters[1].startswith("2.2 Activity Diagram")
+    # Induknya tetap Heading 2 bernomor "2." — sub-bab tidak menggantikannya.
+    assert any(p.text.strip() == "2. Activity Diagram"
+               for p in document.paragraphs
+               if p.style and p.style.name == "Heading 2")
+
+
+def test_footer_title_baked_so_it_shows_without_field_update(mock_plantuml_ok):
+    """Judul di footer harus tampil TANPA pengguna meng-update field.
+
+    Footer memakai field TITLE (reference.docx dibangun sekali tanpa tahu judul
+    per-dokumen), tapi run hasilnya kosong sampai field di-update — pengguna yang
+    menjawab "No" pada prompt update Word, atau memakai viewer non-Word, melihat
+    footer tanpa judul (cuma nomor halaman, karena PAGE dihitung Word otomatis
+    dan TITLE tidak). Judulnya sudah diketahui saat generate, jadi di-bake ke run
+    hasilnya."""
+    data = _load_fixture("document_content_sdd.json")
+
+    document = Document(compiler_service.generate_docx(
+        "SDD", data, project_name="Esteler", template_id="premco"))
+
+    footer_p = document.sections[0].footer.paragraphs[0]
+    runs = footer_p._p.findall(qn("w:r"))
+    # Run hasil (sesudah fldChar separate milik field TITLE) harus berisi judul.
+    baked = None
+    in_title = False
+    for i, r in enumerate(runs):
+        instr = r.find(qn("w:instrText"))
+        if instr is not None and instr.text and "TITLE" in instr.text:
+            in_title = True
+        fld = r.find(qn("w:fldChar"))
+        if (fld is not None and fld.get(qn("w:fldCharType")) == "separate"
+                and in_title and i + 1 < len(runs)):
+            t = runs[i + 1].find(qn("w:t"))
+            baked = t.text if t is not None else None
+            break
+    assert baked == "Solution Design Document — Esteler"
+    # Field-nya TETAP ada (PAGE masih live) — bukan diganti teks harfiah.
+    assert any((r.find(qn("w:instrText")) is not None
+                and r.find(qn("w:instrText")).text
+                and "PAGE" in r.find(qn("w:instrText")).text) for r in runs)
