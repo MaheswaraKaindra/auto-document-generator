@@ -229,6 +229,19 @@ Buka frontend, pilih sumber kode (**Repo GitHub** atau **Upload ZIP**), pilih ti
 & gaya dokumen, klik Generate, tunggu ~2-3 menit, unduh. Atau pakai Swagger UI di
 `/docs` untuk memanggil API langsung.
 
+## Deploy & kesiapan SaaS
+
+Satu image Docker menyajikan aplikasi utuh (SPA + API, satu URL) dengan dependency
+canggung (Java/pandoc/plantuml) terbundel:
+
+```bash
+docker compose up --build   # -> http://localhost:8000
+```
+
+Auth per-pengguna opsional (Supabase; kosong = mode dev tanpa login). Panduan
+lengkap, konfigurasi, dan **penilaian jujur "apa yang siap / tinggal colok /
+batasnya"** ada di **[DEPLOY.md](DEPLOY.md)**.
+
 ## Endpoint utama
 
 | Method | Path | Fungsi |
