@@ -381,7 +381,6 @@ Dulu ada `lain-lain/` berisi installer pandoc 41 MB + screenshot UI lama; **dua-
 | `FRONTEND_URL` | Opsional | Asal URL untuk success/cancel Stripe Checkout. Kosong = `http://localhost:5173`. |
 | `SENTRY_DSN` / `SENTRY_ENVIRONMENT` | Opsional | **Error tracking (#14).** Kosong = mati; `sentry-sdk` tak pernah di-import. Terisi = exception job (jalur 500/502 + sebab tak dikenal) dikirim ke Sentry dengan tag `job_id`/`owner`/`stage`. Kegagalan sisi input pengguna (422/413/400) TIDAK dikirim (bukan bug, cuma derau). DSN terisi tapi paket tak terpasang = peringatan sekali, bukan crash boot. |
 | `LOG_FORMAT` / `LOG_LEVEL` | Opsional | **Structured logging (#14).** `LOG_FORMAT=json` = satu objek JSON per baris dengan `job_id`/`owner`/`stage` + field metrik (`duration_ms`/`outcome`/`error_status`), siap diagregasi collector. Kosong/nilai lain = plain (enak dibaca saat dev). `LOG_LEVEL` default `INFO`. |
-| `CORS_ALLOW_ORIGINS` | Opsional | **CORS diperketat (#15).** Daftar origin (koma-pisah) yang boleh memanggil API lintas-origin. Kosong = default origin dev Vite (`localhost:5173`) — sudah BUKAN `*`. `*` = izinkan semua (opt-in eksplisit). Saat SPA disajikan same-origin oleh container, CORS tak terpakai sama sekali. `DOMAIN`/`TLS_EMAIL` (reverse proxy Caddy) dibaca `docker-compose.prod.yml`, BUKAN aplikasi — lihat `DEPLOY.md`. |
 
 ## Setup Lokal
 
@@ -483,7 +482,9 @@ Klaim itu pernah SALAH tanpa ada yang tahu. Tiga test (`test_mode_dev_tanpa_supa
 | `tests/test_compiler_service.py` | Render PlantUML, Jinja2, export docx, metadata dokumen, halaman cover (judul dua tingkat + blok tanpa rupa tabel), template premco (bar biru SDD; header hijau + grouping per-modul + section landscape UAT) (Peran 3) |
 | `tests/test_rate_limit_service.py` | Batas per-akun: jendela sliding, Retry-After, akun lain tak terpengaruh, mode dev dilewati, limit 0 mematikan, env salah-ketik menggagalkan startup |
 | `tests/test_observability.py` | Observability #14: probe `/ready` (200 siap / 503 satu dep hilang), health tetap tanpa cek dep, JSON log membawa konteks job + field extra, seam Sentry mati by default = no-op yang tak melempar (Peran 3) |
-| `tests/test_cors.py` | CORS diperketat #15: default bukan `*`, parsing `CORS_ALLOW_ORIGINS`, origin diizinkan dipantulkan, origin asing tidak (Peran 3) |
+| `tests/test_cors_config.py` | CORS diperketat #15: parsing `ALLOWED_ORIGINS` (trailing-slash dipangkas), default bukan `*`, `*` memicu peringatan startup (Peran 3) |
+| `tests/test_routes_account.py` / `tests/test_user_data_service.py` | Ekspor & hapus data #16: owner-scoped, guard mode-anonim (409), hapus menyapu docx/drawio/template + baris DB, `residual_data` memeriksa storage bukan laporan fungsi (Peran 3) |
+| `tests/test_routes_legal.py` | Halaman `/privacy` & `/terms` publik (#16) |
 | `tests/test_job_queue.py` | Seam eksekusi (#13): default inline, mode RQ tak menyentuh `BackgroundTasks` (dua-duanya = pipeline berbayar jalan 2x), meta `job_id`, timeout selaras reaper, re-queue no-op/dimatikan, `mark_requeued` membersihkan sisa error |
 | `tests/test_billing_service.py` | Metering token & tarif per model (id ber-tanggal, model tak dikenal), kuota tier (job gagal-sebelum-LLM tak memotong, gagal-sesudah-LLM memotong, job berjalan ikut, limit 0 tak membatasi), checkout simulasi tak menaikkan tier, price id kosong ditolak berisik, webhook Stripe menaikkan tier |
 | `tests/test_routes_billing.py` | Endpoint `/billing/*` + penolakan **402** di `/documents/generate` saat kuota habis |
