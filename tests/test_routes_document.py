@@ -360,6 +360,59 @@ def test_generate_from_zip_produces_document(client, mock_plantuml_ok):
     assert client.get(job["download_url"]).status_code == 200
 
 
+def test_muatan_job_tak_membawa_base64_yang_sudah_didekode(client, monkeypatch):
+    """Job yang diantre TIDAK boleh membawa base64 yang sudah jadi bytes.
+
+    Kalau ikut terbawa, muatan yang sama diangkut dua kali — sekali sebagai teks
+    base64 (4/3 ukuran aslinya) dan sekali sebagai bytes. Sejak eksekusi pindah ke
+    worker (#13) muatan job MENETAP di memori Redis selama job hidup, jadi
+    duplikasi itu berhenti gratis: ZIP 50 MB memakan ~117 MB, bukan ~50 MB.
+
+    Yang dijaga sekaligus: pembuangannya tak boleh memakan yang lain. Hasil
+    dekodenya harus utuh (kalau tidak, ZIP-nya hilang sama sekali), begitu juga
+    field `body` yang memang masih dibaca di hilir.
+    """
+    import base64
+
+    diantre = {}
+
+    def _tangkap(background_tasks, func, *args, **kwargs):
+        diantre["args"] = args
+        return "inline"
+
+    monkeypatch.setattr(routes_document.job_queue, "enqueue", _tangkap)
+
+    zip_b64 = base64.b64encode(_zip_bytes({"myapp/app.py": "x = 1\n"})).decode()
+    logo_b64 = base64.b64encode(_white_png(120, 60)).decode()
+    response = client.post(
+        "/documents/generate",
+        json={
+            "document_type": "SDD",
+            "project_name": "Proyek Uji",
+            "template_id": "premco",
+            "logo_base64": logo_b64,
+            "zip_files": [
+                {"repo_tag": "Backend", "filename": "myapp.zip", "zip_base64": zip_b64}
+            ],
+        },
+    )
+    assert response.status_code == 202
+
+    _job_id, payload, logo_bytes, zip_requests = diantre["args"]
+    assert payload.logo_base64 is None, "base64 logo masih ikut diangkut"
+    assert payload.zip_files is None, "base64 ZIP masih ikut diangkut"
+
+    # Yang sudah didekode harus tetap ada — inilah yang benar-benar dipakai hilir.
+    assert logo_bytes and logo_bytes[:4] == b"\x89PNG"
+    assert len(zip_requests) == 1
+    assert zip_requests[0].zip_bytes[:2] == b"PK"
+
+    # Sisa `body` tak boleh ikut terbuang.
+    assert payload.document_type == "SDD"
+    assert payload.project_name == "Proyek Uji"
+    assert payload.template_id == "premco"
+
+
 def test_zip_bad_base64_rejected_synchronously_with_422(client):
     """base64 ZIP rusak ditolak SAAT POST — sebelum job dibuat, sebelum LLM.
     Prinsip yang sama dengan validasi logo & document_type."""

@@ -249,10 +249,24 @@ def generate_document_full_pipeline(
         template_id=body.template_id,
         owner=principal.id,
     )
+    # Base64-nya SUDAH didekode di atas jadi `logo_bytes` & `zip_requests`, dan
+    # tak ada satu pun kode di hilir yang membaca `body.logo_base64`/`body.zip_files`
+    # lagi. Membawanya ikut berarti muatan yang sama diangkut DUA KALI — sekali
+    # sebagai teks base64 (4/3 ukuran aslinya) dan sekali sebagai bytes.
+    #
+    # Dulu itu tak berbiaya: mode inline menaruh keduanya di RAM proses yang sama
+    # lalu membuangnya. Sejak eksekusi pindah ke worker (#13) muatan job di-pickle
+    # dan MENETAP di memori Redis selama job hidup, jadi duplikasi yang tak
+    # kelihatan berubah jadi memori mesin lain — ZIP 50 MB memakan ~117 MB, bukan
+    # ~50 MB. Menyalinnya tanpa dua field itu memulihkannya jadi satu salinan.
+    #
+    # `model_copy` itu salinan DANGKAL: `body` milik request tak tersentuh, dan
+    # `zip_requests`/`logo_bytes` menunjuk objek yang sama (tak ada salinan ketiga).
+    payload = body.model_copy(update={"logo_base64": None, "zip_files": None})
     try:
         job_queue.enqueue(
             background_tasks, _run_generation,
-            job_id, body, logo_bytes, zip_requests,
+            job_id, payload, logo_bytes, zip_requests,
             domain_job_id=job_id,
         )
     except Exception as e:
