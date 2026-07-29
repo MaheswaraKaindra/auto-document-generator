@@ -88,4 +88,30 @@ EXPOSE 8000
 # Satu proses uvicorn. Multi-worker JALAN (state di SQLite file, lihat CLAUDE.md),
 # tapi default 1 worker paling sederhana & cukup untuk satu instance. Skala
 # horizontal = worker queue terpisah (lihat DEPLOY.md), bukan menambah worker.
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+#
+# --proxy-headers: TLS diputus di reverse proxy (Caddy), jadi tanpa ini uvicorn
+# melihat setiap request sebagai `http` yang datang dari IP proxy, bukan dari
+# pengunjungnya. Dengan flag ini X-Forwarded-* dihormati — DIUKUR, bukan
+# diasumsikan: request ber-`X-Forwarded-For: 203.0.113.7` tercatat di log akses
+# sebagai `203.0.113.7:0` (port 0 karena header itu tak membawa port).
+#
+# Jujur soal seberapa mendesaknya: hari ini TIDAK ada kode aplikasi yang membaca
+# skema atau IP klien, jadi flag ini PENCEGAHAN, bukan penambal bug yang sedang
+# terjadi. Yang dijaganya adalah log akses yang menyebut pengunjung sebenarnya,
+# dan kebenaran `request.url.scheme` untuk kode mana pun yang kelak membangun URL
+# absolut atau memutuskan sesuatu per-IP — dua hal yang akan salah secara senyap
+# kalau flag ini baru dipasang belakangan.
+#
+# Satu jalur yang SEMPAT disangka membutuhkannya, dan ternyata tidak — dicatat
+# supaya tak dikejar lagi: redirect beda-garis-miring Starlette (`redirect_slashes`)
+# TIDAK PERNAH aktif di aplikasi ini, karena mount SPA di "/" (lihat main.py)
+# menangkap path itu lebih dulu. Diperiksa: `/templates/` menjawab 404 dari
+# StaticFiles, bukan 307 ke `/templates`.
+#
+# --forwarded-allow-ips=*: mempercayai header itu dari pemanggil mana pun. Aman
+# HANYA karena port ini tidak terbuka ke publik — di `docker compose` ia diikat
+# ke 127.0.0.1 dan cuma dijangkau Caddy lewat jaringan internal compose. Kalau
+# suatu saat port 8000 dipublikasikan langsung, sempitkan ini ke IP proxy:
+# header X-Forwarded-* itu cuma teks yang bisa ditulis siapa saja.
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", \
+     "--proxy-headers", "--forwarded-allow-ips=*"]

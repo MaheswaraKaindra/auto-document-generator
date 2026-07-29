@@ -1,0 +1,125 @@
+.account-data {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.account-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.account-action {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1.5rem;
+  padding: 1.1rem 1.25rem;
+  border: 1px solid var(--border-color, #2d333b);
+  border-radius: 8px;
+  background: var(--surface-bg, #1a1e24);
+}
+
+.account-action > div:first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.account-action strong {
+  display: block;
+  margin-bottom: 0.25rem;
+}
+
+.account-action .hint {
+  margin: 0;
+}
+
+/* Aksi merusak dibedakan lewat GARIS KIRI, bukan lewat latar merah penuh:
+   blok merah besar menuntut perhatian terus-menerus untuk sesuatu yang jarang
+   dipakai, dan mata cepat mengabaikannya justru saat peringatannya penting. */
+.account-action.danger {
+  border-left: 3px solid var(--danger, #f85149);
+}
+
+.btn-danger {
+  background: transparent;
+  color: var(--danger, #f85149);
+  border: 1px solid var(--danger, #f85149);
+  border-radius: 6px;
+  padding: 0.5rem 0.9rem;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: var(--danger, #f85149);
+  color: #fff;
+}
+
+.btn-danger:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.konfirmasi {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 15rem;
+}
+
+.konfirmasi label {
+  font-size: 0.88rem;
+}
+
+.konfirmasi input {
+  padding: 0.45rem 0.6rem;
+  border-radius: 6px;
+  border: 1px solid var(--border-color, #2d333b);
+  background: var(--input-bg, #0d1117);
+  color: inherit;
+  font: inherit;
+}
+
+.konfirmasi-tombol {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.account-alert {
+  padding: 0.75rem 1rem;
+  border-radius: 6px;
+  font-size: 0.92rem;
+  border: 1px solid;
+}
+
+.account-alert.success {
+  border-color: rgba(63, 185, 80, 0.5);
+  background: rgba(63, 185, 80, 0.1);
+}
+
+.account-alert.error {
+  border-color: rgba(248, 81, 73, 0.5);
+  background: rgba(248, 81, 73, 0.1);
+}
+
+.site-footer {
+  margin-top: 2.5rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--border-color, #2d333b);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.25rem;
+  font-size: 0.88rem;
+  color: var(--text-muted, #8b949e);
+}
+
+@media (max-width: 640px) {
+  .account-action {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

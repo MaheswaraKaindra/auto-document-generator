@@ -352,6 +352,46 @@ def purge_expired_documents(max_age_seconds: float = DOCUMENT_TTL_SECONDS) -> in
     return purged
 
 
+def delete_jobs_of_owner(owner: str) -> dict:
+    """Hapus SEMUA job milik `owner` berikut artefaknya. Untuk hapus-data (#16).
+
+    Beda niat dari `purge_expired_documents`, dan bedanya penting: di sana
+    barisnya sengaja DIPERTAHANKAN (riwayat "pernah generate ini" masih berguna,
+    yang kedaluwarsa cuma filenya). Di sini justru riwayat itulah yang diminta
+    hilang, jadi barisnya ikut dihapus.
+
+    Yang dihapus per job: docx, bundel `.drawio` pasangannya, lalu barisnya.
+    Filenya dulu, barisnya belakangan — kalau prosesnya mati di tengah, yang
+    tersisa adalah baris yang menunjuk file tiada (sudah punya jawaban jujur:
+    404/410 saat diunduh). Urutan sebaliknya meninggalkan file yatim yang tak
+    tercatat di mana pun, dan tak ada lagi yang tahu file itu harus dihapus —
+    persis yang tak boleh terjadi pada permintaan hapus data.
+
+    `owner` WAJIB terisi. Owner kosong/None akan menyapu job anonim, dan di mode
+    dev SEMUA job anonim — satu permintaan hapus akan mengosongkan instance.
+    """
+    if not owner:
+        raise ValueError("delete_jobs_of_owner butuh owner yang terisi.")
+
+    from app.services.compiler_service import drawio_bundle_for
+
+    deleted_files = 0
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT id, docx_path FROM jobs WHERE owner = ?", (owner,)
+        ).fetchall()
+        for row in rows:
+            if not row["docx_path"]:
+                continue
+            path = Path(row["docx_path"])
+            if path.exists():
+                deleted_files += 1
+            path.unlink(missing_ok=True)
+            drawio_bundle_for(row["docx_path"]).unlink(missing_ok=True)
+        conn.execute("DELETE FROM jobs WHERE owner = ?", (owner,))
+    return {"jobs": len(rows), "documents": deleted_files}
+
+
 def recent_job_times(owner: Optional[str], limit: int) -> list[datetime]:
     """Waktu-buat `limit` job TERBARU milik `owner`, urut MENURUN (terbaru dulu).
 
