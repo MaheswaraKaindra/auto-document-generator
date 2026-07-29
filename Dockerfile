@@ -33,8 +33,19 @@ ARG PLANTUML_VERSION=1.2024.7
 
 # Dependency SISTEM: Java (PlantUML butuh JRE 17+, layout smetana bawaan jar jadi
 # tak butuh Graphviz), plus curl untuk mengunduh tool saat build.
+#
+# libharfbuzz0b + libfreetype6 + fontconfig + font DejaVu: PlantUML MERASTER teks
+# ke PNG lewat java.awt, yang butuh native lib font. `default-jre-headless` di
+# image slim TIDAK membawanya, jadi tanpa baris ini PlantUML mati dengan
+# `UnsatisfiedLinkError: libharfbuzz.so.0` DAN tak ada font untuk digambar.
+# Bug ini tak terlihat di mesin dev (Java + font lengkap) — hanya di container
+# ramping, dan ketahuannya dari menjalankan #17 sungguhan, bukan membaca kode.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         default-jre-headless \
+        libharfbuzz0b \
+        libfreetype6 \
+        fontconfig \
+        fonts-dejavu-core \
         curl \
         ca-certificates \
     && rm -rf /var/lib/apt/lists/*
