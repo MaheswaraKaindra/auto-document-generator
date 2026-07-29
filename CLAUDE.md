@@ -246,6 +246,14 @@ app/
                              #   dipindah dari scripts/; CLI build_reference_docx.py pakai ini)
     template_compiler_service.py   # V2: orkestrator — docx upload -> ukur -> generate ->
                              #   sintesis -> simpan+daftar di data/templates/<id>/
+    user_data_service.py     # ekspor & hapus data pengguna (#16). SATU tempat yang
+                             #   memegang daftar LIMA penyimpanan data pengguna —
+                             #   daftar di dua tempat pasti akan menyimpang, dan
+                             #   menyimpangnya baru ketahuan saat seseorang
+                             #   menanyakan data yang katanya sudah dihapus.
+                             #   Menolak jalan di mode dev: di sana semua orang
+                             #   satu identitas anonim, jadi "hapus data saya"
+                             #   akan mengosongkan instance.
   diagram/                   # LAYER DIAGRAM
     activity_render.py       # ACTIVITY gaya draw.io: PlantUML -> IR -> PNG (docx)
                              #   & .drawio (suntingan). Tata letak dihitung SENDIRI
@@ -271,7 +279,15 @@ app/
     routes_document.py       # POST /documents/{sdd,uat,generate}, GET /documents/jobs/*
     routes_template.py       # V2: POST /templates (upload docx), GET /templates[/{id}]
     routes_billing.py        # GET /billing/usage, POST /billing/checkout, POST /billing/webhook
+    routes_account.py        # #16: GET /me/export, DELETE /me/data
+    routes_legal.py          # #16: GET /privacy, /terms — publik, tanpa auth
     schemas.py, schemas_document.py
+  legal/                     # privacy.html, terms.html — DRAF berisi penanda
+                             #   [ISI: ...] untuk fakta yang cuma pemilik tahu
+                             #   (nama entitas, yurisdiksi, kontak). Spanduk
+                             #   "draf" DITURUNKAN dari ada-tidaknya penanda,
+                             #   bukan ditulis manual: spanduk manual bisa lupa
+                             #   dipasang DAN lupa dihapus.
   templates/
     sdd_template.md, uat_template.md   # template Jinja2 (Markdown) sebelum dikonversi ke docx
     sdd_premco_template.md      # template gaya PREMCO SDD (kompilasi manual V1) —
@@ -293,8 +309,13 @@ app/
 
 frontend/                    # React + Vite, form sederhana yang hit POST /documents/generate
   src/App.jsx, src/main.jsx
+  src/AccountDataPanel.jsx   # #16: unduh/hapus data + footer tautan legal
 
-tests/                       # pytest (410 test) — lihat bagian Testing
+Caddyfile                    # #15: reverse proxy TLS otomatis. Dipakai HANYA lewat
+                             #   `docker compose --profile proxy up` — `up` biasa
+                             #   tak menjalankannya, jadi alur lokal tak berubah.
+
+tests/                       # pytest (441 test) — lihat bagian Testing
 dummy_data/                  # fixture JSON — dipakai test otomatis DAN testing manual
 scripts/                     # utilitas dev, bukan bagian dari aplikasi
   model_getter.py            # cetak daftar model yang tersedia untuk API key kamu
@@ -352,6 +373,7 @@ Dulu ada `lain-lain/` berisi installer pandoc 41 MB + screenshot UI lama; **dua-
 | `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` / `GITHUB_OAUTH_REDIRECT_URI` | Opsional | Cuma perlu kalau mau flow OAuth GitHub beneran jalan (perlu GitHub OAuth App terdaftar — belum ada saat ini, lihat Keterbatasan). |
 | `RATE_LIMIT_WINDOW_SECONDS` / `RATE_LIMIT_GENERATE_PER_WINDOW` / `RATE_LIMIT_TEMPLATE_UPLOAD_PER_WINDOW` | Opsional | Batas pemakaian **per-akun** untuk endpoint berbayar. Default 3600 detik / 10 generate / 20 upload template. Jendela **sliding** (bukan reset di jam bulat). `0` = matikan batas untuk endpoint itu; nilai tak masuk akal **menggagalkan startup** (`config._int_env`) supaya salah-ketik tak diam-diam jadi "tanpa batas". Cuma berlaku kalau `SUPABASE_URL` diisi — lihat `rate_limit_service`. |
 | `REDIS_URL` / `JOB_QUEUE_NAME` / `JOB_MAX_ATTEMPTS` | Opsional | **Worker queue (#13).** `REDIS_URL` kosong = eksekusi INLINE lewat `BackgroundTasks` (perilaku lama, nol layanan tambahan, cukup untuk 1 instance). Terisi = web cuma mengantri dan `python -m app.worker` yang mengeksekusi → job **selamat dari restart/crash/deploy proses web**. `JOB_MAX_ATTEMPTS` (default 1) = berapa kali job yang mati BERSAMA worker-nya diulang otomatis; kegagalan permanen (413/422/500) tak pernah diulang. `0` = matikan re-queue. |
+| `ALLOWED_ORIGINS` | Opsional | **CORS (#15).** Origin yang boleh memanggil API dari browser, dipisah koma. Kosong = dev server Vite (`http://localhost:5173` + `127.0.0.1:5173`) — dulu `["*"]` HARDCODE. Sebagian besar deploy tak perlu menyentuhnya: di Docker SPA disajikan same-origin, jadi CORS praktis tak terpakai. Garis miring di ujung dipangkas (browser mengirim `Origin` tanpa itu; ketidakcocokannya SENYAP). `*` masih boleh tapi harus ditulis sendiri + mencatat peringatan startup. **`SITE_ADDRESS` (domain untuk Caddy) BUKAN env aplikasi** — dia dibaca `docker compose`, jadi tak ada di `config.py`. |
 | `DATABASE_URL` | Opsional | **Postgres (#13).** Kosong = SQLite di `DATABASE_PATH`. Terisi = state dibagi lintas **MESIN** — yang dibutuhkan begitu web & worker hidup di container berbeda. Multi-worker di SATU mesin sudah lama jalan dengan SQLite (lihat Keterbatasan), jadi ini menutup gap yang sempit, bukan memperbaiki yang rusak. Bentuk: `postgresql://user:sandi@host:port/db`. |
 | `TIER_FREE_LIMIT` / `TIER_PRO_LIMIT` | Opsional | Kuota generate dokumen **per 30 hari per akun** menurut tier (billing). Default **0 = tanpa batas** / 100. Default nol DISENGAJA: kuota berbayar itu keputusan bisnis, dan default tak-nol menyalakan tembok di setiap instance yang memasang Supabase tanpa ada yang memutuskannya (tagihan sudah dijaga `RATE_LIMIT_*`, yang menjawab pertanyaan berbeda). Kuota habis = **402** + ajakan upgrade. Job yang gagal SEBELUM LLM dipanggil tidak memotong kuota. Cuma berlaku kalau `SUPABASE_URL` diisi. |
 | `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` / `STRIPE_PRO_PRICE_ID` | Opsional | Pembayaran langganan Pro. **Kosong = pembayaran mati**: tombol upgrade jalan mode SIMULASI yang menyatakan apa adanya bahwa tier tidak berubah. Tier hanya bisa naik lewat **webhook Stripe ber-signature sah** — tidak ada jalan lain. `STRIPE_SECRET_KEY` terisi tanpa `STRIPE_PRO_PRICE_ID` ditolak berisik (bukan jadi error parameter Stripe yang menyesatkan). |
@@ -429,6 +451,9 @@ URL backend frontend dibaca dari `VITE_API_BASE_URL` (taruh di `frontend/.env.lo
 | `PUT` | `/templates/{id}/mappings/{doc_type}` | **Simpan peta bab hasil tinjauan manusia** → generate ulang template Jinja. Body: `{bindings: [...]}` PARALEL dengan peta tersimpan (cuma binding — struktur bab hasil pengukuran, bukan pendapat). **404** template/doc_type tak ada **atau milik pengguna lain**; **422** jumlah tak cocok / binding tak dikenal / satu isi dipakai dua bab |
 | `GET` | `/billing/usage` | Ringkasan kuota & pemakaian LLM pemanggil dalam 30 hari: `tier`, `limit`, `jobs_used`, `remaining`, `total_tokens`, `total_cost_usd`. Biayanya **estimasi berdasarkan harga daftar** model yang dipakai (`LLM_MODEL`) — plafon, bukan tagihan |
 | `POST` | `/billing/checkout` | Mulai upgrade ke Pro lewat Stripe Checkout → `{checkout_url, session_id, is_stub}`. **`is_stub: true` = Stripe belum dikonfigurasi**: tak ada pembayaran & tier TIDAK berubah, dan klien WAJIB mengatakannya apa adanya. **500** kalau env Stripe setengah terisi (pesan menyebut env-nya), **502** kalau Stripe sendiri yang gagal |
+| `GET` | `/me/export` | **Unduh SELURUH data akun** sebagai ZIP: `data.json` (riwayat job, langganan, catatan pemakaian, manifest template) + berkas `.docx` yang masih tersimpan + bundel `.drawio` + template hasil upload + `BACA-SAYA.txt`. **409** kalau auth mati (`SUPABASE_URL` kosong) — di sana semua pemanggil satu identitas anonim yang sama, jadi "data saya" tak punya arti |
+| `DELETE` | `/me/data` | **Hapus seluruh data akun.** Job + docx + bundel diagram + template dihapus; `user_subscriptions` dihapus; `usage_records` **owner-nya dianonimkan** (bukan dihapus — catatan biaya). Balik ringkasan berangka, bukan 204: "0 dokumen dihapus" harus terlihat. **409** kalau auth mati (kalau tidak, satu permintaan akan mengosongkan seluruh instance) |
+| `GET` | `/privacy` / `/terms` | Halaman Kebijakan Privasi & Syarat-Ketentuan (HTML statis di `app/legal/`). **Publik, sengaja tanpa auth.** Spanduk "draf" muncul OTOMATIS selama masih ada penanda `[ISI: ...]` yang belum diganti, dan hilang sendiri saat penanda terakhir diisi |
 | `POST` | `/billing/webhook` | Webhook Stripe — **satu-satunya jalur yang boleh menaikkan/menurunkan tier**. Tanpa auth (memang tak boleh, pemanggilnya Stripe), tapi payload **wajib lolos verifikasi signature** (`stripe.Webhook.construct_event`); tanpa `STRIPE_WEBHOOK_SECRET` semua event ditolak, bukan diterima diam-diam. **400** signature tak sah / header hilang |
 
 ## Testing
@@ -437,7 +462,7 @@ URL backend frontend dibaca dari `VITE_API_BASE_URL` (taruh di `frontend/.env.lo
 pytest
 ```
 
-410 test, **selalu mock** pemanggilan LLM (Claude — termasuk pemeta bab LLM di boundary `_request_bindings`), proses plantuml.jar, dan GitHub — supaya test tidak bergantung pada koneksi internet, Java/jar terpasang, API key, atau kuota, dan tidak pernah mengeluarkan biaya API secara tidak sengaja. (Pengecualian sadar: test V2 template — `test_build_reference_docx`, `test_template_compiler_service`, `test_routes_template` — memakai pandoc ASLI untuk mensintesis/merender reference.docx; itu deterministik & $0, tak keluar ke jaringan.)
+441 test, **selalu mock** pemanggilan LLM (Claude — termasuk pemeta bab LLM di boundary `_request_bindings`), proses plantuml.jar, dan GitHub — supaya test tidak bergantung pada koneksi internet, Java/jar terpasang, API key, atau kuota, dan tidak pernah mengeluarkan biaya API secara tidak sengaja. (Pengecualian sadar: test V2 template — `test_build_reference_docx`, `test_template_compiler_service`, `test_routes_template` — memakai pandoc ASLI untuk mensintesis/merender reference.docx; itu deterministik & $0, tak keluar ke jaringan.)
 
 **Cara MEMBUKTIKAN klaim "selalu mock" itu, dan kenapa perlu:**
 
@@ -454,6 +479,10 @@ Klaim itu pernah SALAH tanpa ada yang tahu. Tiga test (`test_mode_dev_tanpa_supa
 | `tests/test_job_queue.py` | Seam eksekusi (#13): default inline, mode RQ tak menyentuh `BackgroundTasks` (dua-duanya = pipeline berbayar jalan 2x), meta `job_id`, timeout selaras reaper, re-queue no-op/dimatikan, `mark_requeued` membersihkan sisa error |
 | `tests/test_billing_service.py` | Metering token & tarif per model (id ber-tanggal, model tak dikenal), kuota tier (job gagal-sebelum-LLM tak memotong, gagal-sesudah-LLM memotong, job berjalan ikut, limit 0 tak membatasi), checkout simulasi tak menaikkan tier, price id kosong ditolak berisik, webhook Stripe menaikkan tier |
 | `tests/test_routes_billing.py` | Endpoint `/billing/*` + penolakan **402** di `/documents/generate` saat kuota habis |
+| `tests/test_user_data_service.py` | Ekspor & hapus data (#16): penjaga mode dev, sapuan LIMA penyimpanan, data pengguna lain selamat, template tanpa owner tak ikut, usage dianonimkan bukan dihapus. Tiap test hapus memeriksa **barangnya** lewat `residual_data`, bukan nilai kembalian fungsinya |
+| `tests/test_routes_account.py` | Boundary `/me/*`: 409 mode dev, 401 tanpa token, ekspor tak membocorkan data pengguna lain |
+| `tests/test_routes_legal.py` | `/privacy` & `/terms` tersaji, terbuka tanpa login, spanduk draf mengikuti isi dokumen |
+| `tests/test_cors_config.py` | CORS dari env (#15): default bukan `*`, garis miring ujung dipangkas, `main.py` memakai config bukan hardcode |
 | `tests/test_routes_document.py` | Endpoint `/documents/*` (Peran 3) |
 | `tests/test_routes_ingestion.py` | Endpoint `/ingest/zip`: multipart, pemasangan file↔tag, error 422 (Peran 1) |
 | `tests/test_github_provider.py` | Ingest lewat tarball, pakai tarball sintetis di memori (Peran 1) |

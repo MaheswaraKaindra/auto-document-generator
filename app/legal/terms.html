@@ -1,0 +1,136 @@
+<!doctype html>
+<!--
+  DRAF SYARAT & KETENTUAN — #16. Aturan yang sama dengan privacy.html:
+  isi setiap penanda [ISI: ...] (spanduk "draf" hilang sendiri saat penanda
+  terakhir diisi), lalu tinjau bersama orang yang berwenang secara hukum.
+
+  Bagian yang menggambarkan PERILAKU SISTEM (retensi 30 hari, kuota, sifat draf
+  dokumen keluaran) akurat terhadap kode per 29 Juli 2026. Bagian yang
+  menyangkut tanggung jawab hukum, pembatasan ganti rugi, dan hukum yang berlaku
+  adalah kerangka umum yang WAJIB disesuaikan — jangan dipakai apa adanya.
+-->
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Syarat &amp; Ketentuan</title>
+<style>
+  :root { color-scheme: light dark; }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    line-height: 1.65; max-width: 46rem; margin: 0 auto; padding: 2.5rem 1.25rem 5rem;
+    color: #1c1c1c; background: #fdfdfc;
+  }
+  h1 { font-size: 1.8rem; margin-bottom: .25rem; }
+  h2 { font-size: 1.15rem; margin-top: 2.25rem; }
+  .sub { color: #666; margin-top: 0; }
+  code { background: #f2f2ef; padding: .1rem .3rem; border-radius: 3px; font-size: .9em; }
+  .isi { background: #ffe9a8; color: #6b4e00; padding: .1rem .35rem; border-radius: 3px;
+         font-weight: 600; white-space: nowrap; }
+  .draf { border: 2px solid #c47f00; background: #fff6e0; color: #6b4e00;
+          padding: .9rem 1.1rem; border-radius: 6px; margin-bottom: 2rem; }
+  a { color: #1a5fb4; }
+  footer { margin-top: 3.5rem; border-top: 1px solid #e2e2de; padding-top: 1rem;
+           font-size: .9rem; color: #666; }
+  @media (prefers-color-scheme: dark) {
+    body { color: #e8e8e6; background: #17171a; }
+    code { background: #24242a; } .sub, footer { color: #a0a0a8; }
+    a { color: #8ab4f8; } footer { border-top-color: #3a3a42; }
+    .draf { background: #3a2f10; border-color: #c47f00; color: #ffd98a; }
+    .isi { background: #5a4400; color: #ffd98a; }
+  }
+</style>
+</head>
+<body>
+<!--DRAF-->
+
+<h1>Syarat &amp; Ketentuan</h1>
+<p class="sub">Berlaku sejak <span class="isi">[ISI: tanggal berlaku]</span></p>
+
+<p>Dengan memakai layanan ini, Anda menyetujui ketentuan di bawah. Kalau Anda
+tidak setuju, jangan memakai layanan ini.</p>
+
+<h2>1. Apa yang layanan ini lakukan</h2>
+<p>Layanan ini membaca kode sumber yang Anda tunjuk, lalu menyusun
+<strong>draf</strong> dokumen Solution Design (SDD) dan User Acceptance Test (UAT)
+dalam format <code>.docx</code>.</p>
+<p><strong>Kata &ldquo;draf&rdquo; di atas bukan formalitas.</strong> Dokumen
+disusun oleh model bahasa dari struktur kode Anda, dan model bahasa bisa keliru.
+Bagian yang tidak mungkin diketahui dari kode &mdash; nomor RFC, estimasi biaya,
+tanda tangan persetujuan, mockup antarmuka &mdash; sengaja dibiarkan kosong
+sebagai isian manual, bukan dikarang. Anda bertanggung jawab memeriksa isi
+dokumen sebelum memakainya untuk keputusan apa pun.</p>
+
+<h2>2. Akun</h2>
+<p>Anda bertanggung jawab menjaga kredensial akun Anda dan atas segala aktivitas
+yang terjadi di bawahnya. Beri tahu kami kalau Anda menduga akun Anda dipakai
+orang lain.</p>
+
+<h2>3. Yang boleh dan tidak boleh Anda unggah</h2>
+<p>Anda menyatakan bahwa Anda <strong>berhak</strong> atas kode sumber, berkas
+ZIP, dan template yang Anda masukkan ke layanan ini &mdash; baik karena Anda
+pemiliknya, maupun karena Anda punya izin dari pemiliknya. Jangan memasukkan:</p>
+<ul>
+  <li>kode atau dokumen milik pihak lain tanpa izin;</li>
+  <li>rahasia produksi (kunci API, kata sandi, sertifikat) &mdash; kode Anda
+      dikirim ke penyedia AI untuk diproses, jadi perlakukan sesuai itu;</li>
+  <li>data pribadi orang lain yang tidak Anda perlukan untuk membuat dokumen;</li>
+  <li>berkas yang dirancang merusak atau membebani sistem secara tidak wajar.</li>
+</ul>
+
+<h2>4. Kepemilikan</h2>
+<p>Kode sumber, template, dan dokumen yang dihasilkan untuk Anda <strong>tetap
+milik Anda</strong>. Kami tidak mengklaim hak apa pun atasnya, dan tidak
+memakainya untuk melatih model &mdash; lihat
+<a href="/privacy">Kebijakan Privasi</a>.</p>
+<p>Perangkat lunak layanan ini sendiri, termasuk template bawaan dan tata letak
+dokumennya, tetap milik kami.</p>
+
+<h2>5. Batas pemakaian dan ketersediaan</h2>
+<ul>
+  <li>Ada batas jumlah dokumen per jangka waktu, dan kuota sesuai paket Anda.
+      Batas ini bisa kami sesuaikan untuk menjaga layanan tetap wajar bagi semua
+      pengguna.</li>
+  <li><strong>Dokumen hasil disimpan 30 hari, lalu dihapus otomatis.</strong>
+      Unduh dan simpan sendiri dokumen yang Anda butuhkan. Riwayatnya tetap
+      tercatat, tapi berkasnya tidak bisa dipulihkan setelah dihapus.</li>
+  <li>Layanan diberikan &ldquo;sebagaimana adanya&rdquo;. Kami tidak menjanjikan
+      layanan bebas gangguan atau selalu tersedia.</li>
+</ul>
+
+<h2>6. Pembayaran</h2>
+<p>Paket berbayar ditagih melalui Stripe sesuai harga yang ditampilkan saat Anda
+berlangganan. Langganan berlanjut sampai Anda membatalkannya. Ketentuan
+pengembalian dana: <span class="isi">[ISI: kebijakan refund]</span>.</p>
+
+<h2>7. Penghentian</h2>
+<p>Anda bisa berhenti kapan saja dan menghapus data Anda lewat aplikasi. Kami
+dapat menangguhkan akun yang melanggar ketentuan ini, terutama bagian 3.</p>
+
+<h2>8. Penafian dan batas tanggung jawab</h2>
+<p>Layanan ini menghasilkan draf dokumen, bukan nasihat hukum, teknis, maupun
+profesional lainnya. Sejauh diizinkan hukum yang berlaku, kami tidak bertanggung
+jawab atas kerugian yang timbul dari keputusan yang diambil berdasarkan isi
+dokumen yang dihasilkan, atau dari hilangnya dokumen yang tidak Anda unduh dalam
+masa simpan.</p>
+<p>Batas tanggung jawab kami sebesar
+<span class="isi">[ISI: batas tanggung jawab, mis. biaya langganan 12 bulan terakhir]</span>.</p>
+
+<h2>9. Perubahan ketentuan</h2>
+<p>Kami dapat mengubah ketentuan ini. Perubahan yang berarti diberitahukan lebih
+dulu lewat <span class="isi">[ISI: kanal pemberitahuan]</span>. Melanjutkan
+pemakaian sesudah perubahan berlaku berarti Anda menyetujuinya.</p>
+
+<h2>10. Hukum yang berlaku</h2>
+<p>Ketentuan ini tunduk pada hukum <span class="isi">[ISI: yurisdiksi]</span>, dan
+sengketa diselesaikan di <span class="isi">[ISI: forum penyelesaian sengketa]</span>.</p>
+
+<h2>11. Kontak</h2>
+<p><span class="isi">[ISI: nama badan usaha]</span> &mdash;
+<span class="isi">[ISI: email kontak]</span></p>
+
+<footer>
+  <a href="/">&larr; Kembali ke aplikasi</a> &middot; <a href="/privacy">Kebijakan Privasi</a>
+</footer>
+</body>
+</html>

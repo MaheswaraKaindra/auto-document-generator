@@ -22,6 +22,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import shutil
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -288,3 +289,44 @@ def load_compiled_detail(template_id: str, caller: Principal | None = None) -> d
         manifest["mapping_health"] = {dt: mapping_health(plan, dt)
                                       for dt, plan in mappings.items()}
     return {"manifest": manifest, "mappings": mappings}
+
+
+def template_dirs_of_owner(owner: str) -> list[Path]:
+    """Direktori template terkompilasi milik `owner` — bahan ekspor & hapus (#16).
+
+    Kecocokan owner harus PERSIS. Manifest TANPA `owner` (dikompilasi sebelum
+    kolom itu ada, atau dari mode dev) sengaja tidak pernah ikut: `visible_to`
+    memperlakukannya sebagai milik bersama, jadi menghapusnya atas nama satu
+    pengguna berarti mengambil template milik semua orang.
+    """
+    if not owner:
+        return []
+    store = compiler_service.TEMPLATES_STORE
+    if not store.exists():
+        return []
+    dirs = []
+    for path in sorted(store.iterdir()):
+        manifest_path = path / "template.json"
+        if not manifest_path.exists():
+            continue
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            # Manifest rusak = pemiliknya tak bisa dipastikan. Dilewati, bukan
+            # ditebak: menghapus atas dasar tebakan tak bisa dibatalkan.
+            logger.warning("Manifest template %s tak terbaca, dilewati", path.name)
+            continue
+        if manifest.get("owner") == owner:
+            dirs.append(path)
+    return dirs
+
+
+def delete_templates_of_owner(owner: str) -> int:
+    """Hapus seluruh template terkompilasi milik `owner`. Kembalikan jumlahnya."""
+    if not owner:
+        raise ValueError("delete_templates_of_owner butuh owner yang terisi.")
+    removed = 0
+    for path in template_dirs_of_owner(owner):
+        shutil.rmtree(path, ignore_errors=True)
+        removed += 1
+    return removed

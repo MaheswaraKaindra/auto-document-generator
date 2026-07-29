@@ -5,10 +5,12 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
+from app.api.routes_account import router as account_router
 from app.api.routes_auth import router as auth_router
 from app.api.routes_billing import router as billing_router
 from app.api.routes_document import router as document_router
 from app.api.routes_ingestion import router as ingestion_router
+from app.api.routes_legal import router as legal_router
 from app.api.routes_template import router as template_router
 from app.core import config
 from app.services import billing_service, job_queue, job_store
@@ -44,13 +46,24 @@ job_store.reap_stale_jobs()
 # di tempat yang memang sudah dijalankan.
 job_store.purge_expired_documents()
 
-# Kerangka frontend (frontend/) dipanggil dari origin terpisah (dibuka
-# langsung sebagai file atau lewat dev server), jadi butuh CORS.
-# allow_origins="*" hanya untuk kebutuhan development; persempit sebelum
-# dipakai di produksi.
+# Frontend dev server (`npm run dev`) hidup di origin terpisah, jadi butuh CORS.
+# Di Docker tidak: SPA disajikan dari origin yang SAMA (mount StaticFiles di
+# bawah), sehingga daftar ini praktis tak terpakai di produksi — dan itu justru
+# alasan mempersempitnya murah.
+#
+# Daftarnya dari env (lihat config.ALLOWED_ORIGINS), bukan hardcode.
+# `allow_credentials` sengaja TIDAK dinyalakan: autentikasi produk ini memakai
+# header `Authorization` (JWT Supabase), bukan cookie. Menyalakannya berarti
+# meminta browser mengirim cookie lintas-origin — wewenang yang tak dibutuhkan
+# siapa pun di sini, dan yang membuat `*` jadi ilegal menurut spec CORS.
+if "*" in config.ALLOWED_ORIGINS:
+    logging.getLogger(__name__).warning(
+        "ALLOWED_ORIGINS = '*' — API ini bisa dipanggil dari origin mana pun. "
+        "Setel ke origin frontend yang sebenarnya sebelum dipakai publik.")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=config.ALLOWED_ORIGINS,
     allow_methods=["*"],
     allow_headers=["*"],
     # `allow_headers` mengizinkan header REQUEST; ini yang mengizinkan JavaScript
@@ -68,6 +81,8 @@ app.include_router(auth_router)
 app.include_router(document_router)
 app.include_router(template_router)
 app.include_router(billing_router)
+app.include_router(account_router)
+app.include_router(legal_router)
 
 
 

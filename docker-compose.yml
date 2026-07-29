@@ -17,8 +17,13 @@ services:
         # Isi lewat shell: VITE_SUPABASE_URL=... VITE_SUPABASE_ANON_KEY=... docker compose build
         VITE_SUPABASE_URL: ${VITE_SUPABASE_URL:-}
         VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY:-}
+    # Diikat ke 127.0.0.1, BUKAN 0.0.0.0 (#15). Di laptop tak ada bedanya —
+    # http://localhost:8000 tetap jalan seperti biasa. Di VPS bedanya besar:
+    # "8000:8000" berarti port itu terbuka ke seluruh internet, melewati proxy,
+    # melewati TLS. Caddy tetap bisa menjangkaunya lewat jaringan internal
+    # compose (`app:8000`), yang tidak lewat pemetaan port ini sama sekali.
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     # Rahasia & config backend diberikan saat RUN (bukan di-bake ke image).
     env_file:
       - .env
@@ -59,6 +64,38 @@ services:
     deploy:
       replicas: 1
 
+  # Reverse proxy: HTTPS + domain (#15). SENGAJA di balik profile — `docker
+  # compose up` biasa TIDAK menjalankannya, jadi alur kerja lokal (dan DEMO.md)
+  # tak berubah sama sekali. Untuk produksi:
+  #
+  #   SITE_ADDRESS=docgen.contoh.com docker compose --profile proxy up -d
+  #
+  # Config Caddy ada di ./Caddyfile.
+  caddy:
+    image: caddy:2-alpine
+    profiles: ["proxy"]
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      # Default `localhost` DISENGAJA, bukan variabel wajib: `${SITE_ADDRESS:?}`
+      # akan menggagalkan SETIAP perintah compose di file ini — termasuk
+      # `docker compose up` lokal yang tak menyentuh proxy sama sekali, sebab
+      # interpolasi variabel terjadi sebelum profile disaring. Dengan localhost,
+      # jalur proxy bisa diuji di mesin sendiri (sertifikat internal Caddy).
+      SITE_ADDRESS: ${SITE_ADDRESS:-localhost}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # WAJIB persisten: di sinilah sertifikat & kunci akun ACME disimpan. Tanpa
+      # volume ini, tiap container dibuat ulang Caddy meminta sertifikat BARU —
+      # dan Let's Encrypt membatasi 5 sertifikat per domain per minggu. Habis
+      # jatah itu, situs jadi tak ber-HTTPS sampai jendelanya lewat.
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - app
+
   redis:
     image: redis:7-alpine
     # appendonly: antrian yang hilang saat Redis restart berarti job yang sudah
@@ -89,3 +126,5 @@ volumes:
   app-data:
   redis-data:
   postgres-data:
+  caddy-data:
+  caddy-config:

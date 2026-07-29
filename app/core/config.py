@@ -23,6 +23,21 @@ def _int_env(name: str, default: int) -> int:
         raise ValueError(f"{name} tak boleh negatif, dapat {value}. Pakai 0 untuk mematikan batas.")
     return value
 
+def _origins_env(name: str, default: list[str]) -> list[str]:
+    """Daftar origin dipisah koma, dinormalkan supaya salah-tulis tak diam-diam.
+
+    Browser mengirim header `Origin` TANPA garis miring di ujung
+    (`https://app.contoh.com`, bukan `https://app.contoh.com/`), dan
+    CORSMiddleware mencocokkannya sebagai string persis. Jadi satu garis miring
+    yang tak sengaja ikut ter-copy membuat origin itu TIDAK PERNAH cocok —
+    tanpa error di server, cuma request yang ditolak browser. Dipangkas di sini.
+    """
+    raw = os.getenv(name)
+    if raw is None or raw.strip() == "":
+        return default
+    return [o.strip().rstrip("/") for o in raw.split(",") if o.strip()]
+
+
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 
@@ -115,6 +130,26 @@ RATE_LIMIT_TEMPLATE_UPLOAD_PER_WINDOW = _int_env("RATE_LIMIT_TEMPLATE_UPLOAD_PER
 # (dev pakai `npm run dev`, atau test), penyajian ini mati total dan tak
 # berpengaruh. Di image Docker, build frontend disalin ke sini.
 FRONTEND_DIST = os.getenv("FRONTEND_DIST", "frontend/dist")
+
+# --- CORS --------------------------------------------------------------------
+# Origin mana yang boleh memanggil API ini dari browser. Dulu `["*"]` HARDCODE —
+# nyaman untuk dev, tapi artinya situs mana pun di internet bisa memanggil API
+# ini memakai browser pengunjungnya.
+#
+# Penting supaya tak salah menilai risikonya: token dikirim lewat header
+# `Authorization` (bukan cookie), jadi `*` TIDAK membuat browser ikut mengirim
+# kredensial pengguna — kerugiannya lebih sempit dari kelihatannya. Tetap
+# dipersempit karena tak ada alasan membiarkannya terbuka: di Docker, SPA
+# disajikan dari origin yang SAMA (lihat FRONTEND_DIST), jadi produksi nyaris
+# tak memakai CORS sama sekali.
+#
+# Default = dev server Vite. Yang perlu diubah cuma deploy yang menyajikan
+# frontend dari domain BERBEDA dengan API.
+#
+# `*` masih boleh, tapi kini harus DITULIS (`ALLOWED_ORIGINS=*`) — jadi ia
+# keputusan seseorang, bukan warisan default yang tak pernah ditinjau.
+ALLOWED_ORIGINS = _origins_env(
+    "ALLOWED_ORIGINS", ["http://localhost:5173", "http://127.0.0.1:5173"])
 
 # --- Worker queue (Redis + RQ) ----------------------------------------------
 # KOSONG = eksekusi INLINE lewat BackgroundTasks (perilaku sebelum #13): pipeline

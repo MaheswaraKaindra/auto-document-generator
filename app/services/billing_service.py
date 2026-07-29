@@ -73,6 +73,82 @@ def init_billing_db() -> None:
         conn.executescript(_SCHEMA)
 
 
+# Nilai `owner` untuk catatan pemakaian milik akun yang sudah dihapus (#16).
+#
+# Sengaja SATU nilai tetap, bukan hash dari owner aslinya. Hash terdengar lebih
+# rapi (tiap akun tetap terbedakan), tapi ia bukan anonimisasi: id akunnya bisa
+# di-hash ulang kapan saja untuk menemukan barisnya lagi, jadi datanya cuma
+# ber-samaran — masih tertaut ke orang. Konstanta ini memutus tautannya sungguhan,
+# dengan harga yang memang harus dibayar: catatan akun-akun terhapus melebur jadi
+# satu kelompok dan tak bisa dipisah lagi.
+ANONYMIZED_OWNER = "deleted"
+
+
+def get_subscription_row(owner: str) -> Optional[Dict[str, Any]]:
+    """Baris langganan `owner` apa adanya (semua kolom) — untuk ekspor data (#16).
+
+    Beda dari `get_user_tier` yang cuma menjawab "free atau pro": ekspor harus
+    menyerahkan yang BENAR-BENAR disimpan tentang orang itu, termasuk id
+    pelanggan Stripe dan waktu perubahannya, bukan ringkasan pilihan kita.
+    """
+    if not owner:
+        return None
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM user_subscriptions WHERE owner = ?", (owner,)
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def usage_records_of(owner: str) -> list:
+    """Seluruh catatan pemakaian `owner`, terbaru dulu — untuk ekspor data (#16)."""
+    if not owner:
+        return []
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT * FROM usage_records WHERE owner = ? ORDER BY created_at DESC",
+            (owner,),
+        ).fetchall()
+    return db.rows_as_dicts(rows)
+
+
+def delete_subscription_of(owner: str) -> int:
+    """Hapus baris langganan milik `owner`. Untuk hapus-data (#16)."""
+    if not owner:
+        raise ValueError("delete_subscription_of butuh owner yang terisi.")
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT owner FROM user_subscriptions WHERE owner = ?", (owner,)
+        ).fetchall()
+        conn.execute("DELETE FROM user_subscriptions WHERE owner = ?", (owner,))
+    return len(rows)
+
+
+def anonymize_usage_of(owner: str) -> int:
+    """Putus tautan `usage_records` milik `owner` ke orangnya — TIDAK menghapus.
+
+    Keputusan pemilik project (2026-07-29), dan alasannya bukan teknis: baris ini
+    adalah catatan biaya LLM yang menjadi dasar penagihan. Menghapusnya membuat
+    rekap biaya historis ikut hilang, dan itu bisa bertabrakan dengan kewajiban
+    pembukuan. Yang dituntut permintaan hapus-data adalah datanya tak lagi
+    tertaut ke seseorang — dan itu yang dilakukan di sini.
+
+    Yang tersisa di baris sesudah ini murni angka: jumlah token, estimasi biaya,
+    jenis dokumen, dan `job_id` acak yang jobnya sendiri sudah dihapus.
+    """
+    if not owner:
+        raise ValueError("anonymize_usage_of butuh owner yang terisi.")
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT id FROM usage_records WHERE owner = ?", (owner,)
+        ).fetchall()
+        conn.execute(
+            "UPDATE usage_records SET owner = ? WHERE owner = ?",
+            (ANONYMIZED_OWNER, owner),
+        )
+    return len(rows)
+
+
 def get_user_tier(owner: str) -> str:
     """Mengambil tier aktif milik `owner` ('free' atau 'pro')."""
     if not owner or owner == "anonymous":

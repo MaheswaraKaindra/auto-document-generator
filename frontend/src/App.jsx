@@ -4,6 +4,7 @@ import { authHeader } from './supabaseClient'
 import { API_BASE_URL } from './api'
 import DocumentsPanel from './DocumentsPanel'
 import BillingPanel from './BillingPanel'
+import AccountDataPanel from './AccountDataPanel'
 
 const emptyRepo = () => ({ repo_tag: '', repo_url: '', branch: '' })
 
@@ -1101,6 +1102,16 @@ function App() {
 
       <DocumentsPanel reloadSignal={docsReload} />
       <BillingPanel />
+      <AccountDataPanel />
+
+      {/* Halaman legal disajikan BACKEND, jadi tautannya lewat API_BASE_URL —
+          bukan path relatif. Di build produksi API_BASE_URL kosong sehingga
+          hasilnya "/privacy" (same-origin, benar); di `npm run dev` path relatif
+          akan mengenai Vite di :5173 dan berujung 404. */}
+      <footer className="site-footer">
+        <a href={`${API_BASE_URL}/privacy`}>Kebijakan Privasi</a>
+        <a href={`${API_BASE_URL}/terms`}>Syarat &amp; Ketentuan</a>
+      </footer>
     </main>
   )
 }

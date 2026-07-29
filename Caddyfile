@@ -1,0 +1,42 @@
+# Reverse proxy di depan container aplikasi (#15).
+#
+# Gunanya satu: HTTPS + domain. Caddy meminta & memperbarui sertifikat
+# Let's Encrypt sendiri — tanpa certbot, tanpa cron, tanpa langkah manual.
+#
+# SITE_ADDRESS diberikan lewat environment di docker-compose.yml:
+#   - domain sungguhan (mis. `docgen.contoh.com`) -> sertifikat Let's Encrypt
+#     ASLI. Syaratnya di luar repo: DNS domain itu menunjuk ke IP server ini,
+#     dan port 80 + 443 terbuka dari internet (ACME memverifikasi lewat 80).
+#   - `localhost` (default) -> sertifikat INTERNAL Caddy sendiri. Browser akan
+#     memperingatkan, dan itu wajar: ini untuk membuktikan jalur proxy-nya jalan
+#     di mesin sendiri, bukan untuk dipakai publik.
+{$SITE_ADDRESS} {
+	# Kompresi respons. Dokumen .docx sudah terkompresi (ZIP), jadi yang benar-benar
+	# terbantu adalah JSON status & bundel SPA.
+	encode zstd gzip
+
+	# `app` = nama service di docker-compose; Docker yang me-resolve-nya. Port 8000
+	# di sini port INTERNAL container — dia tidak perlu (dan sebaiknya tidak)
+	# terbuka ke internet.
+	reverse_proxy app:8000
+}
+
+# Catatan sengaja TIDAK dipasang di sini, supaya tak ada yang menyangka sudah ada:
+#
+# 1. Batas ukuran request. Caddy tidak membatasi body secara default, dan itu
+#    memang yang dibutuhkan produk ini — upload ZIP repo & template .docx lewat
+#    jalur ini. Batasnya ditegakkan aplikasi (guard zip-bomb + 413), di tempat
+#    yang tahu konteksnya. Menambah `request_body max_size` di sini akan
+#    memotong upload sah menjadi error proxy yang tak bisa dijelaskan aplikasi.
+#
+# 2. Batas laju per-IP. Rate limit produk ini per-AKUN (lihat rate_limit_service)
+#    dan tidak berlaku saat auth mati. Batas per-IP untuk instance tanpa auth
+#    adalah pekerjaan terpisah — dan Caddy butuh plugin untuk itu, bukan
+#    direktif bawaan. Jangan anggap file ini sudah menutupinya.
+#
+# 3. Alamat email ACME. Let's Encrypt tidak mewajibkannya, tapi tanpa email tak
+#    ada pemberitahuan kalau perpanjangan sertifikat gagal. Untuk deploy
+#    sungguhan, tambahkan di paling atas file ini:
+#        {
+#            email kamu@contoh.com
+#        }

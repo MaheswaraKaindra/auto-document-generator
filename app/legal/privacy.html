@@ -1,0 +1,185 @@
+<!doctype html>
+<!--
+  DRAF KEBIJAKAN PRIVASI — #16.
+
+  DUA HAL YANG HARUS DIKERJAKAN MANUSIA SEBELUM INI DIPUBLIKASIKAN:
+
+  1. Ganti setiap penanda [ISI: ...] dengan fakta sebenarnya. Penanda itu sengaja
+     TERLIHAT di halaman, dan selama masih ada satu pun, halaman ini menampilkan
+     spanduk "draf" secara otomatis (lihat routes_legal.py). Spanduk itu hilang
+     sendiri begitu penanda terakhir diisi — tak ada yang perlu diingat untuk
+     dihapus.
+  2. Tinjau isinya bersama orang yang berwenang secara hukum. Uraian TEKNIS di
+     bawah ini akurat terhadap kode (alur data, retensi, subprosesor), tapi
+     akurasi teknis bukan kelayakan hukum.
+
+  Klaim tentang Anthropic dikutip dari sumbernya, bukan dari ingatan — URL &
+  tanggal aksesnya tercantum di badan dokumen. Periksa ulang saat publikasi.
+-->
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kebijakan Privasi</title>
+<style>
+  :root { color-scheme: light dark; }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    line-height: 1.65; max-width: 46rem; margin: 0 auto; padding: 2.5rem 1.25rem 5rem;
+    color: #1c1c1c; background: #fdfdfc;
+  }
+  h1 { font-size: 1.8rem; margin-bottom: .25rem; }
+  h2 { font-size: 1.15rem; margin-top: 2.25rem; }
+  .sub { color: #666; margin-top: 0; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: .93rem; }
+  th, td { border: 1px solid #d8d8d4; padding: .5rem .6rem; text-align: left; vertical-align: top; }
+  th { background: #f2f2ef; }
+  code { background: #f2f2ef; padding: .1rem .3rem; border-radius: 3px; font-size: .9em; }
+  .isi { background: #ffe9a8; color: #6b4e00; padding: .1rem .35rem; border-radius: 3px;
+         font-weight: 600; white-space: nowrap; }
+  .draf { border: 2px solid #c47f00; background: #fff6e0; color: #6b4e00;
+          padding: .9rem 1.1rem; border-radius: 6px; margin-bottom: 2rem; }
+  a { color: #1a5fb4; }
+  footer { margin-top: 3.5rem; border-top: 1px solid #e2e2de; padding-top: 1rem;
+           font-size: .9rem; color: #666; }
+  @media (prefers-color-scheme: dark) {
+    body { color: #e8e8e6; background: #17171a; }
+    th { background: #24242a; } th, td { border-color: #3a3a42; }
+    code { background: #24242a; } .sub, footer { color: #a0a0a8; }
+    a { color: #8ab4f8; } footer { border-top-color: #3a3a42; }
+    .draf { background: #3a2f10; border-color: #c47f00; color: #ffd98a; }
+    .isi { background: #5a4400; color: #ffd98a; }
+  }
+</style>
+</head>
+<body>
+<!--DRAF-->
+
+<h1>Kebijakan Privasi</h1>
+<p class="sub">Berlaku sejak <span class="isi">[ISI: tanggal berlaku]</span></p>
+
+<p>Layanan ini membaca kode sumber Anda untuk menyusun draf dokumen Solution
+Design (SDD) dan User Acceptance Test (UAT). Kode sumber adalah hal yang sensitif,
+jadi dokumen ini menjelaskan dengan spesifik ke mana ia pergi dan berapa lama ia
+tinggal.</p>
+
+<h2>1. Siapa kami</h2>
+<p>Layanan ini dioperasikan oleh <span class="isi">[ISI: nama badan usaha]</span>,
+berkedudukan di <span class="isi">[ISI: alamat]</span>. Untuk pertanyaan mengenai
+data pribadi, hubungi <span class="isi">[ISI: email kontak privasi]</span>.</p>
+
+<h2>2. Data yang kami proses</h2>
+<table>
+  <tr><th>Data</th><th>Kenapa</th><th>Berapa lama</th></tr>
+  <tr>
+    <td>Alamat email &amp; id akun</td>
+    <td>Membedakan akun, memisahkan dokumen Anda dari milik orang lain</td>
+    <td>Selama akun aktif</td>
+  </tr>
+  <tr>
+    <td><strong>Kode sumber yang Anda analisis</strong> (dari repositori GitHub
+        atau berkas ZIP yang Anda unggah)</td>
+    <td>Bahan baku dokumen: dibaca, diurai strukturnya, lalu dikirim ke penyedia
+        AI untuk disusun jadi narasi dokumen</td>
+    <td><strong>Tidak disimpan.</strong> Diproses di memori, lalu dibuang saat
+        proses selesai. Kami tidak menyimpan salinan kode Anda</td>
+  </tr>
+  <tr>
+    <td>Dokumen <code>.docx</code> hasil generate &amp; berkas diagramnya</td>
+    <td>Supaya Anda bisa mengunduhnya sesudah proses selesai</td>
+    <td><strong>30 hari</strong>, lalu dihapus otomatis. Riwayat "pernah membuat
+        dokumen ini" tetap tersimpan sampai Anda menghapus data</td>
+  </tr>
+  <tr>
+    <td>Template dokumen yang Anda unggah</td>
+    <td>Supaya dokumen dibuat mengikuti format perusahaan Anda</td>
+    <td>Sampai Anda menghapusnya</td>
+  </tr>
+  <tr>
+    <td>Catatan pemakaian: jumlah token, estimasi biaya, jenis dokumen</td>
+    <td>Menghitung kuota dan menagih paket berbayar</td>
+    <td>Disimpan sebagai catatan keuangan. Saat Anda menghapus akun, catatan ini
+        <strong>diputus tautannya dari identitas Anda</strong>, dan yang tersisa
+        hanya angka tanpa pemilik</td>
+  </tr>
+  <tr>
+    <td>Log teknis (waktu, status, pesan kesalahan)</td>
+    <td>Menemukan penyebab kegagalan</td>
+    <td><span class="isi">[ISI: retensi log, mis. 30 hari]</span></td>
+  </tr>
+</table>
+
+<h2>3. Apakah kode saya dipakai melatih AI? Tidak.</h2>
+<p>Untuk menyusun narasi dokumen, struktur kode Anda dikirim ke <strong>Anthropic
+API (Claude)</strong>. Anthropic menyatakan bahwa masukan dari produk komersialnya
+tidak dipakai melatih model:</p>
+<blockquote>
+  <p>&ldquo;By default, we will not use your inputs or outputs from our commercial
+  products (e.g. Claude for Work, Anthropic API, Claude Gov, etc.) to train our
+  models.&rdquo;</p>
+  <p><small>&mdash; <a href="https://privacy.claude.com/en/articles/7996868-is-my-data-used-for-model-training">Anthropic
+  Privacy Center, &ldquo;Is my data used for model training?&rdquo;</a>, terakhir
+  diperbarui 16 Maret 2026 (diakses 29 Juli 2026)</small></p>
+</blockquote>
+<p>Ketentuan komersial Anthropic menyatakan hal yang sama secara mengikat:
+&ldquo;Anthropic may not train models on Customer Content from Services&rdquo;
+(<a href="https://www.anthropic.com/legal/commercial-terms">Commercial Terms of
+Service</a>, berlaku 17 Juni 2025).</p>
+<p>Kami sendiri juga tidak memakai kode maupun dokumen Anda untuk melatih atau
+menyetel model apa pun.</p>
+<p><strong>Yang perlu Anda ketahui jujur:</strong> ketentuan di atas adalah
+kebijakan Anthropic, bukan janji yang bisa kami tegakkan sendiri. Kami mengutipnya
+supaya Anda bisa memeriksanya langsung ke sumbernya, dan sebaiknya Anda memang
+memeriksanya sebelum mengunggah kode yang sangat sensitif.</p>
+
+<h2>4. Pihak ketiga yang ikut memproses data</h2>
+<table>
+  <tr><th>Pihak</th><th>Untuk apa</th><th>Data apa yang sampai ke sana</th></tr>
+  <tr><td>Anthropic (Claude API)</td><td>Menyusun isi dokumen</td>
+      <td>Struktur kode Anda: nama berkas, kelas, fungsi, endpoint, dan komentar
+          dokumentasi</td></tr>
+  <tr><td>Supabase</td><td>Login &amp; identitas akun</td><td>Email, id akun</td></tr>
+  <tr><td>Stripe</td><td>Pembayaran langganan</td>
+      <td>Data pembayaran ditangani langsung oleh Stripe; kami tidak pernah
+          menerima nomor kartu Anda</td></tr>
+  <tr><td>GitHub</td><td>Mengambil repositori yang Anda pilih</td>
+      <td>Token akses yang Anda berikan, dan nama repositori yang diminta</td></tr>
+  <tr><td><span class="isi">[ISI: penyedia hosting/server]</span></td>
+      <td>Menjalankan layanan</td><td>Seluruh data di atas selama tersimpan</td></tr>
+</table>
+<p>Diagram dalam dokumen dirender <strong>di server kami sendiri</strong>; isi
+diagram tidak pernah dikirim ke layanan gambar pihak ketiga.</p>
+
+<h2>5. Hak Anda atas data Anda</h2>
+<p>Dua hak berikut tersedia langsung di dalam aplikasi, tanpa perlu mengirim
+permintaan ke siapa pun dan tanpa menunggu persetujuan:</p>
+<ul>
+  <li><strong>Mengunduh seluruh data Anda</strong> — satu berkas ZIP berisi
+      riwayat, dokumen, template, dan catatan pemakaian Anda.</li>
+  <li><strong>Menghapus seluruh data Anda</strong> — riwayat, dokumen, berkas
+      diagram, dan template Anda dihapus; catatan pemakaian diputus tautannya
+      dari identitas Anda. Tindakan ini tidak bisa dibatalkan.</li>
+</ul>
+<p>Menghapus data di sini tidak menghapus akun login Anda di penyedia identitas;
+untuk itu hubungi kami di alamat pada bagian 1.</p>
+<p>Anda juga berhak meminta koreksi data yang keliru, menolak pemrosesan
+tertentu, dan mengadu kepada otoritas pelindungan data di
+<span class="isi">[ISI: yurisdiksi]</span>.</p>
+
+<h2>6. Keamanan</h2>
+<p>Akses ke dokumen dan template dibatasi per akun: permintaan atas data milik
+akun lain dijawab seolah data itu tidak ada. Sambungan ke layanan ini dienkripsi
+(HTTPS). Tak ada sistem yang kebal, jadi kami tidak menjanjikan keamanan mutlak —
+kalau terjadi pelanggaran data yang berisiko bagi Anda, kami memberi tahu Anda
+dan otoritas terkait sesuai ketentuan yang berlaku.</p>
+
+<h2>7. Perubahan kebijakan ini</h2>
+<p>Kalau kebijakan ini berubah secara berarti, kami memberi tahu lewat
+<span class="isi">[ISI: kanal pemberitahuan, mis. email terdaftar]</span>
+sebelum perubahan berlaku.</p>
+
+<footer>
+  <a href="/">&larr; Kembali ke aplikasi</a> &middot; <a href="/terms">Syarat &amp; Ketentuan</a>
+</footer>
+</body>
+</html>
