@@ -434,8 +434,11 @@ def _generate_document(
         target_doc_type=doc_type,
     )
 
-    # Catat pemakaian token LLM & estimasi biaya (Billing Metering)
-    usage_dict = document_content.get("_usage")
+    # Catat pemakaian token LLM & estimasi biaya (Billing Metering).
+    # POP, bukan GET: `_usage` itu kanal-samping metering, BUKAN bagian Contract B.
+    # Membiarkannya di `document_content` akan membocorkannya ke compiler/template
+    # sebagai key liar (dan ke fixture/regresi visual). Ambil lalu buang di sini.
+    usage_dict = document_content.pop("_usage", None)
     if job_id and usage_dict:
         job = job_store.get_job(job_id)
         owner = job.get("owner") if job else "anonymous"

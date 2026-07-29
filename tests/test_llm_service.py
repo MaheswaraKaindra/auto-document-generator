@@ -131,7 +131,10 @@ def test_context_that_fits_is_generated_normally():
     )
 
     service.client.messages.stream.assert_called_once()
-    assert result == {"document_type": "SDD"}
+    # Contract B tetap utuh; `_usage` adalah kanal-samping metering (Billing #12)
+    # yang menempel di return generate_document_content lalu di-pop consumer.
+    assert result["document_type"] == "SDD"
+    assert "_usage" in result
 
 
 def test_guard_fails_open_when_models_api_unreachable():
@@ -145,7 +148,8 @@ def test_guard_fails_open_when_models_api_unreachable():
     )
 
     service.client.messages.stream.assert_called_once()
-    assert result == {"document_type": "SDD"}
+    assert result["document_type"] == "SDD"
+    assert "_usage" in result
 
 
 def _truncation_error() -> ValidationError:

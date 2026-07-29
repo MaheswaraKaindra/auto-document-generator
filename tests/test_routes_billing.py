@@ -1,9 +1,9 @@
 """Test endpoint HTTP billing & kuota (/billing/*)."""
 
-from unittest.mock import patch
 import pytest
 from fastapi.testclient import TestClient
 
+from app.api.deps import rate_limited_generate
 from app.core import config
 from app.main import app
 from app.services import billing_service, job_store
@@ -49,9 +49,13 @@ def test_generate_document_rejects_when_quota_exceeded(monkeypatch):
 
     mock_principal = billing_service.Principal(id="usr_quota_api", email="usr@test.com", is_anonymous=False)
 
-    with patch("app.api.deps.get_current_user", return_value=mock_principal), \
-         patch("app.services.rate_limit_service.check_generate") as mock_rl:
-        mock_rl.return_value = billing_service.auth_service.Principal
+    # Override dependency-nya utuh, bukan patch-by-name: route ter-wire ke
+    # Depends(rate_limited_generate) yang memanggil get_current_user INTERNAL, jadi
+    # mem-patch nama "app.api.deps.get_current_user" tak menyentuh yang sudah
+    # ter-wire → auth tetap jalan → 401. Override rate_limited_generate sekaligus
+    # melewati auth & rate limit, menyisakan pemeriksaan kuota (yang diuji) apa adanya.
+    app.dependency_overrides[rate_limited_generate] = lambda: mock_principal
+    try:
         # Isi 1 job di DB agar kuota 1/1 habis
         job_store.create_job("SDD", "Proj Existing", owner="usr_quota_api")
 
@@ -68,3 +72,5 @@ def test_generate_document_rejects_when_quota_exceeded(monkeypatch):
         detail = body["detail"]
         assert detail["upgrade_required"] is True
         assert detail["used"] == 1
+    finally:
+        app.dependency_overrides.pop(rate_limited_generate, None)
