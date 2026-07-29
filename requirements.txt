@@ -32,5 +32,8 @@ tree-sitter-language-pack
 # signing key asimetris (ES256/RS256) via JWKS; HS256 (JWT secret) tak butuh itu.
 PyJWT[crypto]
 
+# --- Billing & Payments ---
+stripe
+
 # --- Testing ---
 pytest

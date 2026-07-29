@@ -106,3 +106,14 @@ RATE_LIMIT_TEMPLATE_UPLOAD_PER_WINDOW = _int_env("RATE_LIMIT_TEMPLATE_UPLOAD_PER
 # (dev pakai `npm run dev`, atau test), penyajian ini mati total dan tak
 # berpengaruh. Di image Docker, build frontend disalin ke sini.
 FRONTEND_DIST = os.getenv("FRONTEND_DIST", "frontend/dist")
+
+# --- Billing & Quota (Stripe Integration) ------------------------------------
+STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")
+STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
+STRIPE_PRO_PRICE_ID = os.getenv("STRIPE_PRO_PRICE_ID", "price_pro_test")
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
+
+# Kuota generate dokumen per bulan berdasarkan Tier (0 = unlimited)
+TIER_FREE_LIMIT = _int_env("TIER_FREE_LIMIT", 3)
+TIER_PRO_LIMIT = _int_env("TIER_PRO_LIMIT", 100)
+

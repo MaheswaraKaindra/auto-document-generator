@@ -12,7 +12,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from fastapi.responses import FileResponse
 
 from app.api.deps import get_current_user, rate_limited_generate
-from app.services import auth_service
+from app.services import auth_service, billing_service
 from app.services.auth_service import Principal
 
 from app.api.schemas_document import GenerateDocumentRequest, ZipFileIn
@@ -43,6 +43,7 @@ _FILENAME_BY_TYPE = {
     "SDD": "Solution_Design_Document.docx",
     "UAT": "User_Acceptance_Test.docx",
 }
+
 
 
 def _render_docx_or_502(
@@ -141,6 +142,7 @@ def _run_generation(
             logo_bytes=logo_bytes,
             on_progress=lambda text: job_store.set_progress(job_id, text),
             zip_requests=zip_requests,
+            job_id=job_id,
         )
     except SourceProviderError as e:
         job_store.mark_failed(job_id, str(e), 422)
@@ -226,6 +228,20 @@ def generate_document_full_pipeline(
             zip_requests = _decode_zip_files(body.zip_files)
         except ValueError as e:
             raise HTTPException(status_code=422, detail=str(e)) from e
+
+    # Penegakan kuota tier (Billing): Periksa kuota akun sebelum job dibuat.
+    # Jika kuota habis, menolak dengan HTTP 402 + ajakan upgrade.
+    allowed, limit, used, reason = billing_service.check_quota_available(principal)
+    if not allowed:
+        raise HTTPException(
+            status_code=402,
+            detail={
+                "message": reason,
+                "upgrade_required": True,
+                "used": used,
+                "limit": limit,
+            },
+        )
 
     job_id = job_store.create_job(
         document_type=doc_type,
@@ -372,6 +388,7 @@ def _generate_document(
     logo_bytes: bytes | None = None,
     on_progress: Callable[[str], None] = lambda _: None,
     zip_requests: list[ZipIngestRequest] | None = None,
+    job_id: str | None = None,
 ) -> str:
     """Pipeline murni: tidak tahu-menahu soal job maupun HTTP.
 
@@ -416,6 +433,18 @@ def _generate_document(
         parsed_repo_context=parsed_repo_context,
         target_doc_type=doc_type,
     )
+
+    # Catat pemakaian token LLM & estimasi biaya (Billing Metering)
+    usage_dict = document_content.get("_usage")
+    if job_id and usage_dict:
+        job = job_store.get_job(job_id)
+        owner = job.get("owner") if job else "anonymous"
+        billing_service.record_job_usage(
+            owner=owner or "anonymous",
+            job_id=job_id,
+            doc_type=doc_type,
+            usage_dict=usage_dict,
+        )
 
     diagrams = document_content.get("diagrams") or {}
     # +4 = arsitektur, integrasi komponen, flow proses bisnis, use case

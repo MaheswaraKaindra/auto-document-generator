@@ -472,18 +472,22 @@ class LLMService:
                     ) from e
                 raise
 
-        usage = response.usage
-        # Tanpa log ini, cache yang diam-diam tidak pernah aktif mustahil
-        # ketahuan — gejalanya cuma tagihan yang lebih mahal dari perkiraan.
-        # cache_read 0 terus-menerus untuk repo yang sama = ada yang merusak
-        # prefix (lihat catatan prefix match di atas).
+        usage_dict = {
+            "input_tokens": getattr(usage, "input_tokens", 0) or 0,
+            "output_tokens": getattr(usage, "output_tokens", 0) or 0,
+            "cache_creation_input_tokens": getattr(usage, "cache_creation_input_tokens", 0) or 0,
+            "cache_read_input_tokens": getattr(usage, "cache_read_input_tokens", 0) or 0,
+        }
         logger.info(
             "LLM %s: input=%s cache_write=%s cache_read=%s output=%s",
             target_doc_type,
-            usage.input_tokens,
-            usage.cache_creation_input_tokens,
-            usage.cache_read_input_tokens,
-            usage.output_tokens,
+            usage_dict["input_tokens"],
+            usage_dict["cache_creation_input_tokens"],
+            usage_dict["cache_read_input_tokens"],
+            usage_dict["output_tokens"],
         )
 
-        return response.parsed_output.model_dump()
+        content = response.parsed_output.model_dump()
+        content["_usage"] = usage_dict
+        return content
+

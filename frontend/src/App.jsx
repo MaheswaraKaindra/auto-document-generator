@@ -3,6 +3,7 @@ import './App.css'
 import { authHeader } from './supabaseClient'
 import { API_BASE_URL } from './api'
 import DocumentsPanel from './DocumentsPanel'
+import BillingPanel from './BillingPanel'
 
 const emptyRepo = () => ({ repo_tag: '', repo_url: '', branch: '' })
 
@@ -558,13 +559,11 @@ function App() {
       })
 
       if (!response.ok) {
-        // Pesan server ditampilkan APA ADANYA kalau ada — dia sudah ditulis untuk
-        // dibaca pengguna (mis. 429 "Batas pemakaian tercapai: ... coba lagi ~12
-        // menit lagi", 422 template x jenis dokumen). Membungkusnya jadi
-        // `Server merespons 429: {"detail":"..."}` justru menyembunyikan kalimat
-        // yang berguna di balik JSON mentah. Pola sama dengan jalur upload template.
         const body = await response.json().catch(() => ({}))
-        throw new Error(body.detail || `Server merespons ${response.status}`)
+        const msg = typeof body.detail === 'object' && body.detail !== null 
+          ? body.detail.message 
+          : body.detail
+        throw new Error(msg || `Server merespons ${response.status}`)
       }
 
       // 202 Accepted: pekerjaannya BELUM jalan, baru diantrikan.
@@ -1091,6 +1090,7 @@ function App() {
       )}
 
       <DocumentsPanel reloadSignal={docsReload} />
+      <BillingPanel />
     </main>
   )
 }
