@@ -19,7 +19,6 @@ muncul saat ada beban, bukan saat dites satu-satu.
 
 import logging
 import shutil
-import sqlite3
 import uuid
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
@@ -27,6 +26,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from app.core import config
+from app.services import db
 
 logger = logging.getLogger(__name__)
 
@@ -127,14 +127,13 @@ def _now() -> str:
 
 @contextmanager
 def _connect():
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    try:
+    """SQLite di `DB_PATH`, ATAU Postgres kalau `DATABASE_URL` diisi (#13).
+
+    `DB_PATH` tetap diteruskan walau mode Postgres mengabaikannya: itu yang
+    membuat test yang mengalihkan DB ke `tmp_path` terus bekerja tanpa berubah.
+    """
+    with db.connect(DB_PATH) as conn:
         yield conn
-        conn.commit()
-    finally:
-        conn.close()
 
 
 def init_db() -> None:
@@ -142,7 +141,7 @@ def init_db() -> None:
     berkali-kali — dan wajib begitu, karena dipanggil tiap startup."""
     with _connect() as conn:
         conn.executescript(_SCHEMA)
-        existing = {row["name"] for row in conn.execute("PRAGMA table_info(jobs)")}
+        existing = conn.columns("jobs")
         for column, statement in _MIGRATIONS:
             if column not in existing:
                 conn.execute(statement)

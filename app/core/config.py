@@ -42,6 +42,15 @@ LLM_MODEL = os.getenv("LLM_MODEL", "claude-sonnet-5")
 # meninggalkan riwayat yang menunjuk ke file yang sudah tidak ada.
 DATABASE_PATH = os.getenv("DATABASE_PATH", "data/jobs.db")
 
+# Postgres untuk state BERSAMA lintas mesin (#13). Kosong = SQLite di
+# DATABASE_PATH di atas — dan itu tetap default karena multi-worker di SATU mesin
+# sudah jalan dengan SQLite (state-nya file di disk, bukan dict di memori; lihat
+# CLAUDE.md). Yang TIDAK bisa dilakukan file SQLite adalah dibagi antar CONTAINER
+# atau host — begitu web dan worker hidup terpisah, mereka butuh ini.
+#
+# Bentuk: postgresql://user:sandi@host:port/nama_db
+DATABASE_URL = os.getenv("DATABASE_URL")
+
 # Direktori tempat template hasil-KOMPILASI upload user disimpan (V2). Persisten
 # seperti DATABASE_PATH — template terdaftar (template Jinja hasil-generate +
 # reference.docx tersintesis + manifest) harus bertahan melewati restart, sama

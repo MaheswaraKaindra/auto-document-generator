@@ -43,5 +43,10 @@ stripe
 redis
 rq
 
+# --- Postgres (opsional, #13) ---
+# Dipakai HANYA kalau DATABASE_URL diisi; tanpa itu state tetap di SQLite stdlib
+# dan paket ini tak pernah di-import (lihat db.py).
+psycopg[binary]
+
 # --- Testing ---
 pytest

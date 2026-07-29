@@ -9,7 +9,6 @@ Menggunakan SQLite `config.DATABASE_PATH` yang sama dengan `job_store.py`.
 from __future__ import annotations
 
 import logging
-import sqlite3
 import uuid
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
@@ -19,7 +18,7 @@ from typing import Any, Dict, Optional, Tuple
 import stripe
 
 from app.core import config
-from app.services import auth_service, job_store
+from app.services import auth_service, db, job_store
 from app.services.auth_service import Principal
 
 logger = logging.getLogger(__name__)
@@ -61,14 +60,11 @@ def _now_iso() -> str:
 
 @contextmanager
 def _connect():
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    try:
+    """DB yang SAMA dengan `job_store` — bukan kebetulan, melainkan syarat:
+    penghitung kuota mem-JOIN `usage_records` dengan `jobs`, jadi dua tabel itu
+    harus hidup di satu mesin. Mode-nya (SQLite/Postgres) ikut `db.connect`."""
+    with db.connect(DB_PATH) as conn:
         yield conn
-        conn.commit()
-    finally:
-        conn.close()
 
 
 def init_billing_db() -> None:
