@@ -42,6 +42,15 @@ LLM_MODEL = os.getenv("LLM_MODEL", "claude-sonnet-5")
 # meninggalkan riwayat yang menunjuk ke file yang sudah tidak ada.
 DATABASE_PATH = os.getenv("DATABASE_PATH", "data/jobs.db")
 
+# Postgres untuk state BERSAMA lintas mesin (#13). Kosong = SQLite di
+# DATABASE_PATH di atas — dan itu tetap default karena multi-worker di SATU mesin
+# sudah jalan dengan SQLite (state-nya file di disk, bukan dict di memori; lihat
+# CLAUDE.md). Yang TIDAK bisa dilakukan file SQLite adalah dibagi antar CONTAINER
+# atau host — begitu web dan worker hidup terpisah, mereka butuh ini.
+#
+# Bentuk: postgresql://user:sandi@host:port/nama_db
+DATABASE_URL = os.getenv("DATABASE_URL")
+
 # Direktori tempat template hasil-KOMPILASI upload user disimpan (V2). Persisten
 # seperti DATABASE_PATH — template terdaftar (template Jinja hasil-generate +
 # reference.docx tersintesis + manifest) harus bertahan melewati restart, sama
@@ -107,13 +116,54 @@ RATE_LIMIT_TEMPLATE_UPLOAD_PER_WINDOW = _int_env("RATE_LIMIT_TEMPLATE_UPLOAD_PER
 # berpengaruh. Di image Docker, build frontend disalin ke sini.
 FRONTEND_DIST = os.getenv("FRONTEND_DIST", "frontend/dist")
 
-# --- Billing & Quota (Stripe Integration) ------------------------------------
+# --- Worker queue (Redis + RQ) ----------------------------------------------
+# KOSONG = eksekusi INLINE lewat BackgroundTasks (perilaku sebelum #13): pipeline
+# jalan di dalam proses web, nol layanan tambahan, cukup untuk satu instance.
+# TERISI = web cuma mengantri, worker terpisah mengeksekusi — job selamat dari
+# restart/crash/deploy proses web, dan web bisa diperbanyak tanpa menggandakan
+# eksekutor. Seam-nya di `job_queue.py`; sisa aplikasi tak tahu bedanya.
+#
+# Bentuk: redis://host:port/db (mis. redis://localhost:6379/0).
+REDIS_URL = os.getenv("REDIS_URL")
+JOB_QUEUE_NAME = os.getenv("JOB_QUEUE_NAME", "documents")
+
+# Berapa kali job yang mati BERSAMA worker-nya boleh diulang otomatis. Yang diulang
+# HANYA kegagalan sementara (`error_status` 503 — proses mati di tengah jalan);
+# kegagalan permanen (413 repo kebesaran, 422 input salah, 500 bug) tak pernah
+# diulang, karena mengulangnya cuma membakar uang LLM untuk hasil yang sama.
+#
+# 1, bukan 3: percobaan kedua menutup kasus yang nyata (deploy/OOM saat job jalan),
+# sementara percobaan ketiga-keempat lebih mungkin berarti "job ini memang
+# meruntuhkan worker" — dan mengulangnya berarti meruntuhkannya lagi, sambil
+# membayar Claude tiap putaran. 0 = matikan re-queue.
+JOB_MAX_ATTEMPTS = _int_env("JOB_MAX_ATTEMPTS", 1)
+
+# --- Billing & Quota (Stripe) ------------------------------------------------
 STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
-STRIPE_PRO_PRICE_ID = os.getenv("STRIPE_PRO_PRICE_ID", "price_pro_test")
+
+# TANPA default. Dulu berisi "price_pro_test" — id palsu yang terlihat seperti
+# konfigurasi sah, jadi lupa mengisinya baru ketahuan sebagai error Stripe tentang
+# parameter API, bukan sebagai "env belum diisi". Kosong = ditolak berisik di
+# billing_service saat Stripe memang aktif.
+STRIPE_PRO_PRICE_ID = os.getenv("STRIPE_PRO_PRICE_ID")
+
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
 
-# Kuota generate dokumen per bulan berdasarkan Tier (0 = unlimited)
-TIER_FREE_LIMIT = _int_env("TIER_FREE_LIMIT", 3)
+# Kuota generate dokumen per 30 hari, per akun, menurut tier. 0 = TANPA batas.
+#
+# Default 0 (bukan 3) DISENGAJA: kuota ini cuma berlaku kalau auth aktif, jadi
+# default tak-nol menyalakan pembatasan berbayar di SETIAP instance yang memasang
+# Supabase — termasuk instance internal satu tim yang tak pernah minta ditagih, dan
+# tanpa satu pun baris konfigurasi yang berubah. Menaikkan tembok itu keputusan
+# bisnis; menaruhnya sebagai default berarti keputusan itu diambil diam-diam oleh
+# nilai literal di file ini.
+#
+# Tagihan tetap terjaga tanpa ini: `RATE_LIMIT_GENERATE_PER_WINDOW` (10/jam) sudah
+# menahan skrip yang lepas kendali. Kuota tier menjawab pertanyaan yang BERBEDA —
+# "berapa yang boleh dipakai pelanggan gratis" — dan pertanyaan itu baru ada
+# begitu produk ini benar-benar dijual. Isi TIER_FREE_LIMIT di .env untuk
+# menyalakannya (mis. 3), lalu penolakannya keluar sebagai 402 + ajakan upgrade.
+TIER_FREE_LIMIT = _int_env("TIER_FREE_LIMIT", 0)
 TIER_PRO_LIMIT = _int_env("TIER_PRO_LIMIT", 100)
 

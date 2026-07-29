@@ -20,6 +20,7 @@ memetakan bab asing yang kata kuncinya tak cocok; kontrak peta
 from __future__ import annotations
 
 import json
+import logging
 import re
 import uuid
 from datetime import datetime, timezone
@@ -28,7 +29,7 @@ from pathlib import Path
 # Modul (bukan `from ... import TEMPLATES_STORE`) supaya TEMPLATES_STORE punya
 # SATU sumber kebenaran di compiler_service — penting agar redirect (test/config)
 # cukup di satu tempat, bukan dua binding yang bisa menyimpang.
-from app.services import compiler_service
+from app.services import billing_service, compiler_service
 from app.services.auth_service import Principal
 from app.services.llm_mapping_service import llm_propose_mapping
 from app.services.reference_synthesis_service import build_reference
@@ -36,6 +37,8 @@ from app.services.template_generator_service import (
     ALL_BINDINGS, CONTENT_BINDINGS, generate_jinja_template, mapping_health,
     propose_mapping)
 from app.services.template_spec_service import build_template_spec
+
+logger = logging.getLogger(__name__)
 
 _SLUG_RE = re.compile(r"[^a-z0-9]+")
 
@@ -62,6 +65,41 @@ def _pick_doc_types(spec: dict, requested) -> list[str]:
         return [d.upper() for d in requested]
     guess = spec.get("doc_kind_guess", "unknown")
     return [guess] if guess in ("SDD", "UAT") else ["SDD"]
+
+
+def _record_mapping_usage(owner: str | None, template_id: str, doc_type: str,
+                          usage_sink: list) -> None:
+    """Catat pemakaian LLM peta bab ke metering billing.
+
+    Upload template ber-`use_llm_mapping` itu panggilan Claude BERBAYAR, sama
+    seperti generate dokumen — tapi dia tidak melewati `jobs`, jadi tanpa ini
+    biayanya tak pernah muncul di panel billing dan angka "estimasi biaya" selalu
+    lebih rendah dari tagihan Anthropic yang sesungguhnya.
+
+    `job_id` diberi awalan `template:` supaya baris ini tak pernah tersangkut
+    sebagai job di penghitung KUOTA (yang menghitung baris `jobs`, bukan
+    `usage_records`) — biaya ikut tercatat, jatah dokumen tidak ikut terpotong.
+
+    Kegagalan metering TIDAK boleh menggagalkan upload: pekerjaannya sudah selesai
+    dan LLM-nya sudah dibayar. Gagal mencatat itu kehilangan angka; menggagalkan
+    upload itu kehilangan hasil kerja yang sudah dibayar.
+    """
+    if not owner:
+        return
+    for usage in usage_sink:
+        try:
+            billing_service.record_job_usage(
+                owner=owner,
+                job_id=f"template:{template_id}",
+                doc_type=f"TEMPLATE_MAPPING_{doc_type}",
+                usage_dict=usage,
+            )
+        except Exception:
+            logger.warning(
+                "Gagal mencatat pemakaian LLM peta bab template %s (%s) — "
+                "template tetap dibuat, angka biayanya saja yang hilang.",
+                template_id, doc_type, exc_info=True,
+            )
 
 
 def compile_template(spec: dict, name: str, doc_types=None,
@@ -94,8 +132,12 @@ def compile_template(spec: dict, name: str, doc_types=None,
     doc_type_files = {}
     health = {}
     for dt in doc_types:
-        mapping = (llm_propose_mapping(spec, dt) if use_llm_mapping
-                   else propose_mapping(spec, dt))
+        if use_llm_mapping:
+            usage_sink: list = []
+            mapping = llm_propose_mapping(spec, dt, usage_sink)
+            _record_mapping_usage(owner, template_id, dt, usage_sink)
+        else:
+            mapping = propose_mapping(spec, dt)
         (base / f"mapping_{dt}.json").write_text(
             json.dumps(mapping, ensure_ascii=False, indent=2), encoding="utf-8")
         (base / f"{dt}.md").write_text(

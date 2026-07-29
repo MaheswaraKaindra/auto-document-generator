@@ -9,7 +9,6 @@ Menggunakan SQLite `config.DATABASE_PATH` yang sama dengan `job_store.py`.
 from __future__ import annotations
 
 import logging
-import sqlite3
 import uuid
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
@@ -19,7 +18,7 @@ from typing import Any, Dict, Optional, Tuple
 import stripe
 
 from app.core import config
-from app.services import auth_service
+from app.services import auth_service, db, job_store
 from app.services.auth_service import Principal
 
 logger = logging.getLogger(__name__)
@@ -61,14 +60,11 @@ def _now_iso() -> str:
 
 @contextmanager
 def _connect():
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    try:
+    """DB yang SAMA dengan `job_store` — bukan kebetulan, melainkan syarat:
+    penghitung kuota mem-JOIN `usage_records` dengan `jobs`, jadi dua tabel itu
+    harus hidup di satu mesin. Mode-nya (SQLite/Postgres) ikut `db.connect`."""
+    with db.connect(DB_PATH) as conn:
         yield conn
-        conn.commit()
-    finally:
-        conn.close()
 
 
 def init_billing_db() -> None:
@@ -117,22 +113,68 @@ def set_user_tier(
         )
 
 
+# Tarif Anthropic per 1 JUTA token (USD), per 2026-07-15 — sumber angka yang SAMA
+# dengan tabel di `.env.example` dan CLAUDE.md. Dipatok per MODEL, bukan satu tarif
+# tetap: `LLM_MODEL` bisa diganti lewat .env tanpa menyentuh kode, dan tarif tetap
+# membuat panel biaya melaporkan angka model yang TIDAK dipakai (opus-4-8 67% lebih
+# mahal dari sonnet-5 di input, 67% di output).
+#
+# `cache_write` = 1,25x input dan `cache_read` = 0,1x input — pola harga Anthropic,
+# bukan angka yang ditebak per-model.
+_MODEL_RATES: Dict[str, Dict[str, float]] = {
+    "claude-sonnet-5":  {"input": 3.00, "output": 15.00, "cache_write": 3.75, "cache_read": 0.30},
+    "claude-opus-4-8":  {"input": 5.00, "output": 25.00, "cache_write": 6.25, "cache_read": 0.50},
+    "claude-haiku-4-5": {"input": 1.00, "output":  5.00, "cache_write": 1.25, "cache_read": 0.10},
+}
+_FALLBACK_RATE_MODEL = "claude-sonnet-5"
+
+_warned_models: set = set()
+
+
+def _rates_for_model(model: str) -> Dict[str, float]:
+    """Tarif untuk `model`, dicocokkan dari DEPAN supaya id ber-tanggal ikut kena
+    (`claude-haiku-4-5-20251001` -> `claude-haiku-4-5`).
+
+    Model tak dikenal jatuh ke tarif default dan BERTERIAK sekali di log. Sengaja
+    tidak menggagalkan panggilan: metering itu pengamat, dan menolak mencatat
+    pemakaian yang SUDAH terjadi cuma menukar angka yang meleset dengan tidak ada
+    angka sama sekali. Tapi diamnya juga tak boleh — angka yang salah tanpa jejak
+    lebih buruk daripada angka yang salah dengan peringatan.
+    """
+    for key in sorted(_MODEL_RATES, key=len, reverse=True):
+        if model.startswith(key):
+            return _MODEL_RATES[key]
+    if model not in _warned_models:
+        _warned_models.add(model)
+        logger.warning(
+            "Tarif untuk model %r tidak dikenal; estimasi biaya memakai tarif %s. "
+            "Tambahkan ke _MODEL_RATES di billing_service.py.",
+            model, _FALLBACK_RATE_MODEL,
+        )
+    return _MODEL_RATES[_FALLBACK_RATE_MODEL]
+
+
 def calculate_llm_cost_usd(
     input_tokens: int,
     output_tokens: int,
     cache_read_tokens: int = 0,
     cache_write_tokens: int = 0,
+    model: Optional[str] = None,
 ) -> float:
-    """Menghitung estimasi biaya USD berdasarkan tarif Anthropic Claude Sonnet 5:
-    - Input: $3.00 / 1M token
-    - Output: $15.00 / 1M token
-    - Cache Write: $3.75 / 1M token
-    - Cache Read: $0.30 / 1M token
+    """Estimasi biaya USD memakai tarif model yang BENAR-BENAR dipakai aplikasi
+    (`config.LLM_MODEL`), bukan tarif tetap.
+
+    Angkanya HARGA DAFTAR, jadi ini PLAFON, bukan tagihan: diskon intro
+    (`claude-sonnet-5` $2/$10 s/d 2026-08-31) sengaja TIDAK dipotong di sini —
+    memasang tanggal kedaluwarsa di dalam kode berarti angka ini berubah diam-diam
+    di tengah malam tanpa ada yang mengubah apa pun. Estimasi yang sedikit tinggi
+    dan stabil lebih berguna daripada estimasi yang tepat lalu basi tanpa jejak.
     """
-    cost_input = (input_tokens / 1_000_000.0) * 3.00
-    cost_output = (output_tokens / 1_000_000.0) * 15.00
-    cost_cache_write = (cache_write_tokens / 1_000_000.0) * 3.75
-    cost_cache_read = (cache_read_tokens / 1_000_000.0) * 0.30
+    rates = _rates_for_model(model or config.LLM_MODEL)
+    cost_input = (input_tokens / 1_000_000.0) * rates["input"]
+    cost_output = (output_tokens / 1_000_000.0) * rates["output"]
+    cost_cache_write = (cache_write_tokens / 1_000_000.0) * rates["cache_write"]
+    cost_cache_read = (cache_read_tokens / 1_000_000.0) * rates["cache_read"]
     return round(cost_input + cost_output + cost_cache_write + cost_cache_read, 6)
 
 
@@ -200,10 +242,27 @@ def get_user_usage_summary(owner: str, now: Optional[datetime] = None) -> Dict[s
     start_window = (ref_time - timedelta(days=30)).isoformat()
 
     with _connect() as conn:
-        # Hitung jumlah generate job dalam 30 hari terakhir
+        # Job yang MEMAKAN kuota dalam 30 hari terakhir.
+        #
+        # BUKAN COUNT(*) polos: job yang mati SEBELUM LLM dipanggil (URL repo
+        # salah, ZIP rusak, repo kebesaran untuk context window) tidak membebani
+        # biaya apa pun, jadi menagihkannya ke kuota berarti menghukum pengguna
+        # atas salah ketik. Dengan TIER_FREE_LIMIT kecil, tiga typo = sebulan
+        # tanpa dokumen.
+        #
+        # Yang dihitung: job yang belum gagal (queued/running/done — termasuk yang
+        # sedang jalan, supaya request berbarengan tak bisa menembus batas), DAN
+        # job gagal yang TERBUKTI sudah membayar LLM (punya baris usage_records).
+        # Jadi ukurannya "pemakaian yang benar-benar terjadi", bukan "berapa kali
+        # tombol ditekan".
         count_row = conn.execute(
-            "SELECT COUNT(*) as count FROM jobs WHERE owner = ? AND created_at >= ?",
-            (owner, start_window),
+            """
+            SELECT COUNT(*) as count FROM jobs j
+            WHERE j.owner = ? AND j.created_at >= ?
+              AND (j.status != ?
+                   OR EXISTS (SELECT 1 FROM usage_records u WHERE u.job_id = j.id))
+            """,
+            (owner, start_window, job_store.STATUS_FAILED),
         ).fetchone()
         jobs_used = count_row["count"] if count_row else 0
 
@@ -279,13 +338,26 @@ def create_stripe_checkout_session(
     cancel_url = f"{config.FRONTEND_URL.rstrip('/')}/?billing=cancel"
 
     if not config.STRIPE_SECRET_KEY:
-        # Stub / Mock mode untuk testing tanpa Stripe API key sungguhan
-        logger.info("STRIPE_SECRET_KEY tidak disetel — menggunakan mode Checkout Stub.")
+        # Mode SIMULASI: Stripe belum dikonfigurasi. Tidak ada pembayaran, dan
+        # tier SENGAJA tidak dinaikkan — satu-satunya yang boleh menaikkan tier
+        # adalah webhook Stripe ber-signature sah. `is_stub` WAJIB dihormati
+        # pemanggil: klien yang mengabaikannya akan memberi tahu pengguna bahwa
+        # pembayarannya berhasil padahal tak terjadi apa-apa.
+        logger.info("STRIPE_SECRET_KEY tidak disetel — Checkout jalan mode simulasi.")
         return {
-            "checkout_url": f"{config.FRONTEND_URL.rstrip('/')}/?billing=success_stub&owner={owner}",
-            "session_id": f"cs_test_mock_{uuid.uuid4().hex[:12]}",
+            "checkout_url": f"{config.FRONTEND_URL.rstrip('/')}/?billing=simulasi",
+            "session_id": f"cs_simulasi_{uuid.uuid4().hex[:12]}",
             "is_stub": True,
         }
+
+    if not config.STRIPE_PRO_PRICE_ID:
+        # Berisik, bukan diam. Stripe menolak price id kosong/palsu dengan pesan
+        # tentang parameter API — jauh dari sebab aslinya (satu env belum diisi).
+        raise ValueError(
+            "STRIPE_SECRET_KEY sudah diisi tapi STRIPE_PRO_PRICE_ID kosong. "
+            "Ambil id harga langganan Pro dari dashboard Stripe (Products -> Pricing, "
+            "bentuknya `price_...`) lalu isi STRIPE_PRO_PRICE_ID di .env."
+        )
 
     stripe.api_key = config.STRIPE_SECRET_KEY
 

@@ -21,7 +21,8 @@ def _spec(outline):
 
 
 def _mock_llm(monkeypatch, raw: dict):
-    monkeypatch.setattr(lm, "_request_bindings", lambda outline, doc_type: raw)
+    monkeypatch.setattr(lm, "_request_bindings",
+                        lambda outline, doc_type, usage_sink=None: raw)
 
 
 def test_binding_literal_matches_vocabulary():

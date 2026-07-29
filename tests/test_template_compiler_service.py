@@ -14,7 +14,8 @@ import pytest
 from docx import Document
 from PIL import Image
 
-from app.services import compiler_service, template_compiler_service
+from app.services import (billing_service, compiler_service, job_store,
+                          template_compiler_service)
 
 _DUMMY = Path(__file__).resolve().parent.parent / "dummy_data"
 
@@ -133,8 +134,10 @@ def test_use_llm_mapping_opt_in_calls_llm_mapper(isolated_store, monkeypatch):
     """use_llm_mapping=True memakai pemeta LLM (di-mock di boundary orkestrator)."""
     calls = []
 
-    def fake_llm(spec, dt):
+    def fake_llm(spec, dt, usage_sink=None):
         calls.append(dt)
+        if usage_sink is not None:
+            usage_sink.append({"input_tokens": 4000, "output_tokens": 500})
         return [{"level": 1, "text": "Deskripsi", "binding": "app_description"}]
 
     monkeypatch.setattr(template_compiler_service, "llm_propose_mapping", fake_llm)
@@ -146,9 +149,37 @@ def test_use_llm_mapping_opt_in_calls_llm_mapper(isolated_store, monkeypatch):
     assert "{{ app_description }}" in md                 # rencana LLM ter-render
 
 
+def test_upload_ber_llm_tercatat_di_metering(isolated_store, monkeypatch, tmp_path):
+    """Upload template ber-LLM itu panggilan Claude BERBAYAR — biayanya harus
+    sampai ke panel billing. Tanpa ini, estimasi biaya selalu lebih kecil dari
+    tagihan Anthropic yang sesungguhnya, dan selisihnya tak terlihat di mana pun.
+
+    Kuotanya TIDAK ikut terpotong: kuota menghitung baris `jobs` (dokumen), dan
+    baris metering ini ber-job_id `template:` yang tak pernah cocok dengan job.
+    """
+    db_file = tmp_path / "jobs.db"
+    monkeypatch.setattr(job_store, "DB_PATH", db_file)
+    monkeypatch.setattr(billing_service, "DB_PATH", db_file)
+    job_store.init_db()
+    billing_service.init_billing_db()
+
+    def fake_llm(spec, dt, usage_sink=None):
+        usage_sink.append({"input_tokens": 10_000, "output_tokens": 1_000})
+        return [{"level": 1, "text": "Deskripsi", "binding": "app_description"}]
+
+    monkeypatch.setattr(template_compiler_service, "llm_propose_mapping", fake_llm)
+    template_compiler_service.compile_template(
+        _spec(), "LLM Ber-owner", use_llm_mapping=True, owner="usr_upload")
+
+    summary = billing_service.get_user_usage_summary("usr_upload")
+    assert summary["total_tokens"] == 11_000
+    assert summary["total_cost_usd"] > 0
+    assert summary["jobs_used"] == 0, "upload template bukan dokumen — kuota utuh"
+
+
 def test_default_path_does_not_call_llm_mapper(isolated_store, monkeypatch):
     """Default (use_llm_mapping=False) TIDAK menyentuh LLM — jalur $0 tetap heuristik."""
-    def boom(spec, dt):
+    def boom(spec, dt, usage_sink=None):
         raise AssertionError("pemeta LLM tak boleh dipanggil pada jalur default")
 
     monkeypatch.setattr(template_compiler_service, "llm_propose_mapping", boom)

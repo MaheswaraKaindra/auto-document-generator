@@ -19,7 +19,6 @@ muncul saat ada beban, bukan saat dites satu-satu.
 
 import logging
 import shutil
-import sqlite3
 import uuid
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
@@ -27,6 +26,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from app.core import config
+from app.services import db
 
 logger = logging.getLogger(__name__)
 
@@ -102,6 +102,11 @@ _MIGRATIONS = [
     ("progress", "ALTER TABLE jobs ADD COLUMN progress TEXT"),
     ("template_id", "ALTER TABLE jobs ADD COLUMN template_id TEXT"),
     ("owner", "ALTER TABLE jobs ADD COLUMN owner TEXT"),
+    # Berapa kali job ini sudah DIULANG otomatis sesudah worker-nya mati (#13).
+    # Ada di sini, bukan cuma di Redis, karena batas percobaan harus bertahan
+    # walau antriannya diganti/dikosongkan — dan supaya "kenapa job ini jalan dua
+    # kali" bisa dijawab dari data yang sama dengan status job.
+    ("attempts", "ALTER TABLE jobs ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0"),
 ]
 
 
@@ -122,14 +127,13 @@ def _now() -> str:
 
 @contextmanager
 def _connect():
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    try:
+    """SQLite di `DB_PATH`, ATAU Postgres kalau `DATABASE_URL` diisi (#13).
+
+    `DB_PATH` tetap diteruskan walau mode Postgres mengabaikannya: itu yang
+    membuat test yang mengalihkan DB ke `tmp_path` terus bekerja tanpa berubah.
+    """
+    with db.connect(DB_PATH) as conn:
         yield conn
-        conn.commit()
-    finally:
-        conn.close()
 
 
 def init_db() -> None:
@@ -137,7 +141,7 @@ def init_db() -> None:
     berkali-kali — dan wajib begitu, karena dipanggil tiap startup."""
     with _connect() as conn:
         conn.executescript(_SCHEMA)
-        existing = {row["name"] for row in conn.execute("PRAGMA table_info(jobs)")}
+        existing = conn.columns("jobs")
         for column, statement in _MIGRATIONS:
             if column not in existing:
                 conn.execute(statement)
@@ -222,6 +226,38 @@ def mark_failed(job_id: str, error: str, error_status: int) -> None:
     persis penyamaran yang sudah tiga kali diperbaiki di project ini.
     """
     _update(job_id, status=STATUS_FAILED, error=error, error_status=error_status)
+
+
+def mark_requeued(job_id: str) -> int:
+    """Kembalikan job ke antrian sesudah worker-nya mati, naikkan `attempts`,
+    kembalikan nilai attempts yang baru.
+
+    Status balik ke `queued` (bukan tetap `failed`) supaya klien yang sedang
+    polling melihat kebenaran: pekerjaannya memang sedang diantre lagi. `error`
+    dan `error_status` dibersihkan — menyisakan pesan "proses berhenti di tengah
+    jalan" pada job yang kini sehat akan menampilkan kegagalan yang sudah tidak
+    berlaku.
+    """
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT attempts FROM jobs WHERE id = ?", (job_id,)
+        ).fetchone()
+        attempts = (row["attempts"] if row and row["attempts"] is not None else 0) + 1
+        conn.execute(
+            "UPDATE jobs SET status = ?, error = NULL, error_status = NULL, "
+            "attempts = ?, updated_at = ? WHERE id = ?",
+            (STATUS_QUEUED, attempts, _now(), job_id),
+        )
+    return attempts
+
+
+def attempts_of(job_id: str) -> int:
+    """Berapa kali job ini sudah diulang. 0 untuk job dari DB lama."""
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT attempts FROM jobs WHERE id = ?", (job_id,)
+        ).fetchone()
+    return (row["attempts"] if row and row["attempts"] is not None else 0)
 
 
 def reap_stale_jobs(max_age_seconds: float = STALE_JOB_SECONDS) -> int:

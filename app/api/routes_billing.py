@@ -27,14 +27,23 @@ def get_usage_summary(principal: Principal = Depends(get_current_user)):
 def create_checkout_session(principal: Principal = Depends(get_current_user)):
     """Membuat session Stripe Checkout untuk upgrade paket Pro."""
     try:
-        session_info = billing_service.create_stripe_checkout_session(
+        return billing_service.create_stripe_checkout_session(
             owner=principal.id, user_email=principal.email
         )
-        return session_info
+    except ValueError as e:
+        # Pesan konfigurasi yang KITA tulis sendiri (mis. STRIPE_PRO_PRICE_ID
+        # kosong) — aman ditampilkan, dan justru itu yang menolong operator.
+        logger.exception("Konfigurasi Stripe belum lengkap")
+        raise HTTPException(status_code=500, detail=str(e)) from e
     except Exception as e:
+        # Exception Stripe TIDAK diteruskan apa adanya: isinya bisa memuat request
+        # id, potongan parameter, dan detail akun yang tak ada gunanya bagi
+        # pengguna. Sebab aslinya tetap utuh di log server.
         logger.exception("Gagal membuat Stripe checkout session")
         raise HTTPException(
-            status_code=500, detail=f"Gagal memproses Checkout Stripe: {e}"
+            status_code=502,
+            detail="Gagal menghubungi Stripe. Coba lagi beberapa saat lagi; "
+                   "kalau terus terjadi, hubungi pengelola aplikasi.",
         ) from e
 
 

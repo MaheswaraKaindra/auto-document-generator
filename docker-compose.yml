@@ -2,6 +2,12 @@
 # Backend env (ANTHROPIC_API_KEY, SUPABASE_URL, ...) dibaca dari `.env` di root —
 # file yang SAMA dengan yang dipakai `uvicorn` lokal, jadi tak ada konfigurasi
 # ganda. Config Supabase FRONTEND (compile-time Vite) diberikan sebagai build-arg.
+#
+# SEJAK #13 ada tiga service, bukan satu: `app` (web) cuma mengantri, `worker`
+# yang mengeksekusi pipeline, `redis` antriannya, `postgres` state bersamanya.
+# `REDIS_URL`/`DATABASE_URL` di-set DI SINI (bukan di .env) supaya `.env` tetap
+# menggambarkan pemakaian LOKAL — di sana keduanya kosong dan aplikasi jalan mode
+# inline + SQLite tanpa satu pun layanan tambahan.
 services:
   app:
     build:
@@ -16,9 +22,70 @@ services:
     # Rahasia & config backend diberikan saat RUN (bukan di-bake ke image).
     env_file:
       - .env
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-adgdev}@postgres:5432/adg
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
     volumes:
-      # DB job, dokumen, template terkompilasi bertahan melewati restart container.
+      # Dokumen & template terkompilasi bertahan melewati restart container.
+      # (Status job pindah ke Postgres sejak #13; volume ini untuk FILE.)
       - app-data:/data
+
+  worker:
+    # Image yang SAMA dengan app — beda perintah, bukan beda build. Kalau worker
+    # dibangun dari image lain, versi kode web dan worker bisa menyimpang, dan
+    # argumen job yang di-pickle di satu sisi gagal di-unpickle di sisi lain.
+    build:
+      context: .
+    command: ["python", "-m", "app.worker"]
+    env_file:
+      - .env
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-adgdev}@postgres:5432/adg
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    volumes:
+      - app-data:/data
+    # Menaikkan angka ini = menambah kapasitas pemrosesan tanpa menyentuh web:
+    #   docker compose up --scale worker=3
+    deploy:
+      replicas: 1
+
+  redis:
+    image: redis:7-alpine
+    # appendonly: antrian yang hilang saat Redis restart berarti job yang sudah
+    # dijanjikan ke pengguna (202 + job_id) tak pernah dikerjakan siapa pun.
+    command: ["redis-server", "--appendonly", "yes"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    volumes:
+      - redis-data:/data
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-adgdev}
+      POSTGRES_DB: adg
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
 
 volumes:
   app-data:
+  redis-data:
+  postgres-data:
