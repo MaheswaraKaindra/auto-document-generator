@@ -167,3 +167,17 @@ FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
 TIER_FREE_LIMIT = _int_env("TIER_FREE_LIMIT", 0)
 TIER_PRO_LIMIT = _int_env("TIER_PRO_LIMIT", 100)
 
+# --- Observability (#14) -----------------------------------------------------
+# Seam yang sama dengan REDIS_URL/SUPABASE_URL: kosong = mati, tanpa layanan
+# tambahan. SENTRY_DSN kosong → error tracking tak aktif dan sentry-sdk tak
+# pernah di-import (lihat telemetry.py), jadi dev/test/demo $0 tak menuntutnya.
+SENTRY_DSN = os.getenv("SENTRY_DSN")
+# Lingkungan yang dilaporkan ke Sentry (development/staging/production).
+SENTRY_ENVIRONMENT = os.getenv("SENTRY_ENVIRONMENT", "development")
+
+# Format log: "plain" (default, enak dibaca manusia saat dev) atau "json" (satu
+# objek per baris, siap diagregasi collector di produksi). Nilai lain → plain,
+# supaya salah-ketik tak mematikan log sama sekali.
+LOG_FORMAT = os.getenv("LOG_FORMAT", "plain")
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+
