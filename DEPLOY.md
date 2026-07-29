@@ -135,6 +135,49 @@ di-inject platform langsung terpakai.
 Dipatok di `Dockerfile` (bukan "apa pun yang terbaru") supaya image reproducible:
 `PANDOC_VERSION`, `PLANTUML_VERSION`. Naikkan lewat `--build-arg` bila perlu.
 
+## Reverse proxy + HTTPS + domain (produksi, #15)
+
+Compose lokal membuka app di `http://localhost:8000` (HTTP polos) — cukup untuk
+`docker compose up` di mesin sendiri, TIDAK untuk publik. Untuk domain + HTTPS,
+ada overlay `docker-compose.prod.yml` yang menaruh **Caddy** di depan container:
+
+```bash
+DOMAIN=app.domain.com TLS_EMAIL=you@domain.com \
+  docker compose -f docker-compose.yml -f docker-compose.prod.yml up --build -d
+```
+
+Yang terjadi:
+- Caddy mengambil sertifikat **Let's Encrypt otomatis** untuk `$DOMAIN` (tanpa
+  certbot/renew manual) dan meneruskan trafik ke `app:8000` lewat jaringan
+  internal compose.
+- `app` **tak lagi** mengekspos `8000` ke publik — hanya Caddy (80/443) yang
+  menghadap internet.
+- **Syarat agar TLS terbit**: DNS `$DOMAIN` sudah menunjuk ke IP server ini, dan
+  port 80 + 443 terbuka (Let's Encrypt memverifikasi lewat keduanya). Ini bagian
+  yang butuh server & domain NYATA — tak bisa dibuktikan dari mesin dev.
+
+Config Caddy ada di `deploy/Caddyfile` (termasuk header keamanan: HSTS,
+X-Content-Type-Options, X-Frame-Options). Ganti ke nginx/Traefik = ganti file
+proxy-nya, sisa compose tetap.
+
+## CORS
+
+Diperketat dari `*` ke daftar origin lewat `CORS_ALLOW_ORIGINS` (koma-pisah).
+Default (kosong) = origin dev Vite (`localhost:5173`) — jadi `npm run dev` tetap
+jalan, tapi sudah bukan `*`. **Saat SPA disajikan same-origin oleh container**
+(bawaan image ini, termasuk di balik Caddy satu domain), **CORS tak terpakai** —
+tak perlu menyetel apa pun. CORS baru relevan kalau frontend dilayani dari domain
+BERBEDA; isi `CORS_ALLOW_ORIGINS=https://app.domain.com` untuk kasus itu.
+
+## Rahasia di produksi
+
+`--env-file .env` cukup untuk satu server, tapi menaruh rahasia sebagai file di
+disk bukan praktik terbaik lintas platform. Alih-alih itu, suntikkan lewat
+mekanisme rahasia platform (Docker/Swarm secrets, Kubernetes Secret, atau env
+terenkripsi milik penyedia) — kode membaca dari `os.getenv`, jadi sumbernya tak
+mengubah aplikasi. Yang **tak boleh**: `.env` ikut ter-commit (sudah di-gitignore)
+atau ter-bake ke image (Dockerfile sengaja memberi rahasia saat RUN, bukan build).
+
 ---
 
 # Kesiapan SaaS — apa yang siap, apa yang tinggal colok, apa batasnya
@@ -182,6 +225,9 @@ Ditulis jujur supaya klaimnya tahan diuji.
   penerbitan sertifikat hanya terjadi terhadap domain sungguhan, jadi belum ada
   yang bisa ditunjuk. Yang sudah bisa ditunjuk cuma jalur proxy-nya di
   `localhost` (sertifikat internal).
+- **HTTPS/domain** — overlay Caddy SUDAH disediakan (`docker-compose.prod.yml` +
+  `deploy/Caddyfile`, TLS otomatis). "Colok"-nya = arahkan DNS domain ke server +
+  jalankan overlay dengan `DOMAIN`/`TLS_EMAIL`. Lihat "Reverse proxy" di atas.
 
 ## Batas yang JUJUR (bukan "tinggal setup")
 

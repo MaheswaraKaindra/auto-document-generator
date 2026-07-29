@@ -48,5 +48,10 @@ rq
 # dan paket ini tak pernah di-import (lihat db.py).
 psycopg[binary]
 
+# --- Error tracking (opsional, #14) ---
+# Dipakai HANYA kalau SENTRY_DSN diisi; tanpa itu tak pernah di-import (lihat
+# telemetry.py). Structured logging & probe /ready tak butuh paket apa pun.
+sentry-sdk
+
 # --- Testing ---
 pytest

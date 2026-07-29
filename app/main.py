@@ -3,6 +3,7 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api.routes_account import router as account_router
@@ -13,7 +14,13 @@ from app.api.routes_ingestion import router as ingestion_router
 from app.api.routes_legal import router as legal_router
 from app.api.routes_template import router as template_router
 from app.core import config
-from app.services import billing_service, job_queue, job_store
+from app.core.logging_config import configure_logging
+from app.services import billing_service, job_queue, job_store, readiness_service, telemetry
+
+# Observability (#14): pasang format log + error tracking SEBELUM apa pun yang
+# bisa gagal di bawah — supaya kegagalan startup pun ikut terformat & terlacak.
+configure_logging()
+telemetry.init_sentry()
 
 app = FastAPI(title="Auto Document Generator")
 
@@ -88,7 +95,20 @@ app.include_router(legal_router)
 
 @app.get("/health")
 def health():
+    """Liveness: proses ini hidup & bisa menjawab. Sengaja TANPA cek dependency —
+    orchestrator memakainya untuk memutuskan restart, dan me-restart karena
+    pandoc hilang tak menyembuhkan apa pun."""
     return {"status": "ok"}
+
+
+@app.get("/ready")
+def ready():
+    """Readiness: proses ini bisa MENGERJAKAN pekerjaannya (DB + pandoc + Java +
+    plantuml.jar ada). 503 kalau satu saja hilang — sinyal ke orchestrator untuk
+    tidak mengarahkan trafik ke instance ini sampai dependency-nya lengkap."""
+    result = readiness_service.readiness()
+    status = 200 if result["ready"] else 503
+    return JSONResponse(result, status_code=status)
 
 
 # Frontend hasil build (SPA) disajikan dari origin yang SAMA dengan API — satu

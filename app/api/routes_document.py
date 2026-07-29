@@ -6,13 +6,15 @@ mereka sediakan."""
 
 import base64
 import logging
+import time
 from typing import Callable
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from fastapi.responses import FileResponse
 
 from app.api.deps import get_current_user, rate_limited_generate
-from app.services import auth_service, billing_service, job_queue
+from app.core.logging_config import bind_job_context, set_stage
+from app.services import auth_service, billing_service, job_queue, telemetry
 from app.services.auth_service import Principal
 
 from app.api.schemas_document import GenerateDocumentRequest, ZipFileIn
@@ -134,6 +136,15 @@ def _run_generation(
     balik ke penyamaran yang sudah tiga kali diperbaiki di project ini.
     """
     doc_type = body.document_type.upper()
+    # Observability (#14): tautkan job_id/owner ke SEMUA log tahap ini, dan mulai
+    # jam untuk metrik durasi. `owner` diambil dari baris job (route yang menaruhnya).
+    _job = job_store.get_job(job_id)
+    bind_job_context(job_id, (_job or {}).get("owner"))
+    set_stage(None)
+    started = time.monotonic()
+    outcome = "done"
+    error_status = None
+
     job_store.mark_running(job_id)
     try:
         output_path = _generate_document(
@@ -145,12 +156,18 @@ def _run_generation(
             job_id=job_id,
         )
     except SourceProviderError as e:
+        # Kegagalan sisi INPUT pengguna (repo tak bisa diambil, ZIP rusak): bukan
+        # bug sistem, jadi TIDAK dikirim ke error tracking — cuma jadi derau.
+        outcome, error_status = "failed", 422
         job_store.mark_failed(job_id, str(e), 422)
     except ContextWindowExceededError as e:
         logger.warning("Contract A melebihi context window: %s", e)
+        outcome, error_status = "failed", 413
         job_store.mark_failed(job_id, str(e), 413)
     except DocumentTruncatedError as e:
         logger.error("Dokumen terpotong karena max_tokens: %s", e)
+        outcome, error_status = "failed", 500
+        telemetry.capture_exception(e)      # batas di sisi SISTEM — layak dilihat
         job_store.mark_failed(
             job_id,
             f"{e} Laporkan ke tim pengembang — ini batas di sisi sistem, bukan di repo Anda.",
@@ -158,21 +175,43 @@ def _run_generation(
         )
     except DiagramRenderError as e:
         logger.exception("Gagal merender diagram PlantUML")
+        outcome, error_status = "failed", 502
+        telemetry.capture_exception(e)
         job_store.mark_failed(job_id, f"Gagal merender diagram: {e}", 502)
     except ValueError as e:
+        outcome, error_status = "failed", 400
         job_store.mark_failed(job_id, str(e), 400)
     except PandocUnavailableError as e:
         logger.exception("Pandoc tidak tersedia saat export docx")
+        outcome, error_status = "failed", 500
+        telemetry.capture_exception(e)
         job_store.mark_failed(job_id, str(e), 500)
-    except Exception:
+    except Exception as e:
         # Jaring terakhir. Cuma DI SINI "coba lagi" itu saran yang jujur —
-        # sebab yang tidak dikenal memang bisa sementara.
+        # sebab yang tidak dikenal memang bisa sementara. Ini yang PALING layak
+        # muncul di dashboard: sebab tak dikenal = kandidat bug.
         logger.exception("Job %s gagal karena sebab tak dikenal", job_id)
+        outcome, error_status = "failed", 502
+        telemetry.capture_exception(e)
         job_store.mark_failed(
             job_id, "Gagal menghasilkan dokumen. Coba lagi beberapa saat.", 502
         )
     else:
         job_store.mark_done(job_id, output_path)
+    finally:
+        # Metrik dasar (#14): satu baris terstruktur per job selesai —
+        # durasi + hasil + kode error, siap diagregasi (tingkat gagal per jenis).
+        logger.info(
+            "Job selesai: %s (%sms)", outcome,
+            round((time.monotonic() - started) * 1000),
+            extra={
+                "event": "job_finished",
+                "outcome": outcome,
+                "error_status": error_status,
+                "doc_type": doc_type,
+                "duration_ms": round((time.monotonic() - started) * 1000),
+            },
+        )
 
 
 @router.post("/generate", status_code=202)
@@ -466,6 +505,7 @@ def _generate_document(
     # Exception dibiarkan naik apa adanya — _run_generation yang memetakannya ke
     # kode HTTP dan menyimpannya ke job. Fungsi ini sengaja tidak tahu HTTP.
     # Dua sumber kode yang saling menggantikan: ZIP (kalau di-upload) atau GitHub.
+    set_stage("ingest")
     if zip_requests:
         on_progress(f"Membongkar {len(zip_requests)} berkas ZIP...")
         workspaces = _ingestion_service.ingest(SourceType.ZIP_UPLOAD, zip_requests)
@@ -482,6 +522,7 @@ def _generate_document(
         on_progress(f"Mengunduh {len(ingest_requests)} repo dari GitHub...")
         workspaces = _ingestion_service.ingest(SourceType.GITHUB, ingest_requests)
 
+    set_stage("parse")
     parsed_repo_context = build_parsed_repo_context(
         project_name=body.project_name or "generated-project",
         workspaces=workspaces,
@@ -490,6 +531,7 @@ def _generate_document(
 
     # Tahap terlama: ~72% dari total. Sebutkan perkiraannya — menunggu dua menit
     # itu wajar kalau tahu itu dua menit, dan menyiksa kalau tidak tahu.
+    set_stage("llm")
     on_progress("Menganalisis dengan AI dan menyusun isi dokumen... (~2 menit)")
     document_content = _llm_service.generate_document_content(
         parsed_repo_context=parsed_repo_context,
@@ -514,6 +556,7 @@ def _generate_document(
     diagrams = document_content.get("diagrams") or {}
     # +4 = arsitektur, integrasi komponen, flow proses bisnis, use case
     n_diagrams = len(diagrams.get("activity_diagrams") or []) + 4
+    set_stage("render")
     on_progress(f"Menggambar {n_diagrams} diagram lalu menyusun .docx...")
     try:
         return generate_docx(

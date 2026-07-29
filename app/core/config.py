@@ -202,3 +202,38 @@ FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
 TIER_FREE_LIMIT = _int_env("TIER_FREE_LIMIT", 0)
 TIER_PRO_LIMIT = _int_env("TIER_PRO_LIMIT", 100)
 
+# --- Observability (#14) -----------------------------------------------------
+# Seam yang sama dengan REDIS_URL/SUPABASE_URL: kosong = mati, tanpa layanan
+# tambahan. SENTRY_DSN kosong → error tracking tak aktif dan sentry-sdk tak
+# pernah di-import (lihat telemetry.py), jadi dev/test/demo $0 tak menuntutnya.
+SENTRY_DSN = os.getenv("SENTRY_DSN")
+# Lingkungan yang dilaporkan ke Sentry (development/staging/production).
+SENTRY_ENVIRONMENT = os.getenv("SENTRY_ENVIRONMENT", "development")
+
+# Format log: "plain" (default, enak dibaca manusia saat dev) atau "json" (satu
+# objek per baris, siap diagregasi collector di produksi). Nilai lain → plain,
+# supaya salah-ketik tak mematikan log sama sekali.
+LOG_FORMAT = os.getenv("LOG_FORMAT", "plain")
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+
+# --- Deploy hardening: CORS (#15) --------------------------------------------
+# Origin frontend yang boleh memanggil API lintas-origin, dipisah koma. Diperketat
+# dari `*` (dev lama) menjadi daftar spesifik. Tiga kasus:
+#   - KOSONG → default origin dev Vite (localhost:5173) — dev `npm run dev` tetap
+#     jalan tanpa konfigurasi, TAPI sudah tak lagi `*`.
+#   - "*"    → izinkan semua (opt-in eksplisit; hanya untuk yang memang mau longgar).
+#   - daftar → origin produksi, mis. "https://app.domain.com".
+# Catatan penting: saat frontend disajikan SAME-ORIGIN oleh container (bawaan image
+# ini), CORS tak terpakai sama sekali — jadi produksi same-origin tak perlu menyetel
+# apa pun. CORS baru relevan kalau frontend dilayani dari origin BERBEDA.
+def _list_env(name: str, default: list[str]) -> list[str]:
+    raw = os.getenv(name)
+    if raw is None or raw.strip() == "":
+        return default
+    return [item.strip() for item in raw.split(",") if item.strip()]
+
+
+CORS_ALLOW_ORIGINS = _list_env(
+    "CORS_ALLOW_ORIGINS", ["http://localhost:5173", "http://127.0.0.1:5173"]
+)
+

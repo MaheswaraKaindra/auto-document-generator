@@ -25,16 +25,18 @@ import os
 import sys
 
 from app.core import config
-from app.services import job_queue, job_store
+from app.core.logging_config import configure_logging
+from app.services import job_queue, job_store, telemetry
 
 logger = logging.getLogger(__name__)
 
 
 def main() -> int:
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-    )
+    # Observability (#14): worker adalah proses TERPISAH dari web, jadi format log
+    # & error tracking-nya dipasang di sini juga — di RQ mode justru DI SINI
+    # pipeline benar-benar jalan, jadi tanpa ini exception job tak akan terlacak.
+    configure_logging()
+    telemetry.init_sentry()
 
     if not job_queue.queue_enabled():
         print(

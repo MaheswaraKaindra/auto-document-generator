@@ -39,6 +39,15 @@ services:
       # Dokumen & template terkompilasi bertahan melewati restart container.
       # (Status job pindah ke Postgres sejak #13; volume ini untuk FILE.)
       - app-data:/data
+    # Readiness gate (#14): container baru dianggap sehat kalau /ready 200 —
+    # yaitu DB + pandoc + Java + plantuml.jar semua terjangkau. curl ada di image
+    # (dipasang di Dockerfile). start_period longgar: boot + migrasi DB perlu waktu.
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/ready"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
 
   worker:
     # Image yang SAMA dengan app — beda perintah, bukan beda build. Kalau worker

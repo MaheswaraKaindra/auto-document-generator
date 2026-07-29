@@ -316,6 +316,7 @@ Caddyfile                    # #15: reverse proxy TLS otomatis. Dipakai HANYA le
                              #   tak menjalankannya, jadi alur lokal tak berubah.
 
 tests/                       # pytest (441 test) — lihat bagian Testing
+tests/                       # pytest (427 test) — lihat bagian Testing
 dummy_data/                  # fixture JSON — dipakai test otomatis DAN testing manual
 scripts/                     # utilitas dev, bukan bagian dari aplikasi
   model_getter.py            # cetak daftar model yang tersedia untuk API key kamu
@@ -378,6 +379,9 @@ Dulu ada `lain-lain/` berisi installer pandoc 41 MB + screenshot UI lama; **dua-
 | `TIER_FREE_LIMIT` / `TIER_PRO_LIMIT` | Opsional | Kuota generate dokumen **per 30 hari per akun** menurut tier (billing). Default **0 = tanpa batas** / 100. Default nol DISENGAJA: kuota berbayar itu keputusan bisnis, dan default tak-nol menyalakan tembok di setiap instance yang memasang Supabase tanpa ada yang memutuskannya (tagihan sudah dijaga `RATE_LIMIT_*`, yang menjawab pertanyaan berbeda). Kuota habis = **402** + ajakan upgrade. Job yang gagal SEBELUM LLM dipanggil tidak memotong kuota. Cuma berlaku kalau `SUPABASE_URL` diisi. |
 | `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` / `STRIPE_PRO_PRICE_ID` | Opsional | Pembayaran langganan Pro. **Kosong = pembayaran mati**: tombol upgrade jalan mode SIMULASI yang menyatakan apa adanya bahwa tier tidak berubah. Tier hanya bisa naik lewat **webhook Stripe ber-signature sah** — tidak ada jalan lain. `STRIPE_SECRET_KEY` terisi tanpa `STRIPE_PRO_PRICE_ID` ditolak berisik (bukan jadi error parameter Stripe yang menyesatkan). |
 | `FRONTEND_URL` | Opsional | Asal URL untuk success/cancel Stripe Checkout. Kosong = `http://localhost:5173`. |
+| `SENTRY_DSN` / `SENTRY_ENVIRONMENT` | Opsional | **Error tracking (#14).** Kosong = mati; `sentry-sdk` tak pernah di-import. Terisi = exception job (jalur 500/502 + sebab tak dikenal) dikirim ke Sentry dengan tag `job_id`/`owner`/`stage`. Kegagalan sisi input pengguna (422/413/400) TIDAK dikirim (bukan bug, cuma derau). DSN terisi tapi paket tak terpasang = peringatan sekali, bukan crash boot. |
+| `LOG_FORMAT` / `LOG_LEVEL` | Opsional | **Structured logging (#14).** `LOG_FORMAT=json` = satu objek JSON per baris dengan `job_id`/`owner`/`stage` + field metrik (`duration_ms`/`outcome`/`error_status`), siap diagregasi collector. Kosong/nilai lain = plain (enak dibaca saat dev). `LOG_LEVEL` default `INFO`. |
+| `CORS_ALLOW_ORIGINS` | Opsional | **CORS diperketat (#15).** Daftar origin (koma-pisah) yang boleh memanggil API lintas-origin. Kosong = default origin dev Vite (`localhost:5173`) — sudah BUKAN `*`. `*` = izinkan semua (opt-in eksplisit). Saat SPA disajikan same-origin oleh container, CORS tak terpakai sama sekali. `DOMAIN`/`TLS_EMAIL` (reverse proxy Caddy) dibaca `docker-compose.prod.yml`, BUKAN aplikasi — lihat `DEPLOY.md`. |
 
 ## Setup Lokal
 
@@ -433,7 +437,8 @@ URL backend frontend dibaca dari `VITE_API_BASE_URL` (taruh di `frontend/.env.lo
 
 | Method | Path | Fungsi |
 |---|---|---|
-| `GET` | `/health` | Health check |
+| `GET` | `/health` | Liveness: proses hidup & menjawab. Sengaja TANPA cek dependency (orchestrator memakainya untuk memutuskan restart) |
+| `GET` | `/ready` | **Readiness (#14):** proses bisa MENGERJAKAN pekerjaannya — cek DB + pandoc + Java + plantuml.jar. **200** kalau semua ada, **503** kalau satu saja hilang (sinyal orchestrator jangan kirim trafik). Body memuat status per-dependency |
 | `POST` | `/ingest/github` | Ingest repo dari GitHub (OAuth token atau PAT) -> `Workspace` |
 | `POST` | `/ingest/zip` | Ingest repo dari file ZIP yang di-upload -> `Workspace` |
 | `GET` | `/auth/github/login` | Mulai flow OAuth GitHub (scaffold, belum bisa dipakai sungguhan — lihat Keterbatasan) |
@@ -463,6 +468,7 @@ pytest
 ```
 
 441 test, **selalu mock** pemanggilan LLM (Claude — termasuk pemeta bab LLM di boundary `_request_bindings`), proses plantuml.jar, dan GitHub — supaya test tidak bergantung pada koneksi internet, Java/jar terpasang, API key, atau kuota, dan tidak pernah mengeluarkan biaya API secara tidak sengaja. (Pengecualian sadar: test V2 template — `test_build_reference_docx`, `test_template_compiler_service`, `test_routes_template` — memakai pandoc ASLI untuk mensintesis/merender reference.docx; itu deterministik & $0, tak keluar ke jaringan.)
+427 test, **selalu mock** pemanggilan LLM (Claude — termasuk pemeta bab LLM di boundary `_request_bindings`), proses plantuml.jar, dan GitHub — supaya test tidak bergantung pada koneksi internet, Java/jar terpasang, API key, atau kuota, dan tidak pernah mengeluarkan biaya API secara tidak sengaja. (Pengecualian sadar: test V2 template — `test_build_reference_docx`, `test_template_compiler_service`, `test_routes_template` — memakai pandoc ASLI untuk mensintesis/merender reference.docx; itu deterministik & $0, tak keluar ke jaringan.)
 
 **Cara MEMBUKTIKAN klaim "selalu mock" itu, dan kenapa perlu:**
 
@@ -476,6 +482,8 @@ Klaim itu pernah SALAH tanpa ada yang tahu. Tiga test (`test_mode_dev_tanpa_supa
 |---|---|
 | `tests/test_compiler_service.py` | Render PlantUML, Jinja2, export docx, metadata dokumen, halaman cover (judul dua tingkat + blok tanpa rupa tabel), template premco (bar biru SDD; header hijau + grouping per-modul + section landscape UAT) (Peran 3) |
 | `tests/test_rate_limit_service.py` | Batas per-akun: jendela sliding, Retry-After, akun lain tak terpengaruh, mode dev dilewati, limit 0 mematikan, env salah-ketik menggagalkan startup |
+| `tests/test_observability.py` | Observability #14: probe `/ready` (200 siap / 503 satu dep hilang), health tetap tanpa cek dep, JSON log membawa konteks job + field extra, seam Sentry mati by default = no-op yang tak melempar (Peran 3) |
+| `tests/test_cors.py` | CORS diperketat #15: default bukan `*`, parsing `CORS_ALLOW_ORIGINS`, origin diizinkan dipantulkan, origin asing tidak (Peran 3) |
 | `tests/test_job_queue.py` | Seam eksekusi (#13): default inline, mode RQ tak menyentuh `BackgroundTasks` (dua-duanya = pipeline berbayar jalan 2x), meta `job_id`, timeout selaras reaper, re-queue no-op/dimatikan, `mark_requeued` membersihkan sisa error |
 | `tests/test_billing_service.py` | Metering token & tarif per model (id ber-tanggal, model tak dikenal), kuota tier (job gagal-sebelum-LLM tak memotong, gagal-sesudah-LLM memotong, job berjalan ikut, limit 0 tak membatasi), checkout simulasi tak menaikkan tier, price id kosong ditolak berisik, webhook Stripe menaikkan tier |
 | `tests/test_routes_billing.py` | Endpoint `/billing/*` + penolakan **402** di `/documents/generate` saat kuota habis |

@@ -1,0 +1,45 @@
+# Overlay PRODUKSI (#15): menaruh reverse proxy Caddy (TLS otomatis + domain) di
+# depan `app`. Dipakai BERSAMA compose utama, bukan menggantikannya:
+#
+#   DOMAIN=app.domain.com TLS_EMAIL=you@domain.com \
+#     docker compose -f docker-compose.yml -f docker-compose.prod.yml up --build -d
+#
+# Yang berubah dari compose lokal:
+#   - `app` TIDAK lagi mengekspos 8000 ke host — hanya Caddy yang menghadap
+#     internet (80/443). App tetap dijangkau Caddy lewat jaringan internal compose.
+#   - Caddy mengambil sertifikat Let's Encrypt otomatis untuk $DOMAIN (syarat: DNS
+#     $DOMAIN sudah menunjuk ke server ini + port 80/443 terbuka).
+#
+# CORS: karena SPA tetap disajikan same-origin oleh `app` (di balik Caddy, satu
+# domain), CORS tak terpakai — tak perlu menyetel CORS_ALLOW_ORIGINS. Baru perlu
+# kalau frontend dilayani dari domain LAIN.
+
+services:
+  app:
+    # Cabut publikasi port 8000 ke host (butuh Docker Compose v2.24+). Hanya Caddy
+    # yang menghadap luar; app dijangkau via jaringan internal compose.
+    ports: !reset []
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - app
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      # `:?` = gagal berisik kalau DOMAIN tak diisi, daripada Caddy start dengan
+      # host kosong lalu diam-diam tak pernah menerbitkan TLS.
+      DOMAIN: ${DOMAIN:?set DOMAIN=app.domain.com}
+      TLS_EMAIL: ${TLS_EMAIL:-}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      # Sertifikat & state ACME BERTAHAN melewati restart — tanpa ini Caddy
+      # meminta sertifikat baru tiap restart dan bisa kena rate limit Let's Encrypt.
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  caddy-data:
+  caddy-config:
