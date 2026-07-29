@@ -73,7 +73,8 @@ def test_upload_with_llm_mapping_opt_in(client, monkeypatch):
     import app.services.llm_mapping_service as lm
     monkeypatch.setattr(
         lm, "_request_bindings",
-        lambda outline, doc_type: {0: "skip", 1: "app_description", 2: "feature_requirements"},
+        lambda outline, doc_type, usage_sink=None: {
+            0: "skip", 1: "app_description", 2: "feature_requirements"},
     )
     data = _docx_bytes(["Vision Statement", "Business Capabilities"])
     resp = client.post(

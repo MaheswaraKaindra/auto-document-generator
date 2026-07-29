@@ -120,9 +120,17 @@ ATURAN:
 4. Salin `text` apa adanya dan pertahankan `index`."""
 
 
-def _request_bindings(outline: list[dict], doc_type: str) -> dict[int, str]:
+def _request_bindings(outline: list[dict], doc_type: str,
+                      usage_sink: list | None = None) -> dict[int, str]:
     """Panggil Claude → `{index bab: binding}`. Ini SATU-SATUNYA titik jaringan
-    berbayar modul ini — di-mock di test (monkeypatch fungsi ini)."""
+    berbayar modul ini — di-mock di test (monkeypatch fungsi ini).
+
+    `usage_sink`: kalau diberi, pemakaian token panggilan ini di-append ke sana
+    (bentuknya sama dengan `_usage` di llm_service, supaya `record_job_usage` bisa
+    memakan keduanya tanpa cabang). Panggilan ini BERBAYAR persis seperti generate
+    dokumen; tanpa kanal ini biayanya tak pernah sampai ke panel billing dan
+    dashboard biaya melaporkan angka yang lebih kecil dari tagihan sesungguhnya.
+    """
     lines = [
         f"[{i}] level={o.get('level')} | {(o.get('text') or '').strip()!r}"
         for i, o in enumerate(outline)
@@ -146,10 +154,18 @@ def _request_bindings(outline: list[dict], doc_type: str) -> dict[int, str]:
         doc_type, usage.input_tokens, usage.output_tokens,
         len(result.chapters), result.strategy,
     )
+    if usage_sink is not None:
+        usage_sink.append({
+            "input_tokens": getattr(usage, "input_tokens", 0) or 0,
+            "output_tokens": getattr(usage, "output_tokens", 0) or 0,
+            "cache_creation_input_tokens": getattr(usage, "cache_creation_input_tokens", 0) or 0,
+            "cache_read_input_tokens": getattr(usage, "cache_read_input_tokens", 0) or 0,
+        })
     return {c.index: c.binding for c in result.chapters}
 
 
-def llm_propose_mapping(spec: dict, doc_type: str) -> list[dict]:
+def llm_propose_mapping(spec: dict, doc_type: str,
+                        usage_sink: list | None = None) -> list[dict]:
     """Peta bab BER-LLM. Kontrak keluaran SAMA dengan
     `template_generator_service.propose_mapping` (list `[{level, text, binding}]`),
     jadi bisa dipertukarkan. BERBAYAR — satu panggilan Claude.
@@ -160,7 +176,7 @@ def llm_propose_mapping(spec: dict, doc_type: str) -> list[dict]:
     outline = spec.get("structure", {}).get("outline", [])
     normalized = doc_type.upper()
     allowed = _UAT_CONTENT if normalized == "UAT" else _SDD_CONTENT
-    raw = _request_bindings(outline, normalized)
+    raw = _request_bindings(outline, normalized, usage_sink)
 
     def classify(i: int, _entry: dict):
         binding = raw.get(i)

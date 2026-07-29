@@ -107,13 +107,32 @@ RATE_LIMIT_TEMPLATE_UPLOAD_PER_WINDOW = _int_env("RATE_LIMIT_TEMPLATE_UPLOAD_PER
 # berpengaruh. Di image Docker, build frontend disalin ke sini.
 FRONTEND_DIST = os.getenv("FRONTEND_DIST", "frontend/dist")
 
-# --- Billing & Quota (Stripe Integration) ------------------------------------
+# --- Billing & Quota (Stripe) ------------------------------------------------
 STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
-STRIPE_PRO_PRICE_ID = os.getenv("STRIPE_PRO_PRICE_ID", "price_pro_test")
+
+# TANPA default. Dulu berisi "price_pro_test" — id palsu yang terlihat seperti
+# konfigurasi sah, jadi lupa mengisinya baru ketahuan sebagai error Stripe tentang
+# parameter API, bukan sebagai "env belum diisi". Kosong = ditolak berisik di
+# billing_service saat Stripe memang aktif.
+STRIPE_PRO_PRICE_ID = os.getenv("STRIPE_PRO_PRICE_ID")
+
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
 
-# Kuota generate dokumen per bulan berdasarkan Tier (0 = unlimited)
-TIER_FREE_LIMIT = _int_env("TIER_FREE_LIMIT", 3)
+# Kuota generate dokumen per 30 hari, per akun, menurut tier. 0 = TANPA batas.
+#
+# Default 0 (bukan 3) DISENGAJA: kuota ini cuma berlaku kalau auth aktif, jadi
+# default tak-nol menyalakan pembatasan berbayar di SETIAP instance yang memasang
+# Supabase — termasuk instance internal satu tim yang tak pernah minta ditagih, dan
+# tanpa satu pun baris konfigurasi yang berubah. Menaikkan tembok itu keputusan
+# bisnis; menaruhnya sebagai default berarti keputusan itu diambil diam-diam oleh
+# nilai literal di file ini.
+#
+# Tagihan tetap terjaga tanpa ini: `RATE_LIMIT_GENERATE_PER_WINDOW` (10/jam) sudah
+# menahan skrip yang lepas kendali. Kuota tier menjawab pertanyaan yang BERBEDA —
+# "berapa yang boleh dipakai pelanggan gratis" — dan pertanyaan itu baru ada
+# begitu produk ini benar-benar dijual. Isi TIER_FREE_LIMIT di .env untuk
+# menyalakannya (mis. 3), lalu penolakannya keluar sebagai 402 + ajakan upgrade.
+TIER_FREE_LIMIT = _int_env("TIER_FREE_LIMIT", 0)
 TIER_PRO_LIMIT = _int_env("TIER_PRO_LIMIT", 100)
 

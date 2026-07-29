@@ -559,9 +559,19 @@ function App() {
       })
 
       if (!response.ok) {
+        // Pesan server ditampilkan APA ADANYA kalau ada — dia sudah ditulis untuk
+        // dibaca pengguna (mis. 429 "Batas pemakaian tercapai: ... coba lagi ~12
+        // menit lagi", 422 template x jenis dokumen). Membungkusnya jadi
+        // `Server merespons 429: {"detail":"..."}` justru menyembunyikan kalimat
+        // yang berguna di balik JSON mentah. Pola sama dengan jalur upload template.
+        //
+        // 402 kuota membawa `detail` berbentuk OBJEK (message + upgrade_required +
+        // used/limit) supaya klien bisa menawarkan upgrade, bukan cuma bercerita —
+        // jadi kalimatnya diambil dari `detail.message`, bukan dari objeknya utuh
+        // (yang akan tampil sebagai "[object Object]").
         const body = await response.json().catch(() => ({}))
-        const msg = typeof body.detail === 'object' && body.detail !== null 
-          ? body.detail.message 
+        const msg = typeof body.detail === 'object' && body.detail !== null
+          ? body.detail.message
           : body.detail
         throw new Error(msg || `Server merespons ${response.status}`)
       }

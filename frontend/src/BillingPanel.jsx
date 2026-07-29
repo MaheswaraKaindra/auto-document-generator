@@ -34,12 +34,29 @@ export default function BillingPanel() {
 
     // Periksa apakah ada callback dari Stripe checkout
     const params = new URLSearchParams(window.location.search)
-    if (params.get('billing') === 'success' || params.get('billing') === 'success_stub') {
+    if (params.get('billing') === 'success') {
+      // Kembali dari Stripe TIDAK sama dengan tier sudah naik: yang menaikkan tier
+      // adalah webhook ber-signature sah, dan dia bisa mendarat beberapa detik
+      // sesudah pengguna kembali ke sini. Mengumumkan "sudah Pro" di titik ini
+      // berarti berbohong tiap kali webhook-nya telat — badge di panel yang sama
+      // masih menulis "free". Jadi kalimatnya menyebut apa yang benar-benar sudah
+      // terjadi, dan panelnya menyegarkan diri.
       setAlertMsg({
         type: 'success',
-        text: 'Pembayaran berhasil! Tier akun Anda telah ditingkatkan menjadi Pro.',
+        text: 'Pembayaran diterima Stripe. Tier akan naik ke Pro begitu konfirmasi '
+          + 'langganan masuk (biasanya beberapa detik) — muat ulang halaman kalau '
+          + 'badge di atas masih menulis "free".',
       })
-      // Bersihkan URL param
+      window.history.replaceState({}, document.title, window.location.pathname)
+    } else if (params.get('billing') === 'simulasi') {
+      // Stripe belum dikonfigurasi di server. TIDAK ada pembayaran dan tier TIDAK
+      // berubah — dan itu harus dikatakan, bukan dirayakan.
+      setAlertMsg({
+        type: 'warning',
+        text: 'Mode simulasi: pembayaran Stripe belum aktif di server ini, jadi '
+          + 'tier akun Anda TIDAK berubah. Pengelola perlu mengisi STRIPE_SECRET_KEY, '
+          + 'STRIPE_WEBHOOK_SECRET, dan STRIPE_PRO_PRICE_ID.',
+      })
       window.history.replaceState({}, document.title, window.location.pathname)
     } else if (params.get('billing') === 'cancel') {
       setAlertMsg({
@@ -65,6 +82,17 @@ export default function BillingPanel() {
         throw new Error(body.detail || 'Gagal memulai Stripe checkout')
       }
       const data = await res.json()
+      // `is_stub` = server belum punya kredensial Stripe. Mengikuti checkout_url-nya
+      // cuma memutar pengguna kembali ke halaman ini; katakan saja apa adanya di
+      // tempat dia menekan tombolnya.
+      if (data.is_stub) {
+        setAlertMsg({
+          type: 'warning',
+          text: 'Pembayaran Stripe belum aktif di server ini, jadi upgrade tidak '
+            + 'bisa diproses dan tier Anda tetap free. Hubungi pengelola aplikasi.',
+        })
+        return
+      }
       if (data.checkout_url) {
         window.location.href = data.checkout_url
       }

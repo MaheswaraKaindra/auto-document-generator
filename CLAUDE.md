@@ -218,6 +218,12 @@ app/
                              #   dari baris `jobs` & manifest template yang memang
                              #   sudah tersimpan — itu yang bikin benar lintas-worker
                              #   & tahan restart tanpa Redis. Jendela SLIDING.
+    billing_service.py       # metering token + estimasi biaya, kuota per tier, Stripe.
+                             #   Tabel `user_subscriptions` & `usage_records` di DB yang
+                             #   SAMA dengan job_store. Tier cuma naik lewat webhook
+                             #   ber-signature. Kuota menghitung job yang benar-benar
+                             #   memakai LLM — job yang mati sebelum LLM tak memotong.
+                             #   Tarif dari LLM_MODEL (harga daftar = PLAFON).
     compiler_service.py      # Contract B -> render Mermaid -> Jinja2 -> .docx (Peran 3)
     template_spec_service.py # V2: ukur docx template user -> TemplateSpec (JSON), deterministik
                              #   Judul bab dicari di SELURUH wadah terukur, bukan cuma
@@ -252,6 +258,7 @@ app/
     routes_auth.py           # GET /auth/github/login, GET /auth/github/callback
     routes_document.py       # POST /documents/{sdd,uat,generate}, GET /documents/jobs/*
     routes_template.py       # V2: POST /templates (upload docx), GET /templates[/{id}]
+    routes_billing.py        # GET /billing/usage, POST /billing/checkout, POST /billing/webhook
     schemas.py, schemas_document.py
   templates/
     sdd_template.md, uat_template.md   # template Jinja2 (Markdown) sebelum dikonversi ke docx
@@ -272,7 +279,7 @@ app/
 frontend/                    # React + Vite, form sederhana yang hit POST /documents/generate
   src/App.jsx, src/main.jsx
 
-tests/                       # pytest (390 test) — lihat bagian Testing
+tests/                       # pytest (403 test) — lihat bagian Testing
 dummy_data/                  # fixture JSON — dipakai test otomatis DAN testing manual
 scripts/                     # utilitas dev, bukan bagian dari aplikasi
   model_getter.py            # cetak daftar model yang tersedia untuk API key kamu
@@ -329,6 +336,9 @@ Dulu ada `lain-lain/` berisi installer pandoc 41 MB + screenshot UI lama; **dua-
 | `GITHUB_TOKEN` | Opsional | PAT untuk akses repo privat lewat endpoint ingest berbasis PAT. Repo publik tetap bisa tanpa token, cuma rate-limited 60 req/jam. |
 | `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` / `GITHUB_OAUTH_REDIRECT_URI` | Opsional | Cuma perlu kalau mau flow OAuth GitHub beneran jalan (perlu GitHub OAuth App terdaftar — belum ada saat ini, lihat Keterbatasan). |
 | `RATE_LIMIT_WINDOW_SECONDS` / `RATE_LIMIT_GENERATE_PER_WINDOW` / `RATE_LIMIT_TEMPLATE_UPLOAD_PER_WINDOW` | Opsional | Batas pemakaian **per-akun** untuk endpoint berbayar. Default 3600 detik / 10 generate / 20 upload template. Jendela **sliding** (bukan reset di jam bulat). `0` = matikan batas untuk endpoint itu; nilai tak masuk akal **menggagalkan startup** (`config._int_env`) supaya salah-ketik tak diam-diam jadi "tanpa batas". Cuma berlaku kalau `SUPABASE_URL` diisi — lihat `rate_limit_service`. |
+| `TIER_FREE_LIMIT` / `TIER_PRO_LIMIT` | Opsional | Kuota generate dokumen **per 30 hari per akun** menurut tier (billing). Default **0 = tanpa batas** / 100. Default nol DISENGAJA: kuota berbayar itu keputusan bisnis, dan default tak-nol menyalakan tembok di setiap instance yang memasang Supabase tanpa ada yang memutuskannya (tagihan sudah dijaga `RATE_LIMIT_*`, yang menjawab pertanyaan berbeda). Kuota habis = **402** + ajakan upgrade. Job yang gagal SEBELUM LLM dipanggil tidak memotong kuota. Cuma berlaku kalau `SUPABASE_URL` diisi. |
+| `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` / `STRIPE_PRO_PRICE_ID` | Opsional | Pembayaran langganan Pro. **Kosong = pembayaran mati**: tombol upgrade jalan mode SIMULASI yang menyatakan apa adanya bahwa tier tidak berubah. Tier hanya bisa naik lewat **webhook Stripe ber-signature sah** — tidak ada jalan lain. `STRIPE_SECRET_KEY` terisi tanpa `STRIPE_PRO_PRICE_ID` ditolak berisik (bukan jadi error parameter Stripe yang menyesatkan). |
+| `FRONTEND_URL` | Opsional | Asal URL untuk success/cancel Stripe Checkout. Kosong = `http://localhost:5173`. |
 
 ## Setup Lokal
 
@@ -391,7 +401,7 @@ URL backend frontend dibaca dari `VITE_API_BASE_URL` (taruh di `frontend/.env.lo
 | `GET` | `/auth/github/callback` | Callback OAuth GitHub |
 | `POST` | `/documents/sdd` | Terima `DocumentContent` (Contract B) langsung, render jadi SDD `.docx` — untuk testing template tanpa perlu ingest+LLM. **Tidak menerima `document_metadata`** (body-nya murni Contract B); dokumennya keluar dengan penanda `(diisi manual)` |
 | `POST` | `/documents/uat` | Sama seperti di atas, untuk UAT `.docx` |
-| `POST` | `/documents/generate` | **Endpoint utama, ASYNC.** Balik **202** + `{job_id, status_url}` dalam ~50ms; pipeline penuh (ingest -> parse -> LLM -> compile) jalan di latar belakang. Sumber kode: `repositories` (GitHub) **ATAU** `zip_files` (upload ZIP base64 — kalau ada, ZIP yang dipakai; base64 rusak = 422 sinkron; sejak 2026-07-20). Satu-satunya yang menerima `document_metadata` (isian form, opsional — lihat `DocumentMetadata`) dan `logo_base64` (logo perusahaan → header tiap halaman; divalidasi SINKRON, file rusak = 422 sebelum job dibuat), plus `template_id` ("default"/"premco", ATAU id hasil upload lewat `POST /templates` — kombinasi tak tersedia = 422 sinkron). **Dibatasi rate limit per-akun**: kuota habis = **429** + header `Retry-After`, tanpa job berbayar baru |
+| `POST` | `/documents/generate` | **Endpoint utama, ASYNC.** Balik **202** + `{job_id, status_url}` dalam ~50ms; pipeline penuh (ingest -> parse -> LLM -> compile) jalan di latar belakang. Sumber kode: `repositories` (GitHub) **ATAU** `zip_files` (upload ZIP base64 — kalau ada, ZIP yang dipakai; base64 rusak = 422 sinkron; sejak 2026-07-20). Satu-satunya yang menerima `document_metadata` (isian form, opsional — lihat `DocumentMetadata`) dan `logo_base64` (logo perusahaan → header tiap halaman; divalidasi SINKRON, file rusak = 422 sebelum job dibuat), plus `template_id` ("default"/"premco", ATAU id hasil upload lewat `POST /templates` — kombinasi tak tersedia = 422 sinkron). **Dibatasi rate limit per-akun**: kuota habis = **429** + header `Retry-After`, tanpa job berbayar baru. **Dan dibatasi kuota tier** (kalau `TIER_FREE_LIMIT` diisi): jatah 30-harian habis = **402** + `detail` berbentuk objek (`message`/`upgrade_required`/`used`/`limit`), juga tanpa job berbayar baru. Dua batas berbeda: 429 = terlalu cepat, 402 = jatahnya memang habis |
 | `GET` | `/documents/jobs/{job_id}` | Status job: `queued`/`running`/`done`/`failed`. **200 walau job-nya gagal** — kegagalannya ada di payload (`error` + `error_status`), karena pertanyaannya sendiri berhasil dijawab |
 | `GET` | `/documents/jobs/{job_id}/download` | Unduh `.docx` hasil. **409** kalau job belum selesai (bukan 404 — job-nya ada, cuma belum siap) |
 | `GET` | `/documents/jobs/{job_id}/diagrams` | Unduh ZIP berisi `.drawio` activity diagram dokumen ini (versi yang bisa DISUNTING, lahir dari geometri yang sama dengan gambar cetaknya). **404** kalau dokumennya memang tak punya activity diagram — status job cuma mengumumkan `diagrams_url` kalau bundelnya nyata |
@@ -400,6 +410,9 @@ URL backend frontend dibaca dari `VITE_API_BASE_URL` (taruh di `frontend/.env.lo
 | `GET` | `/templates/{id}` | Detail template terkompilasi: manifest + rencana peta bab (untuk UI tinjauan). **404** kalau bukan template hasil-upload **atau milik pengguna lain** (pesannya sama persis — jangan bocorkan keberadaannya) |
 | `GET` | `/templates/bindings` | Pilihan isi yang boleh dipasang ke sebuah bab — sumber kebenaran dropdown UI tinjauan. Dideklarasikan SEBELUM `/{template_id}` supaya path parameter tak menelannya |
 | `PUT` | `/templates/{id}/mappings/{doc_type}` | **Simpan peta bab hasil tinjauan manusia** → generate ulang template Jinja. Body: `{bindings: [...]}` PARALEL dengan peta tersimpan (cuma binding — struktur bab hasil pengukuran, bukan pendapat). **404** template/doc_type tak ada **atau milik pengguna lain**; **422** jumlah tak cocok / binding tak dikenal / satu isi dipakai dua bab |
+| `GET` | `/billing/usage` | Ringkasan kuota & pemakaian LLM pemanggil dalam 30 hari: `tier`, `limit`, `jobs_used`, `remaining`, `total_tokens`, `total_cost_usd`. Biayanya **estimasi berdasarkan harga daftar** model yang dipakai (`LLM_MODEL`) — plafon, bukan tagihan |
+| `POST` | `/billing/checkout` | Mulai upgrade ke Pro lewat Stripe Checkout → `{checkout_url, session_id, is_stub}`. **`is_stub: true` = Stripe belum dikonfigurasi**: tak ada pembayaran & tier TIDAK berubah, dan klien WAJIB mengatakannya apa adanya. **500** kalau env Stripe setengah terisi (pesan menyebut env-nya), **502** kalau Stripe sendiri yang gagal |
+| `POST` | `/billing/webhook` | Webhook Stripe — **satu-satunya jalur yang boleh menaikkan/menurunkan tier**. Tanpa auth (memang tak boleh, pemanggilnya Stripe), tapi payload **wajib lolos verifikasi signature** (`stripe.Webhook.construct_event`); tanpa `STRIPE_WEBHOOK_SECRET` semua event ditolak, bukan diterima diam-diam. **400** signature tak sah / header hilang |
 
 ## Testing
 
@@ -407,7 +420,7 @@ URL backend frontend dibaca dari `VITE_API_BASE_URL` (taruh di `frontend/.env.lo
 pytest
 ```
 
-390 test, **selalu mock** pemanggilan LLM (Claude — termasuk pemeta bab LLM di boundary `_request_bindings`), proses plantuml.jar, dan GitHub — supaya test tidak bergantung pada koneksi internet, Java/jar terpasang, API key, atau kuota, dan tidak pernah mengeluarkan biaya API secara tidak sengaja. (Pengecualian sadar: test V2 template — `test_build_reference_docx`, `test_template_compiler_service`, `test_routes_template` — memakai pandoc ASLI untuk mensintesis/merender reference.docx; itu deterministik & $0, tak keluar ke jaringan.)
+403 test, **selalu mock** pemanggilan LLM (Claude — termasuk pemeta bab LLM di boundary `_request_bindings`), proses plantuml.jar, dan GitHub — supaya test tidak bergantung pada koneksi internet, Java/jar terpasang, API key, atau kuota, dan tidak pernah mengeluarkan biaya API secara tidak sengaja. (Pengecualian sadar: test V2 template — `test_build_reference_docx`, `test_template_compiler_service`, `test_routes_template` — memakai pandoc ASLI untuk mensintesis/merender reference.docx; itu deterministik & $0, tak keluar ke jaringan.)
 
 **Cara MEMBUKTIKAN klaim "selalu mock" itu, dan kenapa perlu:**
 
@@ -421,6 +434,8 @@ Klaim itu pernah SALAH tanpa ada yang tahu. Tiga test (`test_mode_dev_tanpa_supa
 |---|---|
 | `tests/test_compiler_service.py` | Render PlantUML, Jinja2, export docx, metadata dokumen, halaman cover (judul dua tingkat + blok tanpa rupa tabel), template premco (bar biru SDD; header hijau + grouping per-modul + section landscape UAT) (Peran 3) |
 | `tests/test_rate_limit_service.py` | Batas per-akun: jendela sliding, Retry-After, akun lain tak terpengaruh, mode dev dilewati, limit 0 mematikan, env salah-ketik menggagalkan startup |
+| `tests/test_billing_service.py` | Metering token & tarif per model (id ber-tanggal, model tak dikenal), kuota tier (job gagal-sebelum-LLM tak memotong, gagal-sesudah-LLM memotong, job berjalan ikut, limit 0 tak membatasi), checkout simulasi tak menaikkan tier, price id kosong ditolak berisik, webhook Stripe menaikkan tier |
+| `tests/test_routes_billing.py` | Endpoint `/billing/*` + penolakan **402** di `/documents/generate` saat kuota habis |
 | `tests/test_routes_document.py` | Endpoint `/documents/*` (Peran 3) |
 | `tests/test_routes_ingestion.py` | Endpoint `/ingest/zip`: multipart, pemasangan file↔tag, error 422 (Peran 1) |
 | `tests/test_github_provider.py` | Ingest lewat tarball, pakai tarball sintetis di memori (Peran 1) |
@@ -512,6 +527,8 @@ Untuk testing manual end-to-end (hit API sungguhan, termasuk panggilan LLM yang 
 
 - **Template `premco` kini menyediakan SDD DAN UAT (UAT sejak 2026-07-18); gaya-nya terbukti netral-bahasa (Python + TS/JS), tapi FORMAT-nya masih dari SATU sumber template.** Diverifikasi menghasilkan dokumen berjejak pada esteler (Python/Flask) DAN MyPertamina.id-Clone (Vue/JS/TS, 2026-07-18) — jadi klaim "repo bahasa apa pun yang didukung → gaya premco" bukan lagi asumsi. Yang MASIH satu sumber: bentuk visual/struktur premco diukur dari satu dokumen PREMCO SDD **dan** satu dokumen PREMCO UAT (dari perusahaan yang template default kita pun dimodelkan darinya), jadi V2 (upload sembarang template) tetap menunggu 1-2 template docx dari sumber lain. Roadmap tahap (b) — gaya premco untuk UAT — SELESAI. Job kini MENYIMPAN `template_id` (kolom + migrasi, 2026-07-21) dan mengembalikannya di GET status, jadi riwayat job bisa menjawab "dokumen ini gaya apa"; `None` untuk job dari DB lama. **Sejak 2026-07-21, `premco` jadi DEFAULT `template_id`** (`schemas_document.py` `= "premco"` + initial state frontend `useState('premco')`) — instance ini premco-first, jadi generate tanpa memilih langsung dapat gaya premco; `default` tetap tersedia sebagai pilihan.
 - **Daftar Isi/Gambar/Tabel SDD tampak KOSONG sampai field di-update — ini perilaku Word standar, BUKAN bug (diverifikasi 2026-07-21 lanjutan 10).** Ketiganya ditanam sebagai Word field code (`TOC ...` + `updateFields=true` di settings.xml) — field code-nya SUDAH benar: dibuktikan lewat Word COM, begitu field di-update ketiga daftar terisi lengkap + nomor halaman + hyperlink clickable, dan Daftar Isi menampilkan hierarki acuan persis (bab tanpa nomor, sub-bab 1-4 di bawah Flow Proses Bisnis). Yang bikin tampak kosong: pengguna membuka docx TANPA meng-update field (klik "No" pada prompt Word, atau pakai viewer non-Word). Placeholder-nya sudah diubah jadi instruksi ("tekan Ctrl+A lalu F9"). **Nomor halaman MUSTAHIL di-bake Pandoc** — cuma mesin layout (Word/LibreOffice) yang bisa menghitungnya, jadi field code adalah cara docx standar; complex field `dirty=true` pun tak terisi pada plain-open (diuji). **Agar auto-terisi di viewer APA PUN tanpa aksi pengguna, perlu bake server-side lewat LibreOffice headless** — dependency baru yang belum terpasang, jadi belum di-ship (belum bisa diverifikasi; prinsip #4). Kandidat follow-up, keputusan pemilik.
+- **Jalur bayar Stripe DITULIS & ber-tes, tapi BELUM pernah terbukti end-to-end.** Seluruh test mem-mock `stripe.Webhook.construct_event`, jadi yang dijaga adalah *"kalau event sah datang, tier naik"* — bukan *"Stripe benar-benar mengirim event itu"*. Acceptance criteria ketiga issue #12 (*"alur bayar test mode menaikkan tier"*) karenanya **belum tercentang**, dan itu bukan detail: yang belum diuji justru satu-satunya jalur yang boleh mengubah tier. Menutupnya butuh akun Stripe test-mode milik pemilik (secret key + price id + endpoint webhook yang bisa dijangkau Stripe, mis. lewat `stripe listen`) — tak bisa diselesaikan dari dalam repo. Sampai itu terjadi, perlakukan billing sebagai "siap dicoba", bukan "terbukti". Pola yang sama dengan gate Docker: bukti finalnya menunggu satu langkah manual pemilik.
+- **Pemeriksaan kuota dan pembuatan job tidak atomik** (TOCTOU, diketahui & diterima). `check_quota_available` membaca hitungan lalu `create_job` menulis; dua request yang benar-benar bersamaan bisa lolos bersama dan melewati batas satu-dua dokumen. Kelas yang sama dengan rate limit, dan obatnya pun sama (kunci/transaksi di titik tulis) — belum diambil karena taruhannya kecil: kelebihan satu dokumen bukan kelas kerugian yang sama dengan kuota yang bocor lipat-ganda antar worker.
 - **Tidak ada hubungan/integrasi dengan project sibling `auto-project-tester`** — keduanya independen. Kalau menjalankan keduanya bersamaan secara lokal, perhatikan **keduanya sama-sama default ke port 8000** untuk backend-nya masing-masing — pastikan tidak salah port sebelum menyimpulkan sesuatu error/berhasil.
 
 ## Prinsip Kerja (pelajaran yang berulang)
