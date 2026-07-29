@@ -5,19 +5,18 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.api.routes_auth import router as auth_router
+from app.api.routes_billing import router as billing_router
 from app.api.routes_document import router as document_router
 from app.api.routes_ingestion import router as ingestion_router
 from app.api.routes_template import router as template_router
 from app.core import config
-from app.services import job_store
+from app.services import billing_service, job_store
 
 app = FastAPI(title="Auto Document Generator")
 
-# Tabel job dibuat saat import, bukan di event startup: TestClient dan sebagian
-# jalur deploy tidak selalu menjalankan startup hook, dan tabel yang belum ada
-# baru ketahuan sebagai OperationalError di dalam background task — di mana tidak
-# ada request yang bisa menampung errornya. init_db() aman dipanggil berkali-kali.
+# Tabel job dan billing dibuat saat import
 job_store.init_db()
+billing_service.init_billing_db()
 
 # Pungut job yang macet di `running`/`queued` dari proses SEBELUMNYA yang mati
 # saat job jalan (deploy/crash/OOM). Di sini — bukan di event startup — dengan
@@ -53,6 +52,8 @@ app.include_router(ingestion_router)
 app.include_router(auth_router)
 app.include_router(document_router)
 app.include_router(template_router)
+app.include_router(billing_router)
+
 
 
 @app.get("/health")
