@@ -102,6 +102,11 @@ _MIGRATIONS = [
     ("progress", "ALTER TABLE jobs ADD COLUMN progress TEXT"),
     ("template_id", "ALTER TABLE jobs ADD COLUMN template_id TEXT"),
     ("owner", "ALTER TABLE jobs ADD COLUMN owner TEXT"),
+    # Berapa kali job ini sudah DIULANG otomatis sesudah worker-nya mati (#13).
+    # Ada di sini, bukan cuma di Redis, karena batas percobaan harus bertahan
+    # walau antriannya diganti/dikosongkan — dan supaya "kenapa job ini jalan dua
+    # kali" bisa dijawab dari data yang sama dengan status job.
+    ("attempts", "ALTER TABLE jobs ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0"),
 ]
 
 
@@ -222,6 +227,38 @@ def mark_failed(job_id: str, error: str, error_status: int) -> None:
     persis penyamaran yang sudah tiga kali diperbaiki di project ini.
     """
     _update(job_id, status=STATUS_FAILED, error=error, error_status=error_status)
+
+
+def mark_requeued(job_id: str) -> int:
+    """Kembalikan job ke antrian sesudah worker-nya mati, naikkan `attempts`,
+    kembalikan nilai attempts yang baru.
+
+    Status balik ke `queued` (bukan tetap `failed`) supaya klien yang sedang
+    polling melihat kebenaran: pekerjaannya memang sedang diantre lagi. `error`
+    dan `error_status` dibersihkan — menyisakan pesan "proses berhenti di tengah
+    jalan" pada job yang kini sehat akan menampilkan kegagalan yang sudah tidak
+    berlaku.
+    """
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT attempts FROM jobs WHERE id = ?", (job_id,)
+        ).fetchone()
+        attempts = (row["attempts"] if row and row["attempts"] is not None else 0) + 1
+        conn.execute(
+            "UPDATE jobs SET status = ?, error = NULL, error_status = NULL, "
+            "attempts = ?, updated_at = ? WHERE id = ?",
+            (STATUS_QUEUED, attempts, _now(), job_id),
+        )
+    return attempts
+
+
+def attempts_of(job_id: str) -> int:
+    """Berapa kali job ini sudah diulang. 0 untuk job dari DB lama."""
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT attempts FROM jobs WHERE id = ?", (job_id,)
+        ).fetchone()
+    return (row["attempts"] if row and row["attempts"] is not None else 0)
 
 
 def reap_stale_jobs(max_age_seconds: float = STALE_JOB_SECONDS) -> int:

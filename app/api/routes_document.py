@@ -12,7 +12,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from fastapi.responses import FileResponse
 
 from app.api.deps import get_current_user, rate_limited_generate
-from app.services import auth_service, billing_service
+from app.services import auth_service, billing_service, job_queue
 from app.services.auth_service import Principal
 
 from app.api.schemas_document import GenerateDocumentRequest, ZipFileIn
@@ -249,12 +249,50 @@ def generate_document_full_pipeline(
         template_id=body.template_id,
         owner=principal.id,
     )
-    background_tasks.add_task(_run_generation, job_id, body, logo_bytes, zip_requests)
+    try:
+        job_queue.enqueue(
+            background_tasks, _run_generation,
+            job_id, body, logo_bytes, zip_requests,
+            domain_job_id=job_id,
+        )
+    except Exception as e:
+        # Antrian tak bisa dihubungi (Redis mati). Job-nya SUDAH ada di DB, jadi
+        # membiarkannya begitu saja berarti dia tergantung di `queued` sampai
+        # reaper memungutnya 30 menit kemudian — pengguna polling setengah jam
+        # untuk pekerjaan yang tak pernah diantre. Tandai gagal sekarang, dengan
+        # 503: ini kegagalan SEMENTARA (layanan antrian sedang mati), jadi
+        # mengulang memang saran yang jujur.
+        logger.exception("Gagal mengantre job %s", job_id)
+        job_store.mark_failed(
+            job_id,
+            "Antrian pekerjaan sedang tidak bisa dihubungi, jadi dokumen ini "
+            "belum mulai diproses. Coba lagi beberapa saat.",
+            503,
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="Antrian pekerjaan sedang tidak tersedia. Coba lagi beberapa saat.",
+        ) from e
+
     return {
         "job_id": job_id,
         "status": job_store.STATUS_QUEUED,
         "status_url": f"/documents/jobs/{job_id}",
     }
+
+
+def _requeue_abandoned_quietly() -> None:
+    """Sapuan re-queue yang TIDAK boleh menjatuhkan endpoint status.
+
+    Redis mati saat pengguna menanyakan status job berarti dia tetap berhak
+    mendapat jawaban dari DB — status job hidup di tabel `jobs`, bukan di
+    antrian. Menjadikan sapuan pemeliharaan ini fatal akan membuat kegagalan
+    layanan tambahan menular ke jalur baca yang sebenarnya masih sehat.
+    """
+    try:
+        job_queue.requeue_abandoned()
+    except Exception:
+        logger.warning("Sapuan re-queue job terbengkalai gagal", exc_info=True)
 
 
 def _job_payload(job: dict) -> dict:
@@ -292,6 +330,7 @@ def list_my_jobs(principal: Principal = Depends(get_current_user)):
     Owner-scoped di query (`job_store.list_jobs`), jadi tak pernah menyentuh
     dokumen pengguna lain. Dideklarasikan SEBELUM `/jobs/{job_id}` supaya path
     literal "/jobs" tak tertelan sebagai job_id."""
+    _requeue_abandoned_quietly()
     job_store.reap_stale_jobs()
     job_store.purge_expired_documents()
     jobs = job_store.list_jobs(principal.id)
@@ -308,6 +347,15 @@ def get_job_status(job_id: str, principal: Principal = Depends(get_current_user)
     # dan klien polling tanpa akhir. Sapuan murah (tabel job kecil) & idempoten;
     # job yang ditanya di sini yang paling mungkin sedang dipoll, jadi ini titik
     # paling tepat untuk deteksi lazy pada job milik worker yang mati.
+    #
+    # URUTAN PENTING: re-queue DULU, baru reaper. Job yang mati bersama worker-nya
+    # masih punya argumen utuh di antrian, jadi dia layak dilanjutkan — bukan
+    # divonis. Kalau reaper jalan lebih dulu, dia menandai job itu `failed` dan
+    # re-queue akan mengembalikannya ke `queued` sesaat kemudian; klien yang
+    # kebetulan polling di sela itu melihat kegagalan yang tak pernah benar-benar
+    # terjadi. Reaper tetap dipanggil sesudahnya untuk job yang memang tak bisa
+    # diulang lagi (jatah attempts habis, atau mode inline yang tak punya antrian).
+    _requeue_abandoned_quietly()
     job_store.reap_stale_jobs()
     job_store.purge_expired_documents()
     job = job_store.get_job(job_id)

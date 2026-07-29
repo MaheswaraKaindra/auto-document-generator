@@ -35,5 +35,13 @@ PyJWT[crypto]
 # --- Billing & Payments ---
 stripe
 
+# --- Worker queue (opsional, #13) ---
+# Dipakai HANYA kalau REDIS_URL diisi; tanpa itu aplikasi jalan mode inline dan
+# dua paket ini tak pernah di-import (lihat job_queue.py). Tetap dicantumkan di
+# sini supaya `docker compose` (yang memang menjalankan worker) tak butuh langkah
+# instalasi terpisah.
+redis
+rq
+
 # --- Testing ---
 pytest

@@ -107,6 +107,28 @@ RATE_LIMIT_TEMPLATE_UPLOAD_PER_WINDOW = _int_env("RATE_LIMIT_TEMPLATE_UPLOAD_PER
 # berpengaruh. Di image Docker, build frontend disalin ke sini.
 FRONTEND_DIST = os.getenv("FRONTEND_DIST", "frontend/dist")
 
+# --- Worker queue (Redis + RQ) ----------------------------------------------
+# KOSONG = eksekusi INLINE lewat BackgroundTasks (perilaku sebelum #13): pipeline
+# jalan di dalam proses web, nol layanan tambahan, cukup untuk satu instance.
+# TERISI = web cuma mengantri, worker terpisah mengeksekusi — job selamat dari
+# restart/crash/deploy proses web, dan web bisa diperbanyak tanpa menggandakan
+# eksekutor. Seam-nya di `job_queue.py`; sisa aplikasi tak tahu bedanya.
+#
+# Bentuk: redis://host:port/db (mis. redis://localhost:6379/0).
+REDIS_URL = os.getenv("REDIS_URL")
+JOB_QUEUE_NAME = os.getenv("JOB_QUEUE_NAME", "documents")
+
+# Berapa kali job yang mati BERSAMA worker-nya boleh diulang otomatis. Yang diulang
+# HANYA kegagalan sementara (`error_status` 503 — proses mati di tengah jalan);
+# kegagalan permanen (413 repo kebesaran, 422 input salah, 500 bug) tak pernah
+# diulang, karena mengulangnya cuma membakar uang LLM untuk hasil yang sama.
+#
+# 1, bukan 3: percobaan kedua menutup kasus yang nyata (deploy/OOM saat job jalan),
+# sementara percobaan ketiga-keempat lebih mungkin berarti "job ini memang
+# meruntuhkan worker" — dan mengulangnya berarti meruntuhkannya lagi, sambil
+# membayar Claude tiap putaran. 0 = matikan re-queue.
+JOB_MAX_ATTEMPTS = _int_env("JOB_MAX_ATTEMPTS", 1)
+
 # --- Billing & Quota (Stripe) ------------------------------------------------
 STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")

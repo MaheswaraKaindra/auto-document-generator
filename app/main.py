@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -10,13 +11,27 @@ from app.api.routes_document import router as document_router
 from app.api.routes_ingestion import router as ingestion_router
 from app.api.routes_template import router as template_router
 from app.core import config
-from app.services import billing_service, job_store
+from app.services import billing_service, job_queue, job_store
 
 app = FastAPI(title="Auto Document Generator")
 
 # Tabel job dan billing dibuat saat import
 job_store.init_db()
 billing_service.init_billing_db()
+
+# Lanjutkan job yang mati BERSAMA worker-nya (#13). Dijalankan SEBELUM reaper:
+# selama argumennya masih ada di antrian, job itu layak diteruskan, bukan
+# divonis gagal. No-op di mode inline (tanpa REDIS_URL) — di sana tak ada
+# antrian yang menyimpan pekerjaannya, jadi reaper di bawah tetap jawabannya.
+#
+# Dibungkus try: Redis yang belum siap (urutan start container) tak boleh
+# menggagalkan boot proses web. Status job hidup di DB, dan sapuan ini diulang
+# lagi lazy tiap GET status.
+try:
+    job_queue.requeue_abandoned()
+except Exception:
+    logging.getLogger(__name__).warning(
+        "Re-queue job terbengkalai dilewati saat startup", exc_info=True)
 
 # Pungut job yang macet di `running`/`queued` dari proses SEBELUMNYA yang mati
 # saat job jalan (deploy/crash/OOM). Di sini — bukan di event startup — dengan
