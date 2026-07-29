@@ -1,0 +1,37 @@
+# Reverse proxy Caddy (#15) — TLS otomatis + domain di depan container `app`.
+#
+# Caddy dipilih dari tiga opsi (Caddy/nginx/Traefik) karena TLS-nya OTOMATIS:
+# tak ada langkah manual certbot/renew — Caddy mengambil & memperpanjang
+# sertifikat Let's Encrypt sendiri untuk $DOMAIN. Nginx menuntut konfigurasi TLS
+# terpisah + cron renew; untuk satu domain, itu kerja ekstra tanpa imbalan.
+#
+# $DOMAIN & $TLS_EMAIL datang dari environment (lihat docker-compose.prod.yml).
+# Syarat agar TLS terbit: DNS $DOMAIN sudah menunjuk ke IP server ini, dan port
+# 80 + 443 terbuka ke internet (Let's Encrypt memverifikasi lewat keduanya).
+
+{
+	# Email ACME untuk notifikasi kedaluwarsa sertifikat. Kosong = anonim (tetap
+	# jalan, cuma tanpa notifikasi).
+	email {$TLS_EMAIL}
+}
+
+{$DOMAIN} {
+	# Semua trafik diteruskan ke container app di jaringan compose internal.
+	# `app` = nama service; 8000 = port uvicorn DI DALAM jaringan (tak diekspos
+	# ke publik lagi — lihat docker-compose.prod.yml).
+	reverse_proxy app:8000
+
+	# Kompres respons (docx sudah terkompres, tapi JSON/HTML/SPA diuntungkan).
+	encode gzip
+
+	# Header keamanan dasar. HSTS memberi tahu browser "selalu pakai HTTPS untuk
+	# domain ini" — relevan karena pengguna MENGUNGGAH source code, downgrade ke
+	# http tak boleh terjadi diam-diam.
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		# Server Caddy tak perlu mengumumkan dirinya.
+		-Server
+	}
+}

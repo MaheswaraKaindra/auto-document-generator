@@ -51,13 +51,13 @@ job_store.reap_stale_jobs()
 # di tempat yang memang sudah dijalankan.
 job_store.purge_expired_documents()
 
-# Kerangka frontend (frontend/) dipanggil dari origin terpisah (dibuka
-# langsung sebagai file atau lewat dev server), jadi butuh CORS.
-# allow_origins="*" hanya untuk kebutuhan development; persempit sebelum
-# dipakai di produksi.
+# CORS diperketat dari `*` ke daftar origin (#15): dibaca dari
+# `CORS_ALLOW_ORIGINS` (lihat config), default origin dev Vite. Saat container
+# menyajikan frontend SAME-ORIGIN, CORS tak terpakai — ini cuma relevan untuk
+# frontend yang dilayani dari origin berbeda (mis. dev `npm run dev`).
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=config.CORS_ALLOW_ORIGINS,
     allow_methods=["*"],
     allow_headers=["*"],
     # `allow_headers` mengizinkan header REQUEST; ini yang mengizinkan JavaScript
